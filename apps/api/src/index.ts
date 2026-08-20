@@ -1,8 +1,9 @@
 import express from 'express'
 import cors from 'cors'
-import healthRouter from './routes/health.js'
-import authRouter from './routes/auth.js'
-import usersRouter from './routes/users.js'
+import healthRouter from './routes/health'
+import authRouter from './routes/auth'
+import usersRouter from './routes/users'
+import { errorHandler, notFoundHandler } from './middleware/error-handler'
 
 const app = express()
 const port = process.env.API_PORT ?? 3001
@@ -14,8 +15,15 @@ app.use('/health', healthRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/users', usersRouter)
 
-app.use((_req, res) => {
-  res.status(404).json({ data: null, error: { message: 'Not found' } })
+app.use(notFoundHandler)
+app.use(errorHandler)
+
+// Last-resort guards: log and keep serving rather than dying on a stray rejection.
+process.on('unhandledRejection', reason => {
+  console.error('[unhandledRejection]', reason)
+})
+process.on('uncaughtException', err => {
+  console.error('[uncaughtException]', err)
 })
 
 app.listen(port, () => {
