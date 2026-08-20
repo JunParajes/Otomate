@@ -60,10 +60,10 @@ services:
       - otomate-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.web.entrypoints=web"
-      - "traefik.http.routers.web.priority=1"
-      - "traefik.http.services.web.loadbalancer.server.port=80"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
     restart: unless-stopped
 
 networks:
