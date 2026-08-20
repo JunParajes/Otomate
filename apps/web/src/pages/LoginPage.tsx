@@ -1,23 +1,40 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  Alert,
+  Button,
+  Card,
+  Center,
+  PasswordInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core'
+import { useForm } from '@mantine/form'
+import { zodResolver } from 'mantine-form-zod-resolver'
 import { api } from '@/lib/api'
 import { saveSession } from '@/lib/auth'
-import type { ApiResponse, LoginResponse } from '@otomate/shared'
+import { loginSchema, type ApiResponse, type LoginInput, type LoginResponse } from '@otomate/shared'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
+  // Validated against the exact schema the API uses — see packages/shared/src/schemas/auth.ts
+  const form = useForm<LoginInput>({
+    initialValues: { email: '', password: '' },
+    validate: zodResolver(loginSchema),
+    validateInputOnBlur: true,
+  })
+
+  async function handleSubmit(values: LoginInput) {
     setError('')
     setLoading(true)
 
     try {
-      const { data } = await api.post<ApiResponse<LoginResponse>>('/api/auth/login', { email, password })
+      const { data } = await api.post<ApiResponse<LoginResponse>>('/api/auth/login', values)
       if (data.error) {
         setError(data.error.message)
         return
@@ -32,52 +49,46 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Otomate</h1>
-        <p style={styles.subtitle}>Bakery Management System</p>
+    <Center mih="100vh" p="md" bg="var(--mantine-color-body)">
+      <Card withBorder shadow="sm" padding="xl" radius="md" w="100%" maw={400}>
+        <Stack gap="xs" mb="lg">
+          <Title order={1} size="h2">
+            Otomate
+          </Title>
+          <Text c="dimmed" size="sm">
+            Bakery Management System
+          </Text>
+        </Stack>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <label style={styles.label}>Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-            style={styles.input}
-            placeholder="admin@otomate.local"
-          />
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <Stack gap="md">
+            <TextInput
+              label="Email"
+              placeholder="admin@otomate.local"
+              autoComplete="email"
+              withAsterisk
+              {...form.getInputProps('email')}
+            />
 
-          <label style={styles.label}>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            style={styles.input}
-          />
+            <PasswordInput
+              label="Password"
+              autoComplete="current-password"
+              withAsterisk
+              {...form.getInputProps('password')}
+            />
 
-          {error && <p style={styles.error}>{error}</p>}
+            {error && (
+              <Alert color="red" variant="light" role="alert">
+                {error}
+              </Alert>
+            )}
 
-          <button type="submit" disabled={loading} style={styles.button}>
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
+            <Button type="submit" loading={loading} fullWidth mt="xs">
+              Sign in
+            </Button>
+          </Stack>
         </form>
-      </div>
-    </div>
+      </Card>
+    </Center>
   )
-}
-
-const styles: Record<string, React.CSSProperties> = {
-  container: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' },
-  card: { background: '#fff', padding: '2.5rem', borderRadius: '8px', boxShadow: '0 2px 12px rgba(0,0,0,0.1)', width: '100%', maxWidth: '380px' },
-  title: { margin: 0, fontSize: '1.8rem', fontWeight: 700, color: '#1a1a1a' },
-  subtitle: { margin: '4px 0 2rem', color: '#666', fontSize: '0.9rem' },
-  form: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
-  label: { fontSize: '0.875rem', fontWeight: 500, color: '#333' },
-  input: { padding: '0.6rem 0.75rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '1rem', outline: 'none' },
-  error: { color: '#dc2626', fontSize: '0.875rem', margin: 0 },
-  button: { marginTop: '0.5rem', padding: '0.75rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' },
 }
