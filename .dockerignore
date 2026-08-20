@@ -1,0 +1,38 @@
+# Dependencies — must never be copied into the image.
+# The host's node_modules contain platform-specific binaries (Prisma engines,
+# esbuild) that would clobber the Linux ones pnpm installs during the build.
+node_modules
+**/node_modules
+.pnpm-store
+
+# Build outputs — always rebuilt inside the image
+dist
+build
+**/dist
+**/build
+*.tsbuildinfo
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# VCS & CI
+.git
+.gitignore
+.github
+
+# Docs & local tooling
+docs
+*.md
+!apps/*/README.md
+.vscode
+.idea
+
+# Compose files (not needed inside an image)
+docker-compose*.yml
+
+# OS noise
+.DS_Store
+Thumbs.db
+*.log

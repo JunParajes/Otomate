@@ -17,11 +17,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # Rebuilds packages/shared on change so api and web pick up shared types and
+  # Zod schemas without a manual build. Writes into the shared-dist volume that
+  # both consumers mount.
+  shared:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: pnpm --filter @otomate/shared dev
+    working_dir: /app
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src
+      - shared-dist:/app/packages/shared/dist
+    # Reuses the api image, whose HEALTHCHECK probes :3001 — this service only
+    # runs tsc --watch and serves nothing, so the inherited check never passes.
+    healthcheck:
+      disable: true
+
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-      target: builder
     command: pnpm --filter api dev
     working_dir: /app/apps/api
     environment:
@@ -33,11 +49,14 @@ services:
       - ./apps/api/src:/app/apps/api/src
       - ./apps/api/prisma:/app/apps/api/prisma
       - ./packages/shared/src:/app/packages/shared/src
+      - shared-dist:/app/packages/shared/dist
     ports:
       - "3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
+      shared:
+        condition: service_started
 
   web:
     build:
@@ -47,13 +66,19 @@ services:
     command: pnpm --filter web dev --host
     working_dir: /app/apps/web
     environment:
+      # Empty: the Vite dev proxy below forwards /api and /health to the api
+      # service, so the browser uses same-origin relative URLs (as in prod).
       VITE_API_URL: ""
     volumes:
       - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/index.html:/app/apps/web/index.html
+      - shared-dist:/app/packages/shared/dist
     ports:
       - "5173:5173"
     depends_on:
       - api
+      - shared
 
 volumes:
   pgdata:
+  shared-dist:
