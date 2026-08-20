@@ -83,7 +83,9 @@ jobs:
             # Pull latest images
             docker compose -f docker-compose.prod.yml pull
 
-            # Run migrations before restarting api
+            # Run migrations before restarting api.
+            # If this fails with P3005 ("schema is not empty"), the server DB
+            # predates migrations — run scripts/baseline-prod-db.sh once, then redeploy.
             docker compose -f docker-compose.prod.yml run --rm api \
               sh -c "npx prisma migrate deploy"
 
