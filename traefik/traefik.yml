@@ -1,0 +1,31 @@
+# Traefik v3 static configuration
+# Dynamic config comes from Docker labels (providers.docker)
+
+api:
+  dashboard: true
+  insecure: true  # Dashboard on :8080 — restrict to LAN only via firewall
+
+entryPoints:
+  web:
+    address: ":80"
+  # Uncomment when you add a domain + Let's Encrypt:
+  # websecure:
+  #   address: ":443"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: otomate-net
+
+log:
+  level: INFO
+
+# Uncomment to enable Let's Encrypt when domain is ready:
+# certificatesResolvers:
+#   letsencrypt:
+#     acme:
+#       email: your-email@domain.com
+#       storage: /letsencrypt/acme.json
+#       httpChallenge:
+#         entryPoint: web
