@@ -21,7 +21,7 @@
 - [x] docker-compose.prod.yml (production with Traefik)
 - [x] Traefik v3 (routes /api|/health → api, / → frontend)
 - [x] GitHub Actions CI/CD (build → GHCR → SSH deploy → migrate → restart)
-- [x] First production deploy to server (LAN reachable at http://192.168.1.82)
+- [x] First production deploy to server (reachable over LAN and internet)
 - [ ] Port 80 forwarded for public HTTP access (user config on router)
 - [ ] Proper Prisma migrations (currently using `db push` for initial schema)
 
@@ -68,5 +68,5 @@
 | Environment | URL | Notes |
 |-------------|-----|-------|
 | Local dev | http://localhost:5173 | Docker Compose, hot reload |
-| Production | http://192.168.1.82 | Ubuntu server, Traefik |
-| Production (future) | https://yourdomain.com | When domain is added |
+| Production | http://&lt;SERVER_IP&gt; | Ubuntu server, Traefik — actual IP kept private |
+| Production (future) | https://&lt;yourdomain&gt; | When domain + Let's Encrypt is added |

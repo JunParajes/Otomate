@@ -87,5 +87,5 @@ docker compose down -v           # stop + remove volumes
 ## GitHub & Deployment
 - Repo: https://github.com/JunParajes/Otomate
 - Push to `main` → GitHub Actions builds images → pushes to GHCR → SSHes into server → pulls + restarts
-- Server: `jun@192.168.1.82` (Ubuntu 26.04)
-- Required GitHub secrets: `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`
+- Server: `<SERVER_USER>@<SERVER_LAN_IP>` (Ubuntu 26.04) — actual values in your local notes/password manager
+- Required GitHub secrets: `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_PORT`, `SERVER_SSH_KEY`
