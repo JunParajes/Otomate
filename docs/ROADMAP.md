@@ -23,7 +23,7 @@
 - [x] GitHub Actions CI/CD (build → GHCR → SSH deploy → migrate → restart)
 - [x] First production deploy to server (reachable over LAN and internet)
 - [ ] Port 80 forwarded for public HTTP access (user config on router)
-- [ ] Proper Prisma migrations (currently using `db push` for initial schema)
+- [x] Proper Prisma migrations — `0_init` baseline committed and applied to production on 2026-08-20; `prisma migrate deploy` now reports "No pending migrations to apply"
 
 ---
 

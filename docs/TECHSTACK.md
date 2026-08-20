@@ -76,6 +76,24 @@ Every choice below was made deliberately. This document records the reasoning so
 
 ---
 
+## UI Components: Mantine
+
+**Why Mantine:** Phase 2+ is almost entirely admin CRUD — data tables, forms, modals, multi-selects, notifications. Mantine ships all of them as working components, so no UI primitives have to be written by hand.
+
+The deciding factor was `mantine-form-zod-resolver`: forms validate against the *same* Zod schema the API validates with. `loginSchema` lives in `packages/shared/src/schemas/` and is imported by both sides, so client and server cannot drift on what valid input means. That is the payoff the monorepo was set up for.
+
+Dark mode, spacing, and typography defaults come for free — "modern" costs no design time.
+
+**Why not Tailwind + shadcn/ui:** Components would be copied into the repo and fully owned, which fits our "control what gets added" bias. But data tables (TanStack Table) and forms (react-hook-form) would have to be assembled by hand, and the Zod-schema reuse would need wiring up manually. Revisit if a bespoke visual identity ever matters more than shipping screens.
+
+**Why not plain CSS Modules:** Cheapest to start, but every table, modal, and select would be built from scratch.
+
+**Tradeoff accepted:** A runtime dependency with its own theming system, and the app will look like a Mantine app.
+
+**Required React 19** — Mantine 9 peer-depends on it. The upgrade from 18 was trivial at 3 pages; deferring it would only have made it harder.
+
+---
+
 ## Containers: Docker + Docker Compose
 
 **Why Docker:** Consistent environments from local → CI → production. Eliminates "works on my machine" issues.

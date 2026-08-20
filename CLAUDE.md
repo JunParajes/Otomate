@@ -50,6 +50,8 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for full phase breakdown.
 - **pnpm workspaces** — monorepo without Turborepo overhead
 - **Prisma** — schema-first ORM; migrations tracked in git
 - **JWT auth** — stateless, no Redis required; tokens stored in localStorage
+- **Mantine (React 19)** — component library for admin UI; forms validate against shared Zod schemas
+- **`packages/shared` is dual-built (CJS + ESM)** — the API requires CJS, Vite needs ESM
 - **Traefik v3** — routes `/api/*` → Express, `/*` → React/Nginx
 - **GHCR** — images at `ghcr.io/junparajes/otomate-api` and `ghcr.io/junparajes/otomate-web`
 - **IP-only** — no domain/TLS yet; add Traefik Let's Encrypt labels when domain is ready
@@ -58,7 +60,8 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for full phase breakdown.
 - Never commit `.env` — use `.env.example` as a template
 - Never use `any` in TypeScript — use `unknown` + Zod validation at boundaries
 - Don't add features outside the current phase without updating ROADMAP.md
-- Don't skip Prisma migrations — always run `prisma migrate dev` after schema changes
+- Don't skip Prisma migrations — always run `prisma migrate dev` after schema changes, and commit the generated `prisma/migrations/` folder
+- Never use `prisma db push` against production — it drifts the schema out of migration history
 
 ## Useful Commands
 ```bash
@@ -72,7 +75,9 @@ pnpm --filter api dev
 pnpm --filter web dev
 
 # Prisma
-pnpm --filter api exec prisma migrate dev
+pnpm --filter api exec prisma migrate dev --name <change>   # create + apply a migration
+pnpm --filter api exec prisma migrate deploy                # apply pending migrations (prod)
+pnpm --filter api exec prisma migrate status                # what's applied vs pending
 pnpm --filter api exec prisma studio
 pnpm --filter api exec prisma db seed
 
