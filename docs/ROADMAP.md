@@ -11,18 +11,19 @@
 
 ---
 
-## Phase 1 — Boilerplate + Infrastructure 🔄 (current)
+## Phase 1 — Boilerplate + Infrastructure ✅
 - [x] Monorepo scaffold (pnpm workspaces, TypeScript, .env)
 - [x] packages/shared (shared types)
 - [x] apps/api (Express + Prisma + JWT auth)
 - [x] apps/web (React + Vite + login + dashboard)
-- [x] Dockerfiles (multi-stage, api + web)
+- [x] Dockerfiles (single-stage api, multi-stage web with nginx)
 - [x] docker-compose.yml (local dev with hot reload)
-- [x] docker-compose.prod.yml (production)
-- [x] Traefik v3 config (IP-only routing)
-- [x] GitHub Actions CI/CD (build → GHCR → SSH deploy)
-- [ ] End-to-end local verification
-- [ ] First production deploy to server
+- [x] docker-compose.prod.yml (production with Traefik)
+- [x] Traefik v3 (routes /api|/health → api, / → frontend)
+- [x] GitHub Actions CI/CD (build → GHCR → SSH deploy → migrate → restart)
+- [x] First production deploy to server (LAN reachable at http://192.168.1.82)
+- [ ] Port 80 forwarded for public HTTP access (user config on router)
+- [ ] Proper Prisma migrations (currently using `db push` for initial schema)
 
 ---
 
