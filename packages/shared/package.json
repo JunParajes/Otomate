@@ -2,20 +2,32 @@
   "name": "@otomate/shared",
   "version": "0.1.0",
   "private": true,
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/cjs/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     }
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch"
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.esm.json && node scripts/write-type-markers.mjs",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput & tsc -p tsconfig.esm.json --watch --preserveWatchOutput & wait"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
-  }
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "module": "./dist/esm/index.js",
+  "files": [
+    "dist"
+  ]
 }
