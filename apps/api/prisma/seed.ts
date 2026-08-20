@@ -36,21 +36,24 @@ async function main() {
     create: { id: 'hq', name: 'HQ' },
   })
 
-  const hashedPassword = await bcrypt.hash('admin123', 12)
-
-  await prisma.user.upsert({
-    where: { email: 'admin@otomate.local' },
-    update: {},
-    create: {
-      email: 'admin@otomate.local',
-      password: hashedPassword,
-      name: 'Admin',
-      roleId: adminRole.id,
-      branchId: hq.id,
-    },
-  })
-
-  console.log('Seed complete. Admin: admin@otomate.local / admin123')
+  // Only create admin if it doesn't exist — never overwrite an existing password
+  const existingAdmin = await prisma.user.findUnique({ where: { email: 'admin@otomate.local' } })
+  if (!existingAdmin) {
+    const seedPassword = process.env.SEED_ADMIN_PASSWORD ?? 'change-me-immediately'
+    const hashedPassword = await bcrypt.hash(seedPassword, 12)
+    await prisma.user.create({
+      data: {
+        email: 'admin@otomate.local',
+        password: hashedPassword,
+        name: 'Admin',
+        roleId: adminRole.id,
+        branchId: hq.id,
+      },
+    })
+    console.log(`Seed complete. Admin created: admin@otomate.local (password from SEED_ADMIN_PASSWORD env var, or 'change-me-immediately')`)
+  } else {
+    console.log('Seed complete. Admin already exists — password NOT changed.')
+  }
 }
 
 main()
