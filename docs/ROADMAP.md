@@ -30,14 +30,18 @@
 ## Phase 2 — Users / Roles / Permissions
 > Full RBAC system for the bakery org structure.
 
-- [ ] Role management UI (admin creates/edits roles)
-- [ ] Permission assignment to roles
-- [ ] User management UI (create, edit, deactivate users)
-- [ ] Branch assignment per user
-- [ ] Password change / reset flow
-- [ ] Protected routes by permission on frontend
-- [ ] Seed realistic bakery roles: `admin`, `branch_manager`, `cashier`, `baker`
-- [ ] Seed realistic permissions: `users:read`, `users:write`, `reports:read`, etc.
+- [x] Role management UI (create, edit, delete; system roles protected)
+- [x] Permission assignment to roles (catalog grouped by category)
+- [x] User management UI (create, edit, deactivate — never hard delete)
+- [x] Branch management UI + branch assignment per user
+- [x] Password change / admin reset flow (`mustChangePassword` forces a change at next sign-in)
+- [x] Protected routes by permission on frontend (links hidden, not just blocked)
+- [x] Permission catalog defined in `packages/shared/src/permissions.ts` and synced by the seed
+- [x] Permissions re-read from the DB per request — role changes and deactivations apply immediately
+- [x] Guardrails: no self-deactivate/self-demote, cannot remove the last Super Admin,
+      cannot grant permissions you do not hold, role delete requires reassignment
+- [ ] Seed bakery roles (`manager`, `frontliner`, `baker`) — now created through the GUI
+      rather than seeded; only `super_admin` is seeded
 
 ---
 
