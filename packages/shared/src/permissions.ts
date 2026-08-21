@@ -14,6 +14,10 @@ export const PERMISSIONS = [
   { name: 'roles:write', category: 'Roles', description: 'Create, edit and delete roles' },
   { name: 'branches:read', category: 'Branches', description: 'View branches' },
   { name: 'branches:write', category: 'Branches', description: 'Create, edit and delete branches' },
+  { name: 'products:read', category: 'Products', description: 'View products and categories' },
+  { name: 'products:write', category: 'Products', description: 'Create, edit and deactivate products' },
+  { name: 'products:cost', category: 'Products', description: 'See cost price and profit margin' },
+  { name: 'categories:write', category: 'Products', description: 'Create, edit and delete product categories' },
   { name: 'reports:read', category: 'Reports', description: 'View reports and dashboards' },
 ] as const
 

@@ -1,16 +1,31 @@
 import express from 'express'
 import cors from 'cors'
+import path from 'node:path'
 import healthRouter from './routes/health'
 import authRouter from './routes/auth'
 import usersRouter from './routes/users'
 import adminRouter from './routes/admin'
 import { errorHandler, notFoundHandler } from './middleware/error-handler'
+import { PUBLIC_PREFIX, UPLOAD_ROOT, ensureUploadDirs } from './lib/images'
 
 const app = express()
 const port = process.env.API_PORT ?? 3001
 
 app.use(cors({ origin: process.env.WEB_URL ?? '*' }))
 app.use(express.json())
+
+// Product images are served unauthenticated: browsers do not send an
+// Authorization header for <img src>, and these are photographs of bread.
+// immutable is safe because filenames are content-unique (uuid.webp).
+app.use(
+  PUBLIC_PREFIX,
+  express.static(path.join(UPLOAD_ROOT, 'products'), {
+    maxAge: '30d',
+    immutable: true,
+    index: false,
+    dotfiles: 'deny',
+  })
+)
 
 app.use('/health', healthRouter)
 app.use('/api/auth', authRouter)
@@ -28,6 +43,13 @@ process.on('uncaughtException', err => {
   console.error('[uncaughtException]', err)
 })
 
-app.listen(port, () => {
-  console.log(`API running on port ${port}`)
-})
+ensureUploadDirs()
+  .then(() => {
+    app.listen(port, () => {
+      console.log(`API running on port ${port}`)
+    })
+  })
+  .catch(err => {
+    console.error('[fatal] could not prepare upload directory', err)
+    process.exit(1)
+  })

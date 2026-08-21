@@ -57,3 +57,47 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+/// How a product is sold. Affects how its price reads: ₱25 per piece vs per kilo.
+enum ProductUnit {
+  PIECE
+  PACK
+  KILO
+  TRAY
+  BOX
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  /// Optional short code (BRD-001). Unique when present; Postgres allows many NULLs.
+  sku         String?     @unique
+  name        String
+  description String?
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  /// Money is INTEGER CENTAVOS, never a float. ₱25.50 == 2550.
+  priceCents  Int
+  /// What it costs us. Gated behind the products:cost permission.
+  costCents   Int?
+  unit        ProductUnit @default(PIECE)
+  /// Filename on the products volume, e.g. "a1b2c3.webp". Not a full path.
+  imageFile   String?
+  isActive    Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([categoryId])
+  @@index([isActive])
+}

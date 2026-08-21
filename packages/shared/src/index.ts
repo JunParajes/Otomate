@@ -1,4 +1,6 @@
 export * from './types/index.js'
 export * from './schemas/auth.js'
 export * from './schemas/admin.js'
+export * from './schemas/catalog.js'
 export * from './permissions.js'
+export * from './lib/money.js'

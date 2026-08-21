@@ -78,3 +78,41 @@ export interface LoginResponse {
   token: string
   user: User
 }
+
+// ─── Product catalogue ────────────────────────────────────────────────────
+import type { ProductUnit } from '../schemas/catalog.js'
+
+export interface Category {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CategoryWithUsage extends Category {
+  productCount: number
+}
+
+/**
+ * `priceCents` and `costCents` are INTEGER CENTAVOS, not pesos.
+ * `costCents` is omitted entirely unless the caller holds products:cost —
+ * absent means "not permitted to see", null means "not recorded".
+ */
+export interface Product {
+  id: string
+  sku: string | null
+  name: string
+  description: string | null
+  priceCents: number
+  costCents?: number | null
+  unit: ProductUnit
+  imageUrl: string | null
+  isActive: boolean
+  sortOrder: number
+  category: { id: string; name: string }
+  createdAt: string
+  updatedAt: string
+}

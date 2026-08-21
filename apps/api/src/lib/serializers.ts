@@ -1,5 +1,9 @@
 import type { Branch, Prisma, Role, User } from '@prisma/client'
+import { imageUrl } from './images'
 import type {
+  Category as CategoryDto,
+  Product as ProductDto,
+  ProductUnit,
   Branch as BranchDto,
   Permission as PermissionDto,
   PermissionName,
@@ -60,4 +64,50 @@ export function toRoleDto(role: RoleWithPermissions): RoleDto {
     createdAt: role.createdAt.toISOString(),
     updatedAt: role.updatedAt.toISOString(),
   }
+}
+
+type ProductWithCategory = Prisma.ProductGetPayload<{ include: { category: true } }>
+
+export function toCategoryDto(category: {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+  sortOrder: number
+  createdAt: Date
+  updatedAt: Date
+}): CategoryDto {
+  return {
+    id: category.id,
+    name: category.name,
+    description: category.description,
+    isActive: category.isActive,
+    sortOrder: category.sortOrder,
+    createdAt: category.createdAt.toISOString(),
+    updatedAt: category.updatedAt.toISOString(),
+  }
+}
+
+/**
+ * `costCents` is OMITTED unless the caller holds products:cost. Absent means
+ * "not permitted to see"; null means "not recorded". Never send it and hide it
+ * client-side — that just puts your margins in the network tab.
+ */
+export function toProductDto(product: ProductWithCategory, canSeeCost: boolean): ProductDto {
+  const dto: ProductDto = {
+    id: product.id,
+    sku: product.sku,
+    name: product.name,
+    description: product.description,
+    priceCents: product.priceCents,
+    unit: product.unit as ProductUnit,
+    imageUrl: imageUrl(product.imageFile),
+    isActive: product.isActive,
+    sortOrder: product.sortOrder,
+    category: { id: product.category.id, name: product.category.name },
+    createdAt: product.createdAt.toISOString(),
+    updatedAt: product.updatedAt.toISOString(),
+  }
+  if (canSeeCost) dto.costCents = product.costCents
+  return dto
 }
