@@ -12,13 +12,17 @@ import {
   Title,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
-import { zodResolver } from 'mantine-form-zod-resolver'
+// zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
+// on zod 4 that is undefined and validation throws instead of showing messages.
+import { zod4Resolver as zodResolver } from 'mantine-form-zod-resolver'
 import { api } from '@/lib/api'
 import { saveSession } from '@/lib/auth'
+import { useSession } from '@/lib/session'
 import { loginSchema, type ApiResponse, type LoginInput, type LoginResponse } from '@otomate/shared'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { refresh } = useSession()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -40,7 +44,8 @@ export default function LoginPage() {
         return
       }
       saveSession(data.data)
-      navigate('/dashboard')
+      await refresh()
+      navigate(data.data.user.mustChangePassword ? '/change-password' : '/dashboard')
     } catch {
       setError('Invalid email or password')
     } finally {
