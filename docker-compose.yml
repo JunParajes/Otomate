@@ -50,6 +50,7 @@ services:
       - ./apps/api/prisma:/app/apps/api/prisma
       - ./packages/shared/src:/app/packages/shared/src
       - shared-dist:/app/packages/shared/dist
+      - product-images:/app/uploads
     ports:
       - "3001:3001"
     depends_on:
@@ -72,6 +73,10 @@ services:
     volumes:
       - ./apps/web/src:/app/apps/web/src
       - ./apps/web/index.html:/app/apps/web/index.html
+      # Mounted so proxy/plugin changes take effect on restart instead of
+      # needing a full image rebuild.
+      - ./apps/web/vite.config.ts:/app/apps/web/vite.config.ts
+      - ./apps/web/postcss.config.cjs:/app/apps/web/postcss.config.cjs
       - shared-dist:/app/packages/shared/dist
     ports:
       - "5173:5173"
@@ -82,3 +87,4 @@ services:
 volumes:
   pgdata:
   shared-dist:
+  product-images:

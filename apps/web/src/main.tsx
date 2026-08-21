@@ -11,6 +11,8 @@ import ChangePasswordPage from '@/pages/ChangePasswordPage'
 import UsersPage from '@/pages/admin/UsersPage'
 import RolesPage from '@/pages/admin/RolesPage'
 import BranchesPage from '@/pages/admin/BranchesPage'
+import ProductsPage from '@/pages/admin/ProductsPage'
+import CategoriesPage from '@/pages/admin/CategoriesPage'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppLayout from '@/components/AppLayout'
 import { SessionProvider } from '@/lib/session'
@@ -18,6 +20,7 @@ import { theme } from '@/theme'
 
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
+import '@mantine/dropzone/styles.css'
 
 /** Authenticated pages share the shell; login and 404 stand alone. */
 function Shell({ children, permission }: { children: React.ReactNode; permission?: Parameters<typeof ProtectedRoute>[0]['permission'] }) {
@@ -48,6 +51,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 }
               />
               <Route path="/dashboard" element={<Shell><DashboardPage /></Shell>} />
+              <Route path="/catalog/products" element={<Shell permission="products:read"><ProductsPage /></Shell>} />
+              <Route path="/catalog/categories" element={<Shell permission="products:read"><CategoriesPage /></Shell>} />
               <Route path="/admin/users" element={<Shell permission="users:read"><UsersPage /></Shell>} />
               <Route path="/admin/roles" element={<Shell permission="roles:read"><RolesPage /></Shell>} />
               <Route path="/admin/branches" element={<Shell permission="branches:read"><BranchesPage /></Shell>} />

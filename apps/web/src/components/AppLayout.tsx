@@ -17,6 +17,8 @@ import {
 import { useDisclosure } from '@mantine/hooks'
 import {
   IconBuildingStore,
+  IconCategory,
+  IconToolsKitchen2,
   IconChevronDown,
   IconKey,
   IconLayoutDashboard,
@@ -36,6 +38,11 @@ interface NavItem {
 
 const MAIN: NavItem[] = [{ label: 'Dashboard', to: '/dashboard', icon: IconLayoutDashboard }]
 
+const CATALOG: NavItem[] = [
+  { label: 'Products', to: '/catalog/products', icon: IconToolsKitchen2, permission: 'products:read' },
+  { label: 'Categories', to: '/catalog/categories', icon: IconCategory, permission: 'products:read' },
+]
+
 const ADMIN: NavItem[] = [
   { label: 'Users', to: '/admin/users', icon: IconUsers, permission: 'users:read' },
   { label: 'Roles', to: '/admin/roles', icon: IconShieldLock, permission: 'roles:read' },
@@ -49,6 +56,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Hidden rather than shown-and-blocked: a link you can't use is just noise.
   const adminItems = ADMIN.filter(item => !item.permission || can(item.permission))
+  const catalogItems = CATALOG.filter(item => !item.permission || can(item.permission))
 
   const renderNav = (items: NavItem[]) =>
     items.map(item => (
@@ -121,6 +129,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <AppShell.Section grow component={ScrollArea}>
           <Stack gap={2}>
             {renderNav(MAIN)}
+
+            {catalogItems.length > 0 && (
+              <>
+                <Divider
+                  my="sm"
+                  label={<Text size="xs" fw={700} c="dimmed" tt="uppercase">Catalogue</Text>}
+                  labelPosition="left"
+                />
+                {renderNav(catalogItems)}
+              </>
+            )}
 
             {adminItems.length > 0 && (
               <>

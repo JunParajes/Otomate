@@ -39,6 +39,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       API_PORT: 3001
       NODE_ENV: production
+    volumes:
+      # Product images live here. NOT covered by pg_dump — back this up separately.
+      - product-images:/app/uploads
     networks:
       - otomate-net
     depends_on:
@@ -46,7 +49,7 @@ services:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/health`)"
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/health`) || PathPrefix(`/uploads`)"
       - "traefik.http.routers.api.entrypoints=web"
       - "traefik.http.services.api.loadbalancer.server.port=3001"
     restart: unless-stopped
@@ -69,3 +72,4 @@ networks:
 
 volumes:
   pgdata:
+  product-images:
