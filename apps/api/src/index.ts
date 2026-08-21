@@ -3,6 +3,7 @@ import cors from 'cors'
 import healthRouter from './routes/health'
 import authRouter from './routes/auth'
 import usersRouter from './routes/users'
+import adminRouter from './routes/admin'
 import { errorHandler, notFoundHandler } from './middleware/error-handler'
 
 const app = express()
@@ -14,6 +15,7 @@ app.use(express.json())
 app.use('/health', healthRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/users', usersRouter)
+app.use('/api/admin', adminRouter)
 
 app.use(notFoundHandler)
 app.use(errorHandler)

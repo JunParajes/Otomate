@@ -1,61 +1,100 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { PERMISSIONS, PERMISSION_NAMES, SUPER_ADMIN_ROLE } from '@otomate/shared'
 
 const prisma = new PrismaClient()
 
+const ADMIN_EMAIL = 'admin@otomate.local'
+
 async function main() {
-  const permissions = await Promise.all([
-    prisma.permission.upsert({ where: { name: 'users:read' }, update: {}, create: { name: 'users:read' } }),
-    prisma.permission.upsert({ where: { name: 'users:write' }, update: {}, create: { name: 'users:write' } }),
-    prisma.permission.upsert({ where: { name: 'reports:read' }, update: {}, create: { name: 'reports:read' } }),
-  ])
+  // ── 1. Sync the permission catalog ──────────────────────────────────────
+  // packages/shared is the source of truth; the table mirrors it.
+  for (const p of PERMISSIONS) {
+    await prisma.permission.upsert({
+      where: { name: p.name },
+      update: { category: p.category, description: p.description },
+      create: { name: p.name, category: p.category, description: p.description },
+    })
+  }
 
-  const [usersRead, usersWrite, reportsRead] = permissions
-
-  const adminRole = await prisma.role.upsert({
-    where: { name: 'admin' },
-    update: {},
-    create: { name: 'admin', permissions: { connect: permissions.map(p => ({ id: p.id })) } },
+  const orphans = await prisma.permission.findMany({
+    where: { name: { notIn: [...PERMISSION_NAMES] } },
   })
+  if (orphans.length > 0) {
+    await prisma.permission.deleteMany({ where: { id: { in: orphans.map(o => o.id) } } })
+    console.log(`Removed ${orphans.length} permission(s) no longer in the catalog: ${orphans.map(o => o.name).join(', ')}`)
+  }
 
-  await prisma.role.upsert({
-    where: { name: 'branch_manager' },
-    update: {},
-    create: { name: 'branch_manager', permissions: { connect: [{ id: usersRead.id }, { id: reportsRead.id }] } },
+  const allPermissions = await prisma.permission.findMany()
+  console.log(`Permission catalog synced (${allPermissions.length} permissions).`)
+
+  // ── 2. Super Admin role — holds everything, protected from the GUI ───────
+  const superAdmin = await prisma.role.upsert({
+    where: { name: SUPER_ADMIN_ROLE },
+    update: {
+      isSystem: true,
+      description: 'Full system access. Cannot be edited or deleted.',
+      permissions: { set: allPermissions.map(p => ({ id: p.id })) },
+    },
+    create: {
+      name: SUPER_ADMIN_ROLE,
+      isSystem: true,
+      description: 'Full system access. Cannot be edited or deleted.',
+      permissions: { connect: allPermissions.map(p => ({ id: p.id })) },
+    },
   })
+  console.log(`Role '${SUPER_ADMIN_ROLE}' ready with all ${allPermissions.length} permissions.`)
 
-  await prisma.role.upsert({
-    where: { name: 'staff' },
-    update: {},
-    create: { name: 'staff', permissions: { connect: [{ id: usersRead.id }] } },
-  })
-
+  // ── 3. Default branch ───────────────────────────────────────────────────
   const hq = await prisma.branch.upsert({
-    where: { id: 'hq' },
+    where: { name: 'HQ' },
     update: {},
-    create: { id: 'hq', name: 'HQ' },
+    create: { name: 'HQ' },
   })
 
-  // Only create admin if it doesn't exist — never overwrite an existing password
-  const existingAdmin = await prisma.user.findUnique({ where: { email: 'admin@otomate.local' } })
-  if (!existingAdmin) {
+  // ── 4. The owner account ────────────────────────────────────────────────
+  const existing = await prisma.user.findUnique({
+    where: { email: ADMIN_EMAIL },
+    include: { role: true },
+  })
+
+  if (!existing) {
     const seedPassword = process.env.SEED_ADMIN_PASSWORD ?? 'change-me-immediately'
-    const hashedPassword = await bcrypt.hash(seedPassword, 12)
     await prisma.user.create({
       data: {
-        email: 'admin@otomate.local',
-        password: hashedPassword,
+        email: ADMIN_EMAIL,
+        password: await bcrypt.hash(seedPassword, 12),
         name: 'Admin',
-        roleId: adminRole.id,
+        roleId: superAdmin.id,
         branchId: hq.id,
+        mustChangePassword: seedPassword === 'change-me-immediately',
       },
     })
-    console.log(`Seed complete. Admin created: admin@otomate.local (password from SEED_ADMIN_PASSWORD env var, or 'change-me-immediately')`)
+    console.log(`Created ${ADMIN_EMAIL} as ${SUPER_ADMIN_ROLE} (password from SEED_ADMIN_PASSWORD, or 'change-me-immediately').`)
+  } else if (existing.role.name !== SUPER_ADMIN_ROLE) {
+    // Promote the pre-existing owner account. Password is never touched.
+    await prisma.user.update({ where: { id: existing.id }, data: { roleId: superAdmin.id } })
+    console.log(`Promoted ${ADMIN_EMAIL} from '${existing.role.name}' to '${SUPER_ADMIN_ROLE}'. Password unchanged.`)
   } else {
-    console.log('Seed complete. Admin already exists — password NOT changed.')
+    console.log(`${ADMIN_EMAIL} is already ${SUPER_ADMIN_ROLE}. Password unchanged.`)
+  }
+
+  // Legacy seeded roles (admin/branch_manager/staff) are intentionally left in
+  // place rather than deleted — they may have users attached. Remove them from
+  // the GUI once their users are reassigned.
+  const legacy = await prisma.role.findMany({
+    where: { name: { in: ['admin', 'branch_manager', 'staff'] } },
+    include: { _count: { select: { users: true } } },
+  })
+  for (const r of legacy) {
+    console.log(`  legacy role '${r.name}' still present (${r._count.users} user(s)) — delete via the GUI when ready.`)
   }
 }
 
 main()
-  .catch(console.error)
+  .then(() => console.log('Seed complete.'))
+  .catch(e => {
+    console.error(e)
+    process.exitCode = 1
+  })
   .finally(() => prisma.$disconnect())

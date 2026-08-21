@@ -8,34 +8,52 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  isActive  Boolean  @default(true)
-  roleId    String
-  branchId  String?
-  role      Role     @relation(fields: [roleId], references: [id])
-  branch    Branch?  @relation(fields: [branchId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  password           String
+  name               String
+  isActive           Boolean   @default(true)
+  // Set when an admin creates the account or resets the password; the user is
+  // forced through a password change before they can use the app.
+  mustChangePassword Boolean   @default(false)
+  lastLoginAt        DateTime?
+  roleId             String
+  branchId           String?
+  role               Role      @relation(fields: [roleId], references: [id])
+  branch             Branch?   @relation(fields: [branchId], references: [id])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([roleId])
+  @@index([branchId])
 }
 
 model Role {
   id          String       @id @default(cuid())
   name        String       @unique
+  description String?
+  // System roles (super_admin) cannot be renamed, deleted, or stripped of
+  // permissions through the GUI — the lock-yourself-out guard.
+  isSystem    Boolean      @default(false)
   permissions Permission[]
   users       User[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }
 
 model Permission {
-  id    String @id @default(cuid())
-  name  String @unique
-  roles Role[]
+  id          String  @id @default(cuid())
+  name        String  @unique
+  category    String?
+  description String?
+  roles       Role[]
 }
 
 model Branch {
-  id    String @id @default(cuid())
-  name  String
-  users User[]
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
