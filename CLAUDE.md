@@ -45,6 +45,7 @@ docker compose -f docker-compose.prod.yml up -d
 ## Current Phase
 **Phase 1 — Boilerplate** (in progress)
 See [docs/ROADMAP.md](docs/ROADMAP.md) for full phase breakdown.
+Known gaps and deferred operational work are tracked in [docs/OPERATIONS.md](docs/OPERATIONS.md) — check it before assuming something is set up.
 
 ## Key Architectural Decisions
 - **pnpm workspaces** — monorepo without Turborepo overhead

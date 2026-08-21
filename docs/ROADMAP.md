@@ -45,7 +45,22 @@
 
 ---
 
-## Phase 3 — Auditing System
+## Phase 3 — Product Catalogue
+> Products, categories, prices and photos, managed through the GUI.
+
+- [x] Category CRUD (create, edit, delete, deactivate; delete guarded by product count)
+- [x] Product CRUD with SKU, description, unit of sale, sort order
+- [x] Prices stored as **integer centavos** (PHP) — never floating point
+- [x] Cost price + margin, gated behind its own `products:cost` permission
+- [x] Product image upload — resized to 1200px WebP, EXIF-rotated, stored on the
+      `product-images` Docker volume and served unauthenticated
+- [x] Search and category filter on the products table
+- [ ] Per-branch price overrides — deliberately deferred; add a `ProductBranchPrice`
+      table if a branch ever needs its own price
+
+---
+
+## Phase 4 — Auditing System
 > (Details TBD — user to expand)
 
 - [ ] AuditLog table in Prisma schema
@@ -55,7 +70,7 @@
 
 ---
 
-## Phase 4+ — Future Features
+## Phase 5+ — Future Features
 > To be defined as the product evolves.
 
 - [ ] Branch performance dashboard / reports
