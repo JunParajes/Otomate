@@ -9,17 +9,57 @@ import type { Request } from 'express'
  */
 
 /**
- * Cloudflare *overwrites* CF-Connecting-IP at its edge, so a client cannot forge
- * it — unlike X-Forwarded-For, which anyone may prepend to. LAN traffic reaches
- * Traefik directly, has no such header, and falls back to req.ip (see
- * `trust proxy` in index.ts).
+ * Requests reach this API by two routes, and they need different treatment:
  *
+ *   internet → Cloudflare → cloudflared container → Traefik → here
+ *   LAN      → Traefik → here
+ *
+ * Over the tunnel, every request arrives at Traefik from the same cloudflared
+ * container, so X-Forwarded-For ends in one address for the entire internet and
+ * is useless as a key. Cloudflare sets CF-Connecting-IP at its edge and rejects
+ * (403) any request that arrives carrying one, so on that route the header is
+ * both correct and unforgeable — verified against production.
+ *
+ * On the LAN there is no Cloudflare, so nothing stops a local client inventing
+ * the header and collecting a fresh allowance for every value it makes up.
+ * Hence: the header is trusted **only** when the immediate peer is a container
+ * on the Docker network, which is the only way tunnel traffic can arrive.
+ * A LAN client cannot make its packets appear to come from there.
+ */
+const DOCKER_BRIDGE = /^(?:::ffff:)?172\.(1[6-9]|2\d|3[01])\./
+
+function isTunnelPeer(ip: string | undefined): boolean {
+  return !!ip && DOCKER_BRIDGE.test(ip)
+}
+
+let lastForgeryLog = 0
+
+/**
  * ipKeyGenerator() collapses IPv6 addresses to their /56 subnet. Without it a
- * single visitor can walk their own prefix and get a fresh allowance for every
- * request, which makes an IPv6 limit decorative.
+ * single visitor walks their own prefix for a fresh allowance on every request,
+ * which makes an IPv6 limit decorative.
  */
 function clientKey(req: Request): string {
-  return ipKeyGenerator(req.get('cf-connecting-ip') || req.ip || 'unknown')
+  const claimed = req.get('cf-connecting-ip')
+
+  if (claimed && !isTunnelPeer(req.ip)) {
+    // Either someone on the LAN is trying to shake off a limit, or the tunnel
+    // stopped arriving from where we expect — which would silently put the whole
+    // internet in one bucket. Both are worth seeing. Throttled so a determined
+    // forger cannot flood the log.
+    const now = Date.now()
+    if (now - lastForgeryLog > 60_000) {
+      lastForgeryLog = now
+      console.warn(
+        `[rate-limit] ignoring CF-Connecting-IP from non-tunnel peer ${req.ip} — ` +
+          'expected a 172.16/12 container address. If this is normal tunnel ' +
+          'traffic, the Docker network changed and clientKey() needs updating.'
+      )
+    }
+  }
+
+  const source = (isTunnelPeer(req.ip) && claimed) || req.ip || 'unknown'
+  return ipKeyGenerator(source)
 }
 
 const envelope = (message: string) => ({

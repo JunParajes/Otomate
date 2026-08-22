@@ -104,6 +104,22 @@ the containers work. Documented in `docs/CONVENTIONS.md`.
   stranger to burn CPU on a home server. Ten *failed* attempts per 15 minutes per
   client, plus a generous 1000/15min flood backstop across `/api`. See
   `apps/api/src/middleware/rate-limit.ts`.
+
+  The rate-limit key deserves a note, because the tunnel breaks the obvious
+  approach. Every tunnelled request reaches Traefik from the same `cloudflared`
+  container, so `X-Forwarded-For` ends in one address for the entire internet
+  and would put every visitor in a single bucket. `CF-Connecting-IP` is used
+  instead: Cloudflare sets it at the edge and returns **403** to any request that
+  arrives already carrying one, so over the tunnel it cannot be forged — verified
+  against production, not assumed.
+
+  On the LAN there is no Cloudflare, and a first cut of this trusted the header
+  unconditionally — measured on the live server, a LAN client could invent a new
+  value per request and collect a fresh allowance every time. The header is now
+  trusted only when the peer is a container on the Docker network (172.16/12),
+  which is the only route tunnelled traffic can take and one a LAN client cannot
+  fake. A mismatch logs a throttled warning, which is also the alarm if the
+  Docker network is ever renumbered.
 - **Inbound port forwarding** — the router's port 80 forward was removed
   2026-08-23. The Cloudflare tunnel is outbound, so the home network now has no
   inbound web exposure at all.
