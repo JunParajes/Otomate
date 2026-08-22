@@ -88,6 +88,31 @@ useForm({ validate: zodResolver(loginSchema) })
 
 ---
 
+## Calling the API from the web app
+
+**Always go through `unwrap()` in `apps/web/src/lib/unwrap.ts`.** Never `await`
+an axios call and read `data.error` directly.
+
+Axios **rejects** its promise on any 4xx or 5xx, so the success path never sees
+the response body. Reading `data.error` only works for a 200 — which the API
+never returns for an error. Without `unwrap`, every considered message the API
+produces is replaced by axios's generic string:
+
+```
+"1 user(s) still have this role…"   becomes   "Request failed with status code 409"
+"Cannot deactivate the last active Super Admin"      "Request failed with status code 400"
+```
+
+`unwrap` digs the real message out of `err.response.data.error.message`, and
+falls back sensibly when there is no body at all (network failure, 413).
+
+This bug shipped unnoticed through three features because API tests checked the
+messages **server-side** and browser tests only checked **client-side** zod
+validation. Nothing exercised the path in between. When testing error handling,
+assert on what the user actually sees in the browser.
+
+---
+
 ## Environment Variables
 
 - **Format:** `SCREAMING_SNAKE_CASE`

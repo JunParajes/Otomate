@@ -1,5 +1,4 @@
 import type {
-  ApiResponse,
   CategoryWithUsage,
   CreateCategoryInput,
   CreateProductInput,
@@ -8,12 +7,8 @@ import type {
   UpdateProductInput,
 } from '@otomate/shared'
 import { api } from './api'
+import { unwrap } from './unwrap'
 
-async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T> {
-  const { data } = await promise
-  if (data.error) throw new Error(data.error.message)
-  return data.data
-}
 
 export const catalogApi = {
   listCategories: () => unwrap<CategoryWithUsage[]>(api.get('/api/admin/categories')),

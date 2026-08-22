@@ -1,5 +1,4 @@
 import type {
-  ApiResponse,
   Branch,
   CreateBranchInput,
   CreateRoleInput,
@@ -13,16 +12,8 @@ import type {
   User,
 } from '@otomate/shared'
 import { api } from './api'
+import { unwrap } from './unwrap'
 
-/**
- * Thin typed wrapper over the admin endpoints. Unwraps the { data, error }
- * envelope so components deal in plain values and thrown errors.
- */
-async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T> {
-  const { data } = await promise
-  if (data.error) throw new Error(data.error.message)
-  return data.data
-}
 
 export type BranchWithUsage = Branch & { userCount: number }
 
