@@ -46,6 +46,7 @@ docker compose -f docker-compose.prod.yml up -d
 **Phase 1 — Boilerplate** (in progress)
 See [docs/ROADMAP.md](docs/ROADMAP.md) for full phase breakdown.
 Known gaps and deferred operational work are tracked in [docs/OPERATIONS.md](docs/OPERATIONS.md) — check it before assuming something is set up.
+**[docs/DOMAIN.md](docs/DOMAIN.md) describes how the bakery actually operates** (the DSIR stock-reconciliation process). Read it before touching anything to do with stock, sales or prices — several rules there look like quirks but are deliberate anti-theft controls.
 
 ## Key Architectural Decisions
 - **pnpm workspaces** — monorepo without Turborepo overhead
