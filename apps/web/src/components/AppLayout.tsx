@@ -25,6 +25,7 @@ import {
   IconLogout,
   IconShieldLock,
   IconUsers,
+  IconId,
 } from '@tabler/icons-react'
 import type { PermissionName } from '@otomate/shared'
 import { useSession } from '@/lib/session'
@@ -45,6 +46,7 @@ const CATALOG: NavItem[] = [
 
 const ADMIN: NavItem[] = [
   { label: 'Users', to: '/admin/users', icon: IconUsers, permission: 'users:read' },
+  { label: 'Employees', to: '/admin/employees', icon: IconId, permission: 'employees:read' },
   { label: 'Roles', to: '/admin/roles', icon: IconShieldLock, permission: 'roles:read' },
   { label: 'Branches', to: '/admin/branches', icon: IconBuildingStore, permission: 'branches:read' },
 ]

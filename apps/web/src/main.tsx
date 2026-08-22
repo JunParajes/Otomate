@@ -13,6 +13,7 @@ import RolesPage from '@/pages/admin/RolesPage'
 import BranchesPage from '@/pages/admin/BranchesPage'
 import ProductsPage from '@/pages/admin/ProductsPage'
 import CategoriesPage from '@/pages/admin/CategoriesPage'
+import EmployeesPage from '@/pages/admin/EmployeesPage'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppLayout from '@/components/AppLayout'
 import { SessionProvider } from '@/lib/session'
@@ -54,6 +55,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <Route path="/catalog/products" element={<Shell permission="products:read"><ProductsPage /></Shell>} />
               <Route path="/catalog/categories" element={<Shell permission="products:read"><CategoriesPage /></Shell>} />
               <Route path="/admin/users" element={<Shell permission="users:read"><UsersPage /></Shell>} />
+              <Route path="/admin/employees" element={<Shell permission="employees:read"><EmployeesPage /></Shell>} />
               <Route path="/admin/roles" element={<Shell permission="roles:read"><RolesPage /></Shell>} />
               <Route path="/admin/branches" element={<Shell permission="branches:read"><BranchesPage /></Shell>} />
               <Route path="*" element={<NotFoundPage />} />
