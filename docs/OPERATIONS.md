@@ -5,28 +5,33 @@ Reviewed and updated as items are closed. Newest concerns at the top of each sec
 
 ---
 
-## 🔴 High — do these before real staff depend on the system
+## 🟠 Medium
 
-### 1. Backups exist locally, but not off the machine
+### 1. Backups are local only — no off-machine copy
 
-**Status:** Nightly backups **are running** as of 2026-08-23 — `pg_dump` plus a
-tar of the `product-images` volume, 14 days retained, on a systemd timer. The
-restore procedure is written down and has been **verified** by restoring into a
-throwaway container and comparing to production table by table, credential
+**Status:** Nightly backups run as of 2026-08-23 — `pg_dump` plus a tar of the
+`product-images` volume, 14 days retained, on a systemd timer. The restore
+procedure is written down and **verified**: a real backup was restored into a
+throwaway container and compared to production table by table, credential
 fingerprint included. See [BACKUP-RESTORE.md](BACKUP-RESTORE.md).
 
-**What is still missing:** every copy lives on the same disk as the data it
-protects. That covers the likely failures — a bad migration, a wrong `DELETE`, a
-corrupted volume — but not the machine being lost, stolen, or destroyed. The
-server is a repurposed laptop in a house, so that is not a theoretical concern.
+Every copy lives on the same disk as the data it protects. That covers the
+likely failures — a bad migration, a wrong `DELETE`, a corrupted volume — but
+not the machine being lost, stolen, or destroyed. The server is a repurposed
+laptop in a house.
 
-**What to do:** one copy off the machine, nightly. The data is tiny (a dump is
-~8 KB today, and the images volume is still empty), so cost is not a factor —
-this is about picking a destination and wiring it into the existing script.
-Whatever is chosen should be encrypted before it leaves the server: the dump
-contains password hashes and employee records.
+**Deliberately deferred on 2026-08-23**, with the local backups judged enough for
+now. Revisit when real staff data accumulates — particularly once product
+photographs exist, since those are the part that cannot be retyped.
 
-## 🟠 Medium
+**When it is picked up:** the options weighed were Cloudflare R2 (no new vendor,
+free at this size, genuinely off-site), a nightly pull to the owner's Mac (no
+account needed, but same building and only while the Mac is awake), and an
+external USB drive (offline, but same building). Whatever is chosen should be
+encrypted before it leaves the server — the dump contains password hashes and
+employee records. `gpg` is already installed.
+
+
 
 ### 2. CI has no typecheck, lint or test gate
 
@@ -119,6 +124,11 @@ the containers work. Documented in `docs/CONVENTIONS.md`.
   which is the only route tunnelled traffic can take and one a LAN client cannot
   fake. A mismatch logs a throttled warning, which is also the alarm if the
   Docker network is ever renumbered.
+- **No automated backups** — closed 2026-08-23. Nightly `pg_dump` plus a tar of
+  the `product-images` volume, 14 days retained, on a systemd timer with
+  `Persistent=true` so a night missed to a blackout runs at the next boot. The
+  restore was verified against production, not just written down. An off-machine
+  copy remains open above, by decision rather than oversight.
 - **Inbound port forwarding** — the router's port 80 forward was removed
   2026-08-23. The Cloudflare tunnel is outbound, so the home network now has no
   inbound web exposure at all.
