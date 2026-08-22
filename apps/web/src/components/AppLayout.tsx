@@ -26,6 +26,7 @@ import {
   IconShieldLock,
   IconUsers,
   IconId,
+  IconClipboardList,
 } from '@tabler/icons-react'
 import type { PermissionName } from '@otomate/shared'
 import { useSession } from '@/lib/session'
@@ -38,6 +39,10 @@ interface NavItem {
 }
 
 const MAIN: NavItem[] = [{ label: 'Dashboard', to: '/dashboard', icon: IconLayoutDashboard }]
+
+const DAILY: NavItem[] = [
+  { label: 'Daily Reports', to: '/dsir', icon: IconClipboardList, permission: 'dsir:read' },
+]
 
 const CATALOG: NavItem[] = [
   { label: 'Products', to: '/catalog/products', icon: IconToolsKitchen2, permission: 'products:read' },
@@ -59,6 +64,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Hidden rather than shown-and-blocked: a link you can't use is just noise.
   const adminItems = ADMIN.filter(item => !item.permission || can(item.permission))
   const catalogItems = CATALOG.filter(item => !item.permission || can(item.permission))
+  const dailyItems = DAILY.filter(item => !item.permission || can(item.permission))
 
   const renderNav = (items: NavItem[]) =>
     items.map(item => (
@@ -131,6 +137,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <AppShell.Section grow component={ScrollArea}>
           <Stack gap={2}>
             {renderNav(MAIN)}
+            {renderNav(dailyItems)}
 
             {catalogItems.length > 0 && (
               <>

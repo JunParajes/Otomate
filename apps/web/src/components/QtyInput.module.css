@@ -1,0 +1,33 @@
+.input {
+  width: 100%;
+  min-width: 52px;
+  padding: 4px 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--mantine-font-size-sm);
+  color: var(--mantine-color-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--mantine-radius-sm);
+  outline: none;
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--mantine-color-default-border);
+}
+
+/* A clear focus ring matters when tabbing through a grid all day. */
+.input:focus {
+  border-color: var(--mantine-color-crust-filled);
+  background: var(--mantine-color-body);
+  box-shadow: 0 0 0 2px var(--mantine-color-crust-light);
+}
+
+.input:disabled {
+  color: var(--mantine-color-dimmed);
+  cursor: not-allowed;
+}
+
+.highlight {
+  background: var(--mantine-color-crust-light);
+}
