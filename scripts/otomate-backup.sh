@@ -52,8 +52,14 @@ fi
 
 # A dump that ends early still gzips cleanly and still looks like a file. The
 # only trustworthy check is pg_dump's own end-of-output marker.
+#
+# The window is deliberately far wider than needed. pg_dump appends its own
+# trailing lines and adds to them across releases: PostgreSQL 16.10 introduced a
+# `\unrestrict` line after the marker, which alone pushed it to 5 lines from the
+# end. A tight window turns a routine Postgres upgrade into "every backup fails",
+# and because this is a hard failure that would mean no backups at all.
 gzip -t "$DB_FILE.tmp" 2>/dev/null || die "the dump is not valid gzip"
-if ! gzip -cd "$DB_FILE.tmp" | tail -5 | grep -q 'PostgreSQL database dump complete'; then
+if ! gzip -cd "$DB_FILE.tmp" | tail -50 | grep -q 'PostgreSQL database dump complete'; then
   die "the dump is truncated — pg_dump did not reach the end"
 fi
 mv "$DB_FILE.tmp" "$DB_FILE"
