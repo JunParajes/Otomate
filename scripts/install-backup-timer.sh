@@ -11,6 +11,17 @@ set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "Run this with sudo." >&2; exit 1; }
 
+# The server's clock is UTC, but "02:30" is only a sensible backup time if it
+# means 02:30 where the bakery is. Left unanchored it fires at 10:30 in the
+# morning, in the middle of the encoder's day. systemd resolves the timezone
+# itself, so this also stays correct across DST changes elsewhere.
+BACKUP_TIME="${BACKUP_TIME:-02:30:00}"
+BACKUP_TZ="${BACKUP_TZ:-Asia/Manila}"
+CALENDAR="*-*-* $BACKUP_TIME $BACKUP_TZ"
+
+systemd-analyze calendar "$CALENDAR" >/dev/null 2>&1 \
+  || { echo "systemd does not accept the schedule: $CALENDAR" >&2; exit 1; }
+
 RUN_USER="${SUDO_USER:-}"
 [ -n "$RUN_USER" ] && [ "$RUN_USER" != "root" ] \
   || { echo "Run this via sudo from your normal login, not as root directly." >&2; exit 1; }
@@ -40,12 +51,14 @@ ExecStart=$SCRIPT
 # systemd records the failure; check with: systemctl status otomate-backup
 UNIT
 
-cat > /etc/systemd/system/otomate-backup.timer <<'UNIT'
+cat > /etc/systemd/system/otomate-backup.timer <<UNIT
 [Unit]
 Description=Run the Otomate backup nightly
 
 [Timer]
-OnCalendar=*-*-* 02:30:00
+# Anchored to a named timezone because the server's clock is UTC — unanchored,
+# this would fire during business hours locally.
+OnCalendar=$CALENDAR
 # This server is a laptop that hibernates during blackouts. Persistent=true runs
 # a missed backup at the next boot instead of skipping the night entirely.
 Persistent=true
@@ -59,7 +72,8 @@ systemctl daemon-reload
 systemctl enable --now otomate-backup.timer
 
 echo
-echo "Installed. Next run:"
+echo "Installed. Schedule: $CALENDAR"
+echo "Next run:"
 systemctl list-timers otomate-backup.timer --no-pager | sed -n '1,2p'
 echo
 echo "Run one now to confirm it works:  sudo systemctl start otomate-backup"

@@ -27,11 +27,25 @@ wrong place for them. Keep those in a password manager instead.
 
 ## How it runs
 
-`scripts/otomate-backup.sh`, nightly at 02:30 via a systemd timer, keeping 14
-days. It runs as the normal server user — the docker group, not root.
+`scripts/otomate-backup.sh`, nightly at **02:30 Manila time** via a systemd
+timer, keeping 14 days. It runs as the normal server user — the docker group,
+not root.
 
-`Persistent=true` is deliberate: this server is a laptop that hibernates during
-blackouts, and a missed night should run at the next boot rather than be skipped.
+Two details in the timer are deliberate:
+
+- **The schedule names a timezone** (`OnCalendar=*-*-* 02:30:00 Asia/Manila`).
+  The server's clock is UTC, so an unanchored `02:30` fires at 10:30 in the
+  morning locally — the middle of the encoder's day. Naming the zone also keeps
+  it correct without anyone maintaining an offset.
+- **`Persistent=true`**, because this server is a laptop that hibernates during
+  blackouts. A night missed that way runs at the next boot rather than being
+  skipped silently.
+
+To use a different time or place, pass them in:
+
+```bash
+sudo BACKUP_TIME=03:00:00 BACKUP_TZ=Asia/Manila ~/otomate/scripts/install-backup-timer.sh
+```
 
 ### Installing the timer (once, needs sudo)
 
