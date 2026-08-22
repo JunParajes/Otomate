@@ -7,25 +7,24 @@ Reviewed and updated as items are closed. Newest concerns at the top of each sec
 
 ## 🔴 High — do these before real staff depend on the system
 
-### 1. There are no automated backups
+### 1. Backups exist locally, but not off the machine
 
-**Status:** Not started. The only database dump in existence was taken by hand on
-2026-08-20 (`~/otomate/backups/` on the server).
+**Status:** Nightly backups **are running** as of 2026-08-23 — `pg_dump` plus a
+tar of the `product-images` volume, 14 days retained, on a systemd timer. The
+restore procedure is written down and has been **verified** by restoring into a
+throwaway container and comparing to production table by table, credential
+fingerprint included. See [BACKUP-RESTORE.md](BACKUP-RESTORE.md).
 
-**Why it matters:** There are now **two** separate stores of real data:
+**What is still missing:** every copy lives on the same disk as the data it
+protects. That covers the likely failures — a bad migration, a wrong `DELETE`, a
+corrupted volume — but not the machine being lost, stolen, or destroyed. The
+server is a repurposed laptop in a house, so that is not a theoretical concern.
 
-| Store | Contains | Covered by `pg_dump`? |
-|-------|----------|----------------------|
-| Postgres (`otomate_pgdata`) | users, roles, branches, products, prices | yes |
-| `product-images` volume | every product photograph | **no** |
-
-The server is a repurposed laptop that hibernated for 3.5 hours during a blackout
-on 2026-08-20. A user list can be retyped; a product catalogue with prices and
-photographs is days of work to reconstruct.
-
-**What to do:** a nightly `pg_dump` plus a `tar` of the images volume, on a systemd
-timer, retained ~14 days, with at least one copy off the machine. Needs `sudo` on
-the server, so it needs the user at the keyboard.
+**What to do:** one copy off the machine, nightly. The data is tiny (a dump is
+~8 KB today, and the images volume is still empty), so cost is not a factor —
+this is about picking a destination and wiring it into the existing script.
+Whatever is chosen should be encrypted before it leaves the server: the dump
+contains password hashes and employee records.
 
 ## 🟠 Medium
 

@@ -19,6 +19,7 @@ Docker and Traefik.
 | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | Code style, API shape, naming |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Known gaps and deferred work |
 | [docs/DOMAIN-SETUP.md](docs/DOMAIN-SETUP.md) | Domain, HTTPS and the dynamic IP |
+| [docs/BACKUP-RESTORE.md](docs/BACKUP-RESTORE.md) | What is backed up, and how to get it back |
 
 ## Quick start
 
