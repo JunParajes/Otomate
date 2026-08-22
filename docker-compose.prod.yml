@@ -15,6 +15,46 @@ services:
       - otomate-net
     restart: unless-stopped
 
+  # Outbound-only connection to Cloudflare. Because the server dials OUT, a
+  # changing home IP is irrelevant and no router port-forwarding is needed —
+  # which is why this suits a residential line with a dynamic address.
+  #
+  # Routing (which hostname reaches which service) is configured in the
+  # Cloudflare dashboard, not here. Point it at http://traefik:80.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.8.2
+    command: tunnel --no-autoupdate run
+    environment:
+      # Deliberately NOT ${TUNNEL_TOKEN:?...}: a hard failure here makes compose
+      # refuse to parse, which would take the whole stack down over a missing
+      # tunnel token. The app must keep serving the encoder on the LAN even if
+      # the tunnel cannot start. Without a token this container restart-loops,
+      # which is visible in `docker compose ps` and harms nothing else.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    networks:
+      - otomate-net
+    depends_on:
+      - traefik
+    restart: unless-stopped
+
+  # Keeps server.otomate.uk pointing at this machine's current public IP, so the
+  # GitHub Actions deploy can use a hostname instead of an address that goes
+  # stale after every blackout. The APP does not need this — the tunnel is
+  # outbound — but SSH cannot go through the tunnel without extra client tooling.
+  ddns:
+    image: alpine:3.22
+    command: >
+      sh -c "apk add --no-cache --quiet curl jq >/dev/null &&
+             exec sh /opt/cloudflare-ddns.sh"
+    environment:
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
+      CF_ZONE_NAME: ${CF_ZONE_NAME:-otomate.uk}
+      CF_RECORD_NAME: ${CF_RECORD_NAME:-server.otomate.uk}
+      CF_INTERVAL: ${CF_INTERVAL:-300}
+    volumes:
+      - ./scripts/cloudflare-ddns.sh:/opt/cloudflare-ddns.sh:ro
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:

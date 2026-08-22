@@ -29,7 +29,9 @@ the server, so it needs the user at the keyboard.
 
 ### 2. Dynamic public IP keeps breaking things
 
-**Status:** Not fixed. Worked around by hand each time.
+**Status:** Being fixed — see [DOMAIN-SETUP.md](DOMAIN-SETUP.md). A Cloudflare Tunnel
+removes the problem for the app entirely (outbound connection, no address to go
+stale). The SSH/deploy half still needs a DNS record plus an updater.
 
 Observed **three different addresses within three days**. Actual values are kept in
 local notes / the password manager, not here.

@@ -67,7 +67,10 @@ jobs:
           port: ${{ secrets.SERVER_SSH_PORT || 22 }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "docker-compose.prod.yml"
+          # scripts/ must ship too: docker-compose.prod.yml bind-mounts
+          # scripts/cloudflare-ddns.sh, and a missing bind source makes Docker
+          # silently create a DIRECTORY there instead of failing.
+          source: "docker-compose.prod.yml,scripts/*"
           target: "~/otomate"
 
       - name: Deploy on server

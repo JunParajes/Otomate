@@ -18,6 +18,7 @@ Docker and Traefik.
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Phases and progress |
 | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | Code style, API shape, naming |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Known gaps and deferred work |
+| [docs/DOMAIN-SETUP.md](docs/DOMAIN-SETUP.md) | Domain, HTTPS and the dynamic IP |
 
 ## Quick start
 
