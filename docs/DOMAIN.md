@@ -51,7 +51,7 @@ two known people) and should be recorded rather than overwritten.
 | **Sold** | into the drawer | — | never recorded directly; derived |
 | **Charged** | none — recovered via payroll | **the employee** | full selling price |
 | **Pulled out** | none, ever | **the business** | the only true loss |
-| **Transferred** | none | nobody | moves between branches; rare but essential |
+| **Transferred** | none | nobody | moves between branches; routine, see below |
 
 **Charges** are employee mistakes — dropped or burned product. The employee pays
 **full selling price**, deducted from salary, and may take the item home (but not
@@ -62,10 +62,37 @@ because no cash entered the drawer today.
 **Pull-outs** are discarded stock. This is the only genuine loss, and its peso
 value is a number worth watching per branch and per product.
 
+### Transfers are a routine distribution flow, not an exception
+
+Some products are made **centrally** and distributed: one branch bakes the cakes
+for everyone, another makes the cream bread. Not every product, but for those
+that are centralised this happens daily.
+
+> The three sample sheets showed **zero** transfers, which led to an early wrong
+> conclusion that transfers were rare. Those sheets are all from a *receiving*
+> branch — it has nothing to send, so its transfer columns are empty. A sending
+> branch's sheet looks completely different. Beware generalising from one branch.
+
+**On paper there is no transfers-IN column.** The formula has only one additive
+slot (`OVER END`), so a receiving branch currently books arrivals under
+**`PROD'c`**. That balances the arithmetic but has costs: the branch's production
+figures claim output it never made, nothing records where the stock came from,
+and it blunts the quota-versus-actual check on production.
+
+**In the system, a transfer is recorded once by the SENDING branch** and appears
+automatically as inbound on the receiving branch's report for the same date. One
+record, two views, so the branches cannot disagree about it.
+
+Inbound is read **live**, not stored, which makes encoding order irrelevant —
+forms arrive in batches and either branch may be encoded first. A receiving
+report entered before its sender simply shows the stock once the sender is
+encoded, with nothing to re-enter. Until then the line reads negative and is
+flagged as impossible, which is the correct signal: something is missing.
+
 ### The derivation
 
 ```
-PRE TOTAL = BEG.BAL + PROD'c − (transfers out) + OVER END
+PRE TOTAL = BEG.BAL + PROD'c + (transfers in) − (transfers out) + OVER END
 DIFF      = PRE TOTAL − Charges − PULLED OUT − ENDG.BAL     ← units sold
 SALES     = DIFF × UNIT PRICE
 ```
@@ -134,8 +161,9 @@ pre-printed ream of DSIR forms  →  branch fills quantities by hand
   price** even when the form is stale. The printed price is cosmetic.
 - ~100+ handwritten numbers per branch per day, retyped by someone who was not
   there and cannot sanity-check them.
-- Only ~26–35% of the 149 rows are used on any given day. `OVER END` and the four
-  transfer columns are rare but genuinely needed.
+- Only ~26–35% of the 149 rows are used on any given day on a *receiving* branch's
+  sheet. `OVER END` is genuinely rare; the transfer columns are not — they are
+  simply empty on a branch that only receives (see Transfers above).
 
 ### Known defects in the current tooling
 
@@ -167,9 +195,10 @@ pre-printed ream of DSIR forms  →  branch fills quantities by hand
 4. **One authoritative price list.** The Excel is already the pricing authority and
    Otomate takes that role over. Prices change once or twice a year, so a single
    current price per product is sufficient; see the note on encoding lag above.
-5. **Rare paths still exist** — transfers and `OVER END` must be reachable without
-   cluttering the common path.
-6. **Back-dated entry is normal**, not an error state. Forms arrive late.
+5. **Transfers are two-sided.** Recorded once by the sender; the receiver sees them
+   automatically. Never ask both branches to type the same movement.
+6. **`OVER END` stays reachable** without cluttering the common path.
+7. **Back-dated entry is normal**, not an error state. Forms arrive late.
 
 ## Scope of the first version
 

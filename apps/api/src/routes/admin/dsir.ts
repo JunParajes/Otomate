@@ -28,6 +28,20 @@ async function loadOr404(id: string) {
   return report
 }
 
+/**
+ * Stock other branches sent TO this one on this date.
+ *
+ * Read live rather than stored, so a receiving branch encoded before the sending
+ * branch's report simply picks the transfer up once that report is entered —
+ * forms arrive in batches and the encoding order is arbitrary.
+ */
+async function loadInbound(branchId: string, reportDate: Date) {
+  return prisma.dsirTransfer.findMany({
+    where: { toBranchId: branchId, report: { reportDate } },
+    include: { product: true, report: { include: { branch: true } } },
+  })
+}
+
 function assertEditable(report: { status: string }): void {
   if (report.status === 'FINALIZED') {
     throw new HttpError(
@@ -54,14 +68,29 @@ async function prefillLines(branchId: string, reportDate: Date) {
     include: { lines: { select: { productId: true, endBal: true } } },
   })
 
-  if (history.length === 0) return []
+  // Products arriving from another branch today must have a line, even with no
+  // history: a branch that only ever RECEIVES cakes has never "carried" them.
+  const inboundProductIds = [
+    ...new Set(
+      (
+        await prisma.dsirTransfer.findMany({
+          where: { toBranchId: branchId, report: { reportDate } },
+          select: { productId: true },
+        })
+      ).map(t => t.productId)
+    ),
+  ]
+
+  if (history.length === 0 && inboundProductIds.length === 0) return []
 
   // Carry yesterday's closing figure forward. Zero is a real value — a product
   // that sold out closes at 0 and legitimately opens at 0.
   const previous = history[0]
-  const closingBalance = new Map(previous.lines.map(l => [l.productId, l.endBal]))
+  const closingBalance = new Map((previous?.lines ?? []).map(l => [l.productId, l.endBal]))
 
-  const productIds = [...new Set(history.flatMap(r => r.lines.map(l => l.productId)))]
+  const productIds = [
+    ...new Set([...history.flatMap(r => r.lines.map(l => l.productId)), ...inboundProductIds]),
+  ]
   const products = await prisma.product.findMany({
     where: { id: { in: productIds } },
     select: { id: true, priceCents: true, sortOrder: true, name: true },
@@ -98,7 +127,26 @@ router.get(
       orderBy: [{ reportDate: 'desc' }, { branchId: 'asc' }],
       take: 200,
     })
-    res.json({ data: reports.map(toDsirSummary), error: null })
+
+    // Batch-load inbound for the whole page: a receiving branch's sales are
+    // wrong without it, and one query beats N.
+    const inboundRows = await prisma.dsirTransfer.findMany({
+      where: {
+        toBranchId: { in: [...new Set(reports.map(r => r.branchId))] },
+        report: { reportDate: { in: [...new Set(reports.map(r => r.reportDate.getTime()))].map(t => new Date(t)) } },
+      },
+      include: { product: true, report: { include: { branch: true } } },
+    })
+    const inboundByReport = new Map<string, typeof inboundRows>()
+    for (const r of reports) {
+      inboundByReport.set(
+        r.id,
+        inboundRows.filter(
+          t => t.toBranchId === r.branchId && t.report.reportDate.getTime() === r.reportDate.getTime()
+        )
+      )
+    }
+    res.json({ data: reports.map(r => toDsirSummary(r, inboundByReport.get(r.id) ?? [])), error: null })
   })
 )
 
@@ -106,7 +154,9 @@ router.get(
   '/:id',
   requirePermission('dsir:read'),
   asyncHandler(async (req, res) => {
-    res.json({ data: toDsirDto(await loadOr404(pathParam(req, 'id'))), error: null })
+    const report = await loadOr404(pathParam(req, 'id'))
+    const inbound = await loadInbound(report.branchId, report.reportDate)
+    res.json({ data: toDsirDto(report, inbound), error: null })
   })
 )
 
@@ -142,7 +192,10 @@ router.post(
       },
       include: dsirInclude,
     })
-    res.status(201).json({ data: toDsirDto(report), error: null })
+    res.status(201).json({
+      data: toDsirDto(report, await loadInbound(branch.id, reportDate)),
+      error: null,
+    })
   })
 )
 
@@ -254,7 +307,8 @@ router.put(
       }),
     ])
 
-    res.json({ data: toDsirDto(await loadOr404(report.id)), error: null })
+    const saved = await loadOr404(report.id)
+    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate)), error: null })
   })
 )
 
@@ -273,7 +327,8 @@ router.post(
       where: { id: report.id },
       data: { status: 'FINALIZED', finalizedAt: new Date() },
     })
-    res.json({ data: toDsirDto(await loadOr404(report.id)), error: null })
+    const saved = await loadOr404(report.id)
+    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate)), error: null })
   })
 )
 
@@ -289,7 +344,8 @@ router.post(
       where: { id: report.id },
       data: { status: 'DRAFT', finalizedAt: null },
     })
-    res.json({ data: toDsirDto(await loadOr404(report.id)), error: null })
+    const saved = await loadOr404(report.id)
+    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate)), error: null })
   })
 )
 

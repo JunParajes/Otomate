@@ -9,7 +9,17 @@
 
 export interface DsirLineQuantities {
   begBal: number
+  /** Baked or bought in AT this branch. Not stock received from another branch. */
   produced: number
+  /**
+   * Received from another branch. Certain products are made centrally — one
+   * branch bakes cakes for everyone, another makes cream bread — so this is a
+   * routine daily flow, not an exception.
+   *
+   * DERIVED from the sending branch's transfer record, never typed here: one
+   * transfer, entered once, so the two branches cannot disagree about it.
+   */
+  transferredIn: number
   /** Sum of transfers of this product to other branches. */
   transferredOut: number
   overEnd: number
@@ -28,7 +38,7 @@ export interface DsirLineTotals {
 }
 
 export function computeLineTotals(q: DsirLineQuantities, unitPriceCents: number): DsirLineTotals {
-  const preTotal = q.begBal + q.produced - q.transferredOut + q.overEnd
+  const preTotal = q.begBal + q.produced + q.transferredIn - q.transferredOut + q.overEnd
   const sold = preTotal - q.charged - q.pulledOut - q.endBal
   return { preTotal, sold, salesCents: sold * unitPriceCents }
 }
@@ -50,4 +60,13 @@ export interface DsirReportTotals {
  */
 export function isImpossibleLine(totals: DsirLineTotals): boolean {
   return totals.sold < 0
+}
+
+/**
+ * A negative line on a receiving branch usually means the SENDING branch's
+ * report has not been encoded yet, so the inbound stock is not visible. Worth
+ * distinguishing from a genuine miscount, because the fix is different.
+ */
+export function looksLikeMissingInbound(q: DsirLineQuantities, totals: DsirLineTotals): boolean {
+  return totals.sold < 0 && q.transferredIn === 0 && q.produced === 0
 }
