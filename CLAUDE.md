@@ -32,7 +32,10 @@ docker compose up             # starts postgres + api + web
 ```bash
 docker compose exec api npx prisma migrate dev
 docker compose exec api npx prisma db seed
-# Default admin: admin@otomate.local / admin123
+# The seed creates an admin account using SEED_ADMIN_PASSWORD from the environment.
+# If that is unset it uses a placeholder and flags the account mustChangePassword,
+# forcing a change at first login. Never document a real password here — this repo
+# is public, and the app is reachable at https://otomate.uk.
 ```
 
 ### Production (on server)

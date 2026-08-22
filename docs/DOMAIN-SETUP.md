@@ -179,8 +179,16 @@ It costs nothing: it is simply what happens if the port binding is left alone.
   currently falls back to `cors({ origin: '*' })`. Low risk today — every endpoint
   requires a bearer token and the app is same-origin — but there is no reason to
   stay permissive once a real origin exists.
-- **`app.set('trust proxy', 1)`** when rate limiting arrives, so Express sees the
-  real client IP rather than the tunnel's.
+- ~~`app.set('trust proxy', 1)` when rate limiting arrives~~ — **done.** Rate
+  limiting landed 2026-08-23. Note what the tunnel changes about client IPs:
+  every request arrives at Traefik from the `cloudflared` container, so
+  `X-Forwarded-For` ends in the same Docker address for the entire internet and
+  is useless as a rate-limit key on its own. Cloudflare sets **`CF-Connecting-IP`**
+  at its edge and *overwrites* any value the client supplied, so that header is
+  both correct and unforgeable. `apps/api/src/middleware/rate-limit.ts` prefers it
+  and falls back to `req.ip` for LAN traffic, which has no such header.
+  `trust proxy` is `1`, not `true`: `true` would trust a client-supplied
+  `X-Forwarded-For` outright and hand anyone a way past the limit.
 - ~~Dead `traefik/traefik.yml`~~ — **deleted**. It was never mounted (Traefik is
   configured by CLI flags in the compose file), yet it declared an insecure
   dashboard, which read alarmingly to anyone auditing the repo despite being inert.

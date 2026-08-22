@@ -7,11 +7,13 @@ import { toUserDto } from '../lib/serializers'
 import { asyncHandler } from '../middleware/async-handler'
 import { HttpError } from '../middleware/error-handler'
 import { authenticate } from '../middleware/auth'
+import { authLimiter } from '../middleware/rate-limit'
 
 const router = Router()
 
 router.post(
   '/login',
+  authLimiter,
   asyncHandler(async (req, res) => {
     const parsed = loginSchema.safeParse(req.body)
     if (!parsed.success) {
@@ -47,6 +49,7 @@ router.post(
 /** Self-service password change — also clears the forced-change flag. */
 router.post(
   '/change-password',
+  authLimiter,
   authenticate,
   asyncHandler(async (req, res) => {
     const parsed = changeOwnPasswordSchema.safeParse(req.body)

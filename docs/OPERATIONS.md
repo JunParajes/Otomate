@@ -29,20 +29,7 @@ the server, so it needs the user at the keyboard.
 
 ## 🟠 Medium
 
-### 2. The JWT secret should be rotated
-
-**Status:** Not done. The production `JWT_SECRET` was printed in full in a terminal
-on 2026-08-20 while diagnosing an unrelated issue.
-
-Anyone holding it can forge an admin token — `requirePermission` trusts a validly
-signed token's identity. Risk is currently low (LAN-only in practice, one user),
-and rises sharply once the app is publicly reachable or real staff accounts exist.
-
-**What to do:** generate `openssl rand -hex 32` (hex deliberately — no `$`, `/` or
-quotes to be mangled), replace it in `~/otomate/.env`, restart the api. Everyone is
-signed out and logs in again.
-
-### 3. CI has no typecheck, lint or test gate
+### 2. CI has no typecheck, lint or test gate
 
 `.github/workflows/deploy.yml` goes straight from `push` to building images to
 production. Nothing verifies the code first — every deploy so far has been gated
@@ -51,7 +38,7 @@ only by a local `tsc --noEmit` run by hand.
 **What to do:** add a job running `pnpm -r exec tsc --noEmit` as a `needs:`
 prerequisite of `build-and-push`.
 
-### 4. The server does not power itself back on
+### 3. The server does not power itself back on
 
 It is a laptop (`chassis_type: 10`). Lid close is already ignored, but UPower's
 default `CriticalPowerAction=HybridSleep` at 2% battery still applies — which is
@@ -62,7 +49,7 @@ that nothing turns the machine back on when mains power returns.
 Requires physical access at boot. The battery is effectively a built-in UPS; this
 is the missing half.
 
-### 5. There are no automated tests
+### 4. There are no automated tests
 
 Every feature so far has been verified by driving the running app. That has caught
 real bugs a build could not — but it is manual and not repeatable in CI.
@@ -71,14 +58,14 @@ real bugs a build could not — but it is manual and not repeatable in CI.
 
 ## 🟡 Low — known, documented, not urgent
 
-### 6. `@types/express@^5` is paired with `express@^4.21.2`
+### 5. `@types/express@^5` is paired with `express@^4.21.2`
 
 A types/runtime major mismatch. It has already produced one confusing failure:
 `req.params.id` typed as `string | string[]`, which silently broke Prisma's type
 inference three files away. Worked around with `pathParam()` in `apps/api/src/lib/http.ts`.
 Aligning the types to `^4` is a small, isolated change.
 
-### 7. Server `.env` values are unquoted
+### 6. Server `.env` values are unquoted
 
 A `$` in a password is expanded by any script that sources the file, corrupting
 `DATABASE_URL` (Prisma reports `P1013: invalid port number`, which points nowhere
@@ -87,7 +74,7 @@ the containers work. Documented in `docs/CONVENTIONS.md`.
 
 **What to do:** single-quote the values in `~/otomate/.env`. Compose strips the quotes.
 
-### 8. Frontend bundle is not code-split
+### 7. Frontend bundle is not code-split
 
 ~740 KB (~225 KB gzipped) in one chunk. Fine today; worth `manualChunks` or route-level
 `lazy()` once there are more pages.
@@ -108,3 +95,15 @@ the containers work. Documented in `docs/CONVENTIONS.md`.
   auto-renewing. Also removed the need for any inbound port forwarding.
 - **Permissions frozen in the JWT for 7 days** — role changes and deactivations now
   take effect on the next request.
+- **JWT secret exposure** — rotated 2026-08-22. The production secret had been
+  printed in full in a terminal on 2026-08-20. Any token signed with the old
+  secret is now worthless.
+- **No rate limiting on the login endpoint** — added 2026-08-23, once the app
+  became publicly reachable. `POST /api/auth/login` runs bcrypt at cost 12: slow
+  by design, which made it both a brute-force target and a cheap way for a
+  stranger to burn CPU on a home server. Ten *failed* attempts per 15 minutes per
+  client, plus a generous 1000/15min flood backstop across `/api`. See
+  `apps/api/src/middleware/rate-limit.ts`.
+- **Inbound port forwarding** — the router's port 80 forward was removed
+  2026-08-23. The Cloudflare tunnel is outbound, so the home network now has no
+  inbound web exposure at all.
