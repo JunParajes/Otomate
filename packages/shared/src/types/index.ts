@@ -116,3 +116,22 @@ export interface Product {
   createdAt: string
   updatedAt: string
 }
+
+// ─── Employees ────────────────────────────────────────────────────────────
+import type { EmployeePosition } from '../schemas/employee.js'
+
+/**
+ * A person who works at a branch. Most have no login — an Employee is a staff
+ * record, a User is an account. `linkedUser` is set only for the few who are both.
+ */
+export interface Employee {
+  id: string
+  employeeCode: string | null
+  name: string
+  position: EmployeePosition
+  branch: { id: string; name: string } | null
+  linkedUser: { id: string; email: string } | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}

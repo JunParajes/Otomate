@@ -6,6 +6,7 @@ import branchesRouter from './branches'
 import permissionsRouter from './permissions'
 import categoriesRouter from './categories'
 import productsRouter from './products'
+import employeesRouter from './employees'
 
 const router = Router()
 
@@ -18,5 +19,6 @@ router.use('/branches', branchesRouter)
 router.use('/permissions', permissionsRouter)
 router.use('/categories', categoriesRouter)
 router.use('/products', productsRouter)
+router.use('/employees', employeesRouter)
 
 export default router

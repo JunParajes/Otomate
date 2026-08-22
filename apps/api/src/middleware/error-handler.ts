@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express'
 import { MulterError } from 'multer'
+import { Prisma } from '@prisma/client'
 
 /**
  * Error with an explicit HTTP status, for failures a route knows how to describe.
@@ -45,6 +46,17 @@ export function errorHandler(err: unknown, _req: Request, res: Response, next: N
         ? 'That image is too large (maximum 8 MB)'
         : `Upload failed: ${err.message}`
     res.status(400).json({ data: null, error: { message, code: 'UPLOAD_ERROR' } })
+    return
+  }
+
+  // P2003 = foreign key constraint failed. That is always a bad reference in the
+  // request, not a server fault — routes should catch it explicitly with a better
+  // message, but this stops one ever surfacing as a 500.
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+    res.status(400).json({
+      data: null,
+      error: { message: 'A referenced record does not exist', code: 'INVALID_REFERENCE' },
+    })
     return
   }
 

@@ -18,6 +18,8 @@ export const PERMISSIONS = [
   { name: 'products:write', category: 'Products', description: 'Create, edit and deactivate products' },
   { name: 'products:cost', category: 'Products', description: 'See cost price and profit margin' },
   { name: 'categories:write', category: 'Products', description: 'Create, edit and delete product categories' },
+  { name: 'employees:read', category: 'Employees', description: 'View employee records' },
+  { name: 'employees:write', category: 'Employees', description: 'Create, edit and deactivate employees' },
   { name: 'reports:read', category: 'Reports', description: 'View reports and dashboards' },
 ] as const
 

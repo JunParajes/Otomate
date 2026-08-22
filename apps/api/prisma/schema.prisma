@@ -23,6 +23,7 @@ model User {
   branch             Branch?   @relation(fields: [branchId], references: [id])
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+  employee           Employee?
 
   @@index([roleId])
   @@index([branchId])
@@ -50,12 +51,13 @@ model Permission {
 }
 
 model Branch {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  isActive  Boolean  @default(true)
+  id        String     @id @default(cuid())
+  name      String     @unique
+  isActive  Boolean    @default(true)
   users     User[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  employees Employee[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
 
 /// How a product is sold. Affects how its price reads: ₱25 per piece vs per kilo.
@@ -99,5 +101,39 @@ model Product {
   updatedAt   DateTime    @updatedAt
 
   @@index([categoryId])
+  @@index([isActive])
+}
+
+/// Job role on the shop floor. Distinct from `Role`, which governs system access.
+enum EmployeePosition {
+  MANAGER
+  BAKER
+  FRONTLINER
+  CASHIER
+  HELPER
+  DRIVER
+  OTHER
+}
+
+/// A person who works at a branch. Most have no system login — an Employee is a
+/// staff record, a User is an account. The optional link joins the few who are both.
+///
+/// `branchId` is the CURRENT assignment only. Staff are transferred between
+/// branches (and between trading names) as needed; historical attribution comes
+/// from the DSIR a charge was recorded on, which carries its own branch and date.
+model Employee {
+  id           String           @id @default(cuid())
+  employeeCode String?          @unique
+  name         String
+  position     EmployeePosition @default(OTHER)
+  branchId     String?
+  branch       Branch?          @relation(fields: [branchId], references: [id])
+  userId       String?          @unique
+  user         User?            @relation(fields: [userId], references: [id])
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([branchId])
   @@index([isActive])
 }

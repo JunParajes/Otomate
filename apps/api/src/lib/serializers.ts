@@ -1,6 +1,8 @@
 import type { Branch, Prisma, Role, User } from '@prisma/client'
 import { imageUrl } from './images'
 import type {
+  Employee as EmployeeDto,
+  EmployeePosition,
   Category as CategoryDto,
   Product as ProductDto,
   ProductUnit,
@@ -110,4 +112,23 @@ export function toProductDto(product: ProductWithCategory, canSeeCost: boolean):
   }
   if (canSeeCost) dto.costCents = product.costCents
   return dto
+}
+
+type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
+  include: { branch: true; user: true }
+}>
+
+export function toEmployeeDto(employee: EmployeeWithRelations): EmployeeDto {
+  return {
+    id: employee.id,
+    employeeCode: employee.employeeCode,
+    name: employee.name,
+    position: employee.position as EmployeePosition,
+    branch: employee.branch ? { id: employee.branch.id, name: employee.branch.name } : null,
+    // Only the identifying bits of the linked account — never the password hash.
+    linkedUser: employee.user ? { id: employee.user.id, email: employee.user.email } : null,
+    isActive: employee.isActive,
+    createdAt: employee.createdAt.toISOString(),
+    updatedAt: employee.updatedAt.toISOString(),
+  }
 }
