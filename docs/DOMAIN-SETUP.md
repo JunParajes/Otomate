@@ -181,6 +181,6 @@ It costs nothing: it is simply what happens if the port binding is left alone.
   stay permissive once a real origin exists.
 - **`app.set('trust proxy', 1)`** when rate limiting arrives, so Express sees the
   real client IP rather than the tunnel's.
-- **Let's Encrypt in `traefik/traefik.yml` is dead config** — that file is not
-  mounted; production configures Traefik via CLI flags. With the tunnel handling
-  TLS, it is not needed at all. Worth deleting to stop it misleading the next reader.
+- ~~Dead `traefik/traefik.yml`~~ — **deleted**. It was never mounted (Traefik is
+  configured by CLI flags in the compose file), yet it declared an insecure
+  dashboard, which read alarmingly to anyone auditing the repo despite being inert.

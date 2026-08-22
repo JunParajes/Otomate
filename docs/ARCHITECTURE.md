@@ -43,8 +43,7 @@ Otomate/
 │       └── src/
 │           ├── types/        # User, Role, Branch, Permission interfaces
 │           └── index.ts
-└── traefik/
-    └── traefik.yml
+└── docker-compose.prod.yml   # Traefik is configured here, via CLI flags
 ```
 
 ## Docker Networking

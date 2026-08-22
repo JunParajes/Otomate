@@ -12,7 +12,6 @@ Otomate/
 ├── packages/
 │   └── shared/       # Shared TypeScript types (User, Role, ApiResponse, etc.)
 ├── docs/             # Architecture, techstack, roadmap, conventions
-├── traefik/          # Traefik reverse proxy config
 ├── .github/workflows/ # GitHub Actions CI/CD
 ├── docker-compose.yml          # Local development
 └── docker-compose.prod.yml     # Production (pulls from GHCR)
