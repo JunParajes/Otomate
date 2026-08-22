@@ -150,6 +150,7 @@ export interface DsirLine {
   pulledOut: number
   endBal: number
   /** Derived, computed server-side from the same shared formula the UI uses. */
+  transferredIn: number
   transferredOut: number
   charged: number
   preTotal: number
@@ -176,6 +177,19 @@ export interface DsirTransfer {
   quantity: number
 }
 
+/**
+ * Stock received from another branch on the same date. Read-only here — it is
+ * the sending branch's record, surfaced so both sides reconcile automatically.
+ */
+export interface DsirInboundTransfer {
+  id: string
+  productId: string
+  productName: string
+  fromBranchId: string
+  fromBranchName: string
+  quantity: number
+}
+
 export interface DsirCollection {
   id: string
   employeeId: string | null
@@ -194,6 +208,14 @@ export interface DsirSummary {
   collectionsCents: number
   varianceCents: number
   lineCount: number
+  /**
+   * Value of stock found in excess of what the books allow. The primary signal
+   * that undeclared stock exists, so it is carried on the LIST row too — a
+   * pattern of over-ends is only visible if you can see them without opening
+   * every report.
+   */
+  overEndCents: number
+  overEndUnits: number
   updatedAt: string
 }
 
@@ -210,8 +232,15 @@ export interface DsirReport extends DsirSummary {
   lines: DsirLine[]
   charges: DsirCharge[]
   transfers: DsirTransfer[]
+  inboundTransfers: DsirInboundTransfer[]
   collections: DsirCollection[]
+  /** Value of what this branch discarded — the only true loss. */
   pulledOutCents: number
+  /** Value of employee charges — recoverable via payroll, not a loss. */
   chargedCents: number
+  /** Retail value of what this branch actually PRODUCED. Excludes stock received
+   *  from other branches, which the old spreadsheet lumped in under PROD'c. */
   producedValueCents: number
+  /** Retail value of stock received from other branches. */
+  receivedValueCents: number
 }

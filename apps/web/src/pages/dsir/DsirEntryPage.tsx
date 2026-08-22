@@ -100,6 +100,13 @@ export default function DsirEntryPage() {
     return m
   }, [charges])
 
+  /** Sent to us by other branches today. Read-only: it is their record. */
+  const receivedBy = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of report?.inboundTransfers ?? []) m.set(t.productId, (m.get(t.productId) ?? 0) + t.quantity)
+    return m
+  }, [report])
+
   const transferredBy = useMemo(() => {
     const m = new Map<string, number>()
     for (const t of transfers) m.set(t.productId, (m.get(t.productId) ?? 0) + t.quantity)
@@ -112,6 +119,7 @@ export default function DsirEntryPage() {
       const totals = computeLineTotals(
         {
           begBal: l.begBal, produced: l.produced,
+          transferredIn: receivedBy.get(l.productId) ?? 0,
           transferredOut: transferredBy.get(l.productId) ?? 0,
           overEnd: l.overEnd,
           charged: chargedBy.get(l.productId) ?? 0,
@@ -121,13 +129,25 @@ export default function DsirEntryPage() {
       )
       return { line: l, totals, impossible: isImpossibleLine(totals) }
     }),
-    [lines, chargedBy, transferredBy]
+    [lines, chargedBy, transferredBy, receivedBy]
   )
 
   const salesCents = computed.reduce((s, c) => s + c.totals.salesCents, 0)
+  // The spreadsheet's "Total Prod. Sale", plus the two figures it computed per
+  // row but never totalled: what was thrown away, and what staff owe for.
+  const producedValueCents = computed.reduce((s, c) => s + c.line.produced * c.line.unitPriceCents, 0)
+  const receivedValueCents = computed.reduce((s, c) => s + (receivedBy.get(c.line.productId) ?? 0) * c.line.unitPriceCents, 0)
+  const pulledOutCents = computed.reduce((s, c) => s + c.line.pulledOut * c.line.unitPriceCents, 0)
+  const overEndCents = computed.reduce((s, c) => s + c.line.overEnd * c.line.unitPriceCents, 0)
+  const overEndUnits = computed.reduce((s, c) => s + c.line.overEnd, 0)
+  const chargedValueCents = charges.reduce((s, c) => {
+    const line = lines.find(l => l.productId === c.productId)
+    return s + c.quantity * (line?.unitPriceCents ?? 0)
+  }, 0)
   const collectionsCents = collections.reduce((s, c) => s + c.amountCents, 0)
   const varianceCents = collectionsCents - salesCents
   const impossibleCount = computed.filter(c => c.impossible).length
+  const hasInbound = (report?.inboundTransfers.length ?? 0) > 0
 
   function patchLine(productId: string, field: keyof Line, value: number) {
     setLines(prev => prev.map(l => (l.productId === productId ? { ...l, [field]: value } : l)))
@@ -142,7 +162,7 @@ export default function DsirEntryPage() {
       product: { id: p.id, name: p.name, sku: p.sku, unit: p.unit, category: p.category },
       unitPriceCents: p.priceCents,
       begBal: 0, produced: 0, overEnd: 0, pulledOut: 0, endBal: 0,
-      transferredOut: 0, charged: 0, preTotal: 0, sold: 0, salesCents: 0,
+      transferredIn: 0, transferredOut: 0, charged: 0, preTotal: 0, sold: 0, salesCents: 0,
     }])
     setDirty(true)
   }
@@ -274,7 +294,14 @@ export default function DsirEntryPage() {
                 <Table.Th>Product</Table.Th>
                 <Table.Th w={78} ta="right">Beg</Table.Th>
                 <Table.Th w={78} ta="right">Prod'd</Table.Th>
-                {uses.transfers && <Table.Th w={70} ta="right">Trf</Table.Th>}
+                {hasInbound && (
+                  <Table.Th w={70} ta="right">
+                    <Tooltip label="Received from another branch. Entered by the sending branch, not here.">
+                      <span>In</span>
+                    </Tooltip>
+                  </Table.Th>
+                )}
+                {uses.transfers && <Table.Th w={70} ta="right">Out</Table.Th>}
                 {uses.overEnd && <Table.Th w={78} ta="right">Over end</Table.Th>}
                 {uses.charges && <Table.Th w={70} ta="right">Chg</Table.Th>}
                 {uses.pullOuts && <Table.Th w={78} ta="right">Pulled</Table.Th>}
@@ -296,6 +323,13 @@ export default function DsirEntryPage() {
                   </Table.Td>
                   <Table.Td><QtyInput aria-label={`${l.product.name} beginning balance`} value={l.begBal} disabled={!canWrite} onChange={v => patchLine(l.productId, 'begBal', v)} /></Table.Td>
                   <Table.Td><QtyInput aria-label={`${l.product.name} produced`} value={l.produced} disabled={!canWrite} onChange={v => patchLine(l.productId, 'produced', v)} /></Table.Td>
+                  {hasInbound && (
+                    <Table.Td ta="right">
+                      <Text size="sm" c={receivedBy.get(l.productId) ? 'crust.7' : 'dimmed'} fw={receivedBy.get(l.productId) ? 600 : 400}>
+                        {receivedBy.get(l.productId) ?? 0}
+                      </Text>
+                    </Table.Td>
+                  )}
                   {uses.transfers && (
                     <Table.Td ta="right"><Text size="sm" c="dimmed">{transferredBy.get(l.productId) ?? 0}</Text></Table.Td>
                   )}
@@ -399,6 +433,22 @@ export default function DsirEntryPage() {
           />
         )}
 
+        {hasInbound && (
+          <ListPanel
+            title="Received from other branches"
+            hint="Entered by the sending branch — shown here so both sides agree."
+            rows={(report?.inboundTransfers ?? []).map(t => (
+              <Group key={t.id} gap="xs" wrap="nowrap" justify="space-between">
+                <Text size="sm">{t.productName}</Text>
+                <Group gap="xs" wrap="nowrap">
+                  <Text size="xs" c="dimmed">from {t.fromBranchName}</Text>
+                  <Badge size="sm" variant="light">{t.quantity}</Badge>
+                </Group>
+              </Group>
+            ))}
+          />
+        )}
+
         <ListPanel
           title="Cash collected"
           hint="One row per cashier — not fixed slots."
@@ -427,16 +477,52 @@ export default function DsirEntryPage() {
 
       <Card withBorder padding="md" radius="md">
         <Group justify="space-between" wrap="wrap" gap="lg">
-          <Group gap="xl" wrap="wrap">
-            <Stat label="Derived sales" value={formatMoney(salesCents)} />
-            <Stat label="Cash collected" value={formatMoney(collectionsCents)} />
-            <Stat
-              label={varianceCents < 0 ? 'Shortage' : 'Overage'}
-              value={formatMoney(Math.abs(varianceCents))}
-              color={varianceCents === 0 ? undefined : varianceCents < 0 ? 'red' : 'green'}
-              hint={varianceCents < 0 ? 'Deducted from staff — check before finalising' : undefined}
-            />
-          </Group>
+          <Stack gap="sm">
+            <Group gap="xl" wrap="wrap">
+              <Stat label="Derived sales" value={formatMoney(salesCents)} />
+              <Stat label="Cash collected" value={formatMoney(collectionsCents)} />
+              <Stat
+                label={varianceCents < 0 ? 'Shortage' : 'Overage'}
+                value={formatMoney(Math.abs(varianceCents))}
+                color={varianceCents === 0 ? undefined : varianceCents < 0 ? 'red' : 'green'}
+                hint={varianceCents < 0 ? 'Deducted from staff — check before finalising' : undefined}
+              />
+            </Group>
+            <Divider />
+            <Group gap="lg" wrap="wrap">
+              <Stat
+                small
+                label="Production value"
+                value={formatMoney(producedValueCents)}
+                hint="Retail value of what this branch produced today. Excludes stock received from other branches."
+              />
+              {receivedValueCents > 0 && (
+                <Stat small label="Received value" value={formatMoney(receivedValueCents)} hint="Retail value of stock sent here by other branches." />
+              )}
+              <Stat
+                small
+                label="Waste (pulled out)"
+                value={formatMoney(pulledOutCents)}
+                color={pulledOutCents > 0 ? 'orange' : undefined}
+                hint="Discarded stock — the only figure here that is a genuine loss."
+              />
+              <Stat
+                small
+                label="Charged to staff"
+                value={formatMoney(chargedValueCents)}
+                hint="Recovered through payroll at full selling price, so not a loss."
+              />
+              {overEndUnits > 0 && (
+                <Stat
+                  small
+                  label={`Over end (${overEndUnits} units)`}
+                  value={formatMoney(overEndCents)}
+                  color="red"
+                  hint="Stock found in excess of what the books allow. Usually a miscount — but it is also what undeclared production looks like, so it is worth explaining."
+                />
+              )}
+            </Group>
+          </Stack>
           <Textarea placeholder="Notes (optional)" size="xs" autosize minRows={1} maxRows={3} w={280}
             disabled={!canWrite} value={notes}
             onChange={e => { setNotes(e.currentTarget.value); setDirty(true) }} />
@@ -446,12 +532,12 @@ export default function DsirEntryPage() {
   )
 }
 
-function Stat({ label, value, color, hint }: { label: string; value: string; color?: string; hint?: string }) {
+function Stat({ label, value, color, hint, small }: { label: string; value: string; color?: string; hint?: string; small?: boolean }) {
   return (
     <Stack gap={0}>
       <Text size="xs" c="dimmed" tt="uppercase" fw={700}>{label}</Text>
-      <Tooltip label={hint} disabled={!hint}>
-        <Text size="lg" fw={700} c={color}>{value}</Text>
+      <Tooltip label={hint} disabled={!hint} multiline w={260}>
+        <Text size={small ? 'sm' : 'lg'} fw={small ? 600 : 700} c={color}>{value}</Text>
       </Tooltip>
     </Stack>
   )

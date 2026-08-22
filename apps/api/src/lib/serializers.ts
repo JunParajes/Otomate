@@ -151,11 +151,16 @@ export const dsirInclude = {
 
 type DsirWithRelations = Prisma.DsirReportGetPayload<{ include: typeof dsirInclude }>
 
+/** Transfers sent TO this branch, on this date, by other branches. */
+export type InboundTransfer = Prisma.DsirTransferGetPayload<{
+  include: { product: true; report: { include: { branch: true } } }
+}>
+
 /**
  * Computes every derived figure from the SHARED formula, so the encoder's screen
  * and the server can never disagree about what a day's sales were.
  */
-export function toDsirDto(report: DsirWithRelations): DsirReportDto {
+export function toDsirDto(report: DsirWithRelations, inbound: InboundTransfer[] = []): DsirReportDto {
   const chargedBy = new Map<string, number>()
   for (const c of report.charges) {
     chargedBy.set(c.productId, (chargedBy.get(c.productId) ?? 0) + c.quantity)
@@ -164,18 +169,27 @@ export function toDsirDto(report: DsirWithRelations): DsirReportDto {
   for (const t of report.transfers) {
     transferredBy.set(t.productId, (transferredBy.get(t.productId) ?? 0) + t.quantity)
   }
+  const receivedBy = new Map<string, number>()
+  for (const t of inbound) {
+    receivedBy.set(t.productId, (receivedBy.get(t.productId) ?? 0) + t.quantity)
+  }
 
   let salesCents = 0
   let pulledOutCents = 0
   let producedValueCents = 0
+  let receivedValueCents = 0
+  let overEndCents = 0
+  let overEndUnits = 0
 
   const lines = report.lines.map(l => {
     const charged = chargedBy.get(l.productId) ?? 0
     const transferredOut = transferredBy.get(l.productId) ?? 0
+    const transferredIn = receivedBy.get(l.productId) ?? 0
     const totals = computeLineTotals(
       {
         begBal: l.begBal,
         produced: l.produced,
+        transferredIn,
         transferredOut,
         overEnd: l.overEnd,
         charged,
@@ -187,6 +201,9 @@ export function toDsirDto(report: DsirWithRelations): DsirReportDto {
     salesCents += totals.salesCents
     pulledOutCents += l.pulledOut * l.unitPriceCents
     producedValueCents += l.produced * l.unitPriceCents
+    receivedValueCents += transferredIn * l.unitPriceCents
+    overEndCents += l.overEnd * l.unitPriceCents
+    overEndUnits += l.overEnd
 
     return {
       productId: l.productId,
@@ -203,6 +220,7 @@ export function toDsirDto(report: DsirWithRelations): DsirReportDto {
       overEnd: l.overEnd,
       pulledOut: l.pulledOut,
       endBal: l.endBal,
+      transferredIn,
       transferredOut,
       charged,
       ...totals,
@@ -247,6 +265,14 @@ export function toDsirDto(report: DsirWithRelations): DsirReportDto {
       toBranchName: t.toBranch.name,
       quantity: t.quantity,
     })),
+    inboundTransfers: inbound.map(t => ({
+      id: t.id,
+      productId: t.productId,
+      productName: t.product.name,
+      fromBranchId: t.report.branchId,
+      fromBranchName: t.report.branch.name,
+      quantity: t.quantity,
+    })),
     collections: report.collections.map(c => ({
       id: c.id,
       employeeId: c.employeeId,
@@ -260,13 +286,16 @@ export function toDsirDto(report: DsirWithRelations): DsirReportDto {
     pulledOutCents,
     chargedCents,
     producedValueCents,
+    receivedValueCents,
+    overEndCents,
+    overEndUnits,
     lineCount: lines.length,
     updatedAt: report.updatedAt.toISOString(),
   }
 }
 
-export function toDsirSummary(report: DsirWithRelations): DsirSummaryDto {
-  const full = toDsirDto(report)
+export function toDsirSummary(report: DsirWithRelations, inbound: InboundTransfer[] = []): DsirSummaryDto {
+  const full = toDsirDto(report, inbound)
   return {
     id: full.id,
     branch: full.branch,
@@ -276,6 +305,8 @@ export function toDsirSummary(report: DsirWithRelations): DsirSummaryDto {
     collectionsCents: full.collectionsCents,
     varianceCents: full.varianceCents,
     lineCount: full.lineCount,
+    overEndCents: full.overEndCents,
+    overEndUnits: full.overEndUnits,
     updatedAt: full.updatedAt,
   }
 }

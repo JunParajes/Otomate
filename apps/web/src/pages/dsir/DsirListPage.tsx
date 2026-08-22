@@ -4,7 +4,7 @@ import {
   Badge, Button, Group, Modal, Select, Stack, Table, Text, TextInput, Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconFileText, IconPlus } from '@tabler/icons-react'
+import { IconAlertTriangle, IconFileText, IconPlus } from '@tabler/icons-react'
 import { formatMoney, type DsirSummary } from '@otomate/shared'
 import { dsirApi } from '@/lib/dsir'
 import { adminApi } from '@/lib/admin'
@@ -93,7 +93,7 @@ export default function DsirListPage() {
         empty={reports.data?.length === 0}
         emptyMessage="No reports yet — create one to start encoding"
       >
-        <Table.ScrollContainer minWidth={760}>
+        <Table.ScrollContainer minWidth={880}>
           <Table highlightOnHover verticalSpacing="sm" striped="odd">
             <Table.Thead>
               <Table.Tr>
@@ -104,6 +104,7 @@ export default function DsirListPage() {
                 <Table.Th w={130}>Sales</Table.Th>
                 <Table.Th w={130}>Collected</Table.Th>
                 <Table.Th w={130}>Variance</Table.Th>
+                <Table.Th w={110}>Over end</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -127,6 +128,17 @@ export default function DsirListPage() {
                     <Tooltip label="Collections minus derived sales. A shortage is deducted from staff." disabled={r.varianceCents === 0}>
                       <span>{variance(r)}</span>
                     </Tooltip>
+                  </Table.Td>
+                  <Table.Td>
+                    {r.overEndUnits > 0 ? (
+                      <Tooltip label={`${r.overEndUnits} units found beyond what the books allow — worth explaining`}>
+                        <Badge color="red" variant="light" leftSection={<IconAlertTriangle size={10} />}>
+                          {formatMoney(r.overEndCents)}
+                        </Badge>
+                      </Tooltip>
+                    ) : (
+                      <Text size="sm" c="dimmed">—</Text>
+                    )}
                   </Table.Td>
                 </Table.Tr>
               ))}
