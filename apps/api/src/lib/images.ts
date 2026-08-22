@@ -10,7 +10,10 @@ import sharp from 'sharp'
  * Only the generated filename is stored in the database. The uploaded name is
  * never used: "../../etc/passwd" is a real attack.
  */
-export const UPLOAD_ROOT = process.env.UPLOAD_DIR ?? '/app/uploads'
+// Containers set UPLOAD_DIR explicitly (see docker-compose*.yml). The fallback is
+// cwd-relative so `pnpm --filter api dev` works outside Docker, where /app does
+// not exist and mkdir would fail at boot.
+export const UPLOAD_ROOT = process.env.UPLOAD_DIR ?? path.resolve(process.cwd(), 'uploads')
 const PRODUCTS_DIR = path.join(UPLOAD_ROOT, 'products')
 
 /** Public URL prefix; served unauthenticated so plain <img src> works. */

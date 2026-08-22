@@ -7,6 +7,9 @@ node_modules/
 .env.local
 .env.*.local
 
+# Locally uploaded product images
+uploads/
+
 # Build outputs
 dist/
 build/

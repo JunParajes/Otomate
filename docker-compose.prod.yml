@@ -39,6 +39,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       API_PORT: 3001
       NODE_ENV: production
+      UPLOAD_DIR: /app/uploads
     volumes:
       # Product images live here. NOT covered by pg_dump — back this up separately.
       - product-images:/app/uploads
