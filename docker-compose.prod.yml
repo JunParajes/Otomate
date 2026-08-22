@@ -80,6 +80,8 @@ services:
       API_PORT: 3001
       NODE_ENV: production
       UPLOAD_DIR: /app/uploads
+      # Locks CORS to the real origin. Blank falls back to '*'.
+      WEB_URL: ${WEB_URL:-}
     volumes:
       # Product images live here. NOT covered by pg_dump — back this up separately.
       - product-images:/app/uploads

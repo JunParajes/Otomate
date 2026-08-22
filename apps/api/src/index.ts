@@ -11,7 +11,11 @@ import { PUBLIC_PREFIX, UPLOAD_ROOT, ensureUploadDirs } from './lib/images'
 const app = express()
 const port = process.env.API_PORT ?? 3001
 
-app.use(cors({ origin: process.env.WEB_URL ?? '*' }))
+// `??` only falls back on null/undefined, so an unset-but-present WEB_URL (an
+// empty string, which is what compose passes for a missing variable) would set
+// origin:'' and reject every browser request. Treat blank as "not configured".
+const webOrigin = process.env.WEB_URL?.trim() || '*'
+app.use(cors({ origin: webOrigin }))
 app.use(express.json())
 
 // Product images are served unauthenticated: browsers do not send an
