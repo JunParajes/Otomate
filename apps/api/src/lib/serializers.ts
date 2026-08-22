@@ -1,6 +1,10 @@
 import type { Branch, Prisma, Role, User } from '@prisma/client'
 import { imageUrl } from './images'
+import { computeLineTotals } from '@otomate/shared'
 import type {
+  DsirReport as DsirReportDto,
+  DsirSummary as DsirSummaryDto,
+  DsirStatus,
   Employee as EmployeeDto,
   EmployeePosition,
   Category as CategoryDto,
@@ -130,5 +134,148 @@ export function toEmployeeDto(employee: EmployeeWithRelations): EmployeeDto {
     isActive: employee.isActive,
     createdAt: employee.createdAt.toISOString(),
     updatedAt: employee.updatedAt.toISOString(),
+  }
+}
+
+/** Everything the DSIR serializers need loaded. */
+export const dsirInclude = {
+  branch: true,
+  openedBy: true,
+  closedBy: true,
+  encodedBy: true,
+  lines: { include: { product: { include: { category: true } } } },
+  charges: { include: { product: true, employee: true } },
+  transfers: { include: { product: true, toBranch: true } },
+  collections: { include: { employee: true } },
+} as const
+
+type DsirWithRelations = Prisma.DsirReportGetPayload<{ include: typeof dsirInclude }>
+
+/**
+ * Computes every derived figure from the SHARED formula, so the encoder's screen
+ * and the server can never disagree about what a day's sales were.
+ */
+export function toDsirDto(report: DsirWithRelations): DsirReportDto {
+  const chargedBy = new Map<string, number>()
+  for (const c of report.charges) {
+    chargedBy.set(c.productId, (chargedBy.get(c.productId) ?? 0) + c.quantity)
+  }
+  const transferredBy = new Map<string, number>()
+  for (const t of report.transfers) {
+    transferredBy.set(t.productId, (transferredBy.get(t.productId) ?? 0) + t.quantity)
+  }
+
+  let salesCents = 0
+  let pulledOutCents = 0
+  let producedValueCents = 0
+
+  const lines = report.lines.map(l => {
+    const charged = chargedBy.get(l.productId) ?? 0
+    const transferredOut = transferredBy.get(l.productId) ?? 0
+    const totals = computeLineTotals(
+      {
+        begBal: l.begBal,
+        produced: l.produced,
+        transferredOut,
+        overEnd: l.overEnd,
+        charged,
+        pulledOut: l.pulledOut,
+        endBal: l.endBal,
+      },
+      l.unitPriceCents
+    )
+    salesCents += totals.salesCents
+    pulledOutCents += l.pulledOut * l.unitPriceCents
+    producedValueCents += l.produced * l.unitPriceCents
+
+    return {
+      productId: l.productId,
+      product: {
+        id: l.product.id,
+        name: l.product.name,
+        sku: l.product.sku,
+        unit: l.product.unit as string,
+        category: { id: l.product.category.id, name: l.product.category.name },
+      },
+      unitPriceCents: l.unitPriceCents,
+      begBal: l.begBal,
+      produced: l.produced,
+      overEnd: l.overEnd,
+      pulledOut: l.pulledOut,
+      endBal: l.endBal,
+      transferredOut,
+      charged,
+      ...totals,
+    }
+  })
+
+  const priceOf = new Map(report.lines.map(l => [l.productId, l.unitPriceCents]))
+  const charges = report.charges.map(c => ({
+    id: c.id,
+    productId: c.productId,
+    productName: c.product.name,
+    employeeId: c.employeeId,
+    employeeName: c.employee.name,
+    quantity: c.quantity,
+    // Charges are paid at full selling price, so the snapshot is the right basis.
+    valueCents: c.quantity * (priceOf.get(c.productId) ?? c.product.priceCents),
+  }))
+  const chargedCents = charges.reduce((sum, c) => sum + c.valueCents, 0)
+  const collectionsCents = report.collections.reduce((sum, c) => sum + c.amountCents, 0)
+
+  return {
+    id: report.id,
+    branch: { id: report.branch.id, name: report.branch.name },
+    reportDate: report.reportDate.toISOString().slice(0, 10),
+    status: report.status as DsirStatus,
+    usesCharges: report.usesCharges,
+    usesPullOuts: report.usesPullOuts,
+    usesTransfers: report.usesTransfers,
+    usesOverEnd: report.usesOverEnd,
+    openedBy: report.openedBy ? { id: report.openedBy.id, name: report.openedBy.name } : null,
+    closedBy: report.closedBy ? { id: report.closedBy.id, name: report.closedBy.name } : null,
+    encodedBy: report.encodedBy ? { id: report.encodedBy.id, name: report.encodedBy.name } : null,
+    finalizedAt: report.finalizedAt?.toISOString() ?? null,
+    notes: report.notes,
+    lines,
+    charges,
+    transfers: report.transfers.map(t => ({
+      id: t.id,
+      productId: t.productId,
+      productName: t.product.name,
+      toBranchId: t.toBranchId,
+      toBranchName: t.toBranch.name,
+      quantity: t.quantity,
+    })),
+    collections: report.collections.map(c => ({
+      id: c.id,
+      employeeId: c.employeeId,
+      employeeName: c.employee?.name ?? null,
+      label: c.label,
+      amountCents: c.amountCents,
+    })),
+    salesCents,
+    collectionsCents,
+    varianceCents: collectionsCents - salesCents,
+    pulledOutCents,
+    chargedCents,
+    producedValueCents,
+    lineCount: lines.length,
+    updatedAt: report.updatedAt.toISOString(),
+  }
+}
+
+export function toDsirSummary(report: DsirWithRelations): DsirSummaryDto {
+  const full = toDsirDto(report)
+  return {
+    id: full.id,
+    branch: full.branch,
+    reportDate: full.reportDate,
+    status: full.status,
+    salesCents: full.salesCents,
+    collectionsCents: full.collectionsCents,
+    varianceCents: full.varianceCents,
+    lineCount: full.lineCount,
+    updatedAt: full.updatedAt,
   }
 }

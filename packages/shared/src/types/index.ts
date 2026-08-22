@@ -135,3 +135,83 @@ export interface Employee {
   createdAt: string
   updatedAt: string
 }
+
+// ─── DSIR ─────────────────────────────────────────────────────────────────
+import type { DsirStatus } from '../schemas/dsir.js'
+
+export interface DsirLine {
+  productId: string
+  product: { id: string; name: string; sku: string | null; unit: string; category: { id: string; name: string } }
+  /** Snapshot taken when the report was encoded, not the product's price today. */
+  unitPriceCents: number
+  begBal: number
+  produced: number
+  overEnd: number
+  pulledOut: number
+  endBal: number
+  /** Derived, computed server-side from the same shared formula the UI uses. */
+  transferredOut: number
+  charged: number
+  preTotal: number
+  sold: number
+  salesCents: number
+}
+
+export interface DsirCharge {
+  id: string
+  productId: string
+  productName: string
+  employeeId: string
+  employeeName: string
+  quantity: number
+  valueCents: number
+}
+
+export interface DsirTransfer {
+  id: string
+  productId: string
+  productName: string
+  toBranchId: string
+  toBranchName: string
+  quantity: number
+}
+
+export interface DsirCollection {
+  id: string
+  employeeId: string | null
+  employeeName: string | null
+  label: string | null
+  amountCents: number
+}
+
+/** Row shape for the report list — no lines, so it stays cheap. */
+export interface DsirSummary {
+  id: string
+  branch: { id: string; name: string }
+  reportDate: string
+  status: DsirStatus
+  salesCents: number
+  collectionsCents: number
+  varianceCents: number
+  lineCount: number
+  updatedAt: string
+}
+
+export interface DsirReport extends DsirSummary {
+  usesCharges: boolean
+  usesPullOuts: boolean
+  usesTransfers: boolean
+  usesOverEnd: boolean
+  openedBy: { id: string; name: string } | null
+  closedBy: { id: string; name: string } | null
+  encodedBy: { id: string; name: string } | null
+  finalizedAt: string | null
+  notes: string | null
+  lines: DsirLine[]
+  charges: DsirCharge[]
+  transfers: DsirTransfer[]
+  collections: DsirCollection[]
+  pulledOutCents: number
+  chargedCents: number
+  producedValueCents: number
+}

@@ -8,22 +8,23 @@ datasource db {
 }
 
 model User {
-  id                 String    @id @default(cuid())
-  email              String    @unique
+  id                 String       @id @default(cuid())
+  email              String       @unique
   password           String
   name               String
-  isActive           Boolean   @default(true)
+  isActive           Boolean      @default(true)
   // Set when an admin creates the account or resets the password; the user is
   // forced through a password change before they can use the app.
-  mustChangePassword Boolean   @default(false)
+  mustChangePassword Boolean      @default(false)
   lastLoginAt        DateTime?
   roleId             String
   branchId           String?
-  role               Role      @relation(fields: [roleId], references: [id])
-  branch             Branch?   @relation(fields: [branchId], references: [id])
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  role               Role         @relation(fields: [roleId], references: [id])
+  branch             Branch?      @relation(fields: [branchId], references: [id])
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
   employee           Employee?
+  dsirReports        DsirReport[]
 
   @@index([roleId])
   @@index([branchId])
@@ -51,13 +52,15 @@ model Permission {
 }
 
 model Branch {
-  id        String     @id @default(cuid())
-  name      String     @unique
-  isActive  Boolean    @default(true)
-  users     User[]
-  employees Employee[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id          String         @id @default(cuid())
+  name        String         @unique
+  isActive    Boolean        @default(true)
+  users       User[]
+  employees   Employee[]
+  dsirReports DsirReport[]
+  transfersIn DsirTransfer[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 }
 
 /// How a product is sold. Affects how its price reads: ₱25 per piece vs per kilo.
@@ -81,24 +84,27 @@ model Category {
 }
 
 model Product {
-  id          String      @id @default(cuid())
+  id            String         @id @default(cuid())
   /// Optional short code (BRD-001). Unique when present; Postgres allows many NULLs.
-  sku         String?     @unique
-  name        String
-  description String?
-  categoryId  String
-  category    Category    @relation(fields: [categoryId], references: [id])
+  sku           String?        @unique
+  name          String
+  description   String?
+  categoryId    String
+  category      Category       @relation(fields: [categoryId], references: [id])
   /// Money is INTEGER CENTAVOS, never a float. ₱25.50 == 2550.
-  priceCents  Int
+  priceCents    Int
   /// What it costs us. Gated behind the products:cost permission.
-  costCents   Int?
-  unit        ProductUnit @default(PIECE)
+  costCents     Int?
+  unit          ProductUnit    @default(PIECE)
   /// Filename on the products volume, e.g. "a1b2c3.webp". Not a full path.
-  imageFile   String?
-  isActive    Boolean     @default(true)
-  sortOrder   Int         @default(0)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  imageFile     String?
+  isActive      Boolean        @default(true)
+  sortOrder     Int            @default(0)
+  dsirLines     DsirLine[]
+  dsirCharges   DsirCharge[]
+  dsirTransfers DsirTransfer[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([categoryId])
   @@index([isActive])
@@ -131,9 +137,131 @@ model Employee {
   userId       String?          @unique
   user         User?            @relation(fields: [userId], references: [id])
   isActive     Boolean          @default(true)
+  charges      DsirCharge[]
+  collections  DsirCollection[]
+  openedFor    DsirReport[]     @relation("DsirOpener")
+  closedFor    DsirReport[]     @relation("DsirCloser")
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   @@index([branchId])
   @@index([isActive])
+}
+
+/// DRAFT is editable; FINALIZED locks the report. Encoding runs days behind the
+/// branch, so back-dated entry is normal, not an error state.
+enum DsirStatus {
+  DRAFT
+  FINALIZED
+}
+
+/// One Daily Sales & Inventory Report: one branch, one day.
+/// Sales are DERIVED from stock movement, never entered. See docs/DOMAIN.md.
+model DsirReport {
+  id         String     @id @default(cuid())
+  branchId   String
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  reportDate DateTime   @db.Date
+  status     DsirStatus @default(DRAFT)
+
+  /// Which optional columns this form uses. DECLARED by the encoder, never
+  /// inferred from emptiness — an unticked box means "checked, there were none",
+  /// not "nobody looked". A charge that is silently skipped overstates sales and
+  /// surfaces as a shortage deducted from a cashier's wages.
+  usesCharges   Boolean @default(false)
+  usesPullOuts  Boolean @default(false)
+  usesTransfers Boolean @default(false)
+  usesOverEnd   Boolean @default(false)
+
+  /// The two people who physically counted. Optional: the paper form does not
+  /// always name them.
+  openedById String?
+  openedBy   Employee? @relation("DsirOpener", fields: [openedById], references: [id])
+  closedById String?
+  closedBy   Employee? @relation("DsirCloser", fields: [closedById], references: [id])
+
+  /// Who typed it in, and when it was locked.
+  encodedById String?
+  encodedBy   User?     @relation(fields: [encodedById], references: [id])
+  finalizedAt DateTime?
+  notes       String?
+
+  lines       DsirLine[]
+  charges     DsirCharge[]
+  transfers   DsirTransfer[]
+  collections DsirCollection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, reportDate])
+  @@index([reportDate])
+  @@index([status])
+}
+
+/// One product's stock movement on one report.
+model DsirLine {
+  id        String     @id @default(cuid())
+  reportId  String
+  report    DsirReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product    @relation(fields: [productId], references: [id])
+
+  /// SNAPSHOT of the price at encoding. Prices change once or twice a year; without
+  /// this, a price change would silently rewrite the sales figures of every past
+  /// report — and those figures drive wage deductions.
+  unitPriceCents Int
+
+  begBal    Int @default(0)
+  produced  Int @default(0)
+  overEnd   Int @default(0)
+  pulledOut Int @default(0)
+  endBal    Int @default(0)
+
+  @@unique([reportId, productId])
+  @@index([productId])
+}
+
+/// An employee mistake — dropped or burned stock — charged to them at full
+/// selling price and recovered via payroll. Modelled per-record rather than as a
+/// per-product number, because two people can damage the same product in a day.
+model DsirCharge {
+  id         String     @id @default(cuid())
+  reportId   String
+  report     DsirReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product    @relation(fields: [productId], references: [id])
+  employeeId String
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+  quantity   Int
+
+  @@index([reportId])
+  @@index([employeeId])
+}
+
+/// Stock moved to another branch. Rare, but essential when it happens.
+model DsirTransfer {
+  id         String     @id @default(cuid())
+  reportId   String
+  report     DsirReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product    @relation(fields: [productId], references: [id])
+  toBranchId String
+  toBranch   Branch     @relation(fields: [toBranchId], references: [id])
+  quantity   Int
+
+  @@index([reportId])
+}
+
+/// Cash turned in per cashier. A list, not the paper's fixed Cashier 1/2/3 slots.
+model DsirCollection {
+  id          String     @id @default(cuid())
+  reportId    String
+  report      DsirReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  employeeId  String?
+  employee    Employee?  @relation(fields: [employeeId], references: [id])
+  label       String?
+  amountCents Int
+
+  @@index([reportId])
 }

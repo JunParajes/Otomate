@@ -20,6 +20,9 @@ export const PERMISSIONS = [
   { name: 'categories:write', category: 'Products', description: 'Create, edit and delete product categories' },
   { name: 'employees:read', category: 'Employees', description: 'View employee records' },
   { name: 'employees:write', category: 'Employees', description: 'Create, edit and deactivate employees' },
+  { name: 'dsir:read', category: 'DSIR', description: 'View daily sales and inventory reports' },
+  { name: 'dsir:write', category: 'DSIR', description: 'Create and edit daily reports' },
+  { name: 'dsir:finalize', category: 'DSIR', description: 'Finalise a report, locking it from further edits' },
   { name: 'reports:read', category: 'Reports', description: 'View reports and dashboards' },
 ] as const
 
