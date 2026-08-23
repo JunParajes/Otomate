@@ -1,5 +1,7 @@
 import type {
   CreateDsirInput,
+  DsirArchiveBranch,
+  DsirArchiveMonth,
   DsirReport,
   DsirSummary,
   SaveDsirInput,
@@ -21,6 +23,9 @@ export const dsirApi = {
     const qs = params.toString()
     return unwrap<DsirSummary[]>(api.get(`/api/admin/dsir${qs ? `?${qs}` : ''}`))
   },
+  archive: () => unwrap<DsirArchiveBranch[]>(api.get('/api/admin/dsir/archive')),
+  archiveMonths: (branchId: string) =>
+    unwrap<DsirArchiveMonth[]>(api.get(`/api/admin/dsir/archive/${branchId}/months`)),
   get: (id: string) => unwrap<DsirReport>(api.get(`/api/admin/dsir/${id}`)),
   create: (input: CreateDsirInput) => unwrap<DsirReport>(api.post('/api/admin/dsir', input)),
   save: (id: string, input: SaveDsirInput) =>

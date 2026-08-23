@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { NavLink as RouterNavLink, useLocation } from 'react-router-dom'
 import {
   ActionIcon,
@@ -36,6 +36,7 @@ import {
   IconUsers,
   IconId,
   IconClipboardList,
+  IconArchive,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
   IconSun,
@@ -106,6 +107,7 @@ function readCollapsed(): boolean {
 
 const DAILY: NavItem[] = [
   { label: 'Daily Reports', to: '/dsir', icon: IconClipboardList, permission: 'dsir:read' },
+  { label: 'Finalised Reports', to: '/dsir/archive', icon: IconArchive, permission: 'dsir:read' },
 ]
 
 const CATALOG: NavItem[] = [
@@ -136,6 +138,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const toggleCollapsed = useCallback(() => setCollapsed(c => !c), [])
 
+  /**
+   * Only the most specific matching link is highlighted.
+   *
+   * A plain startsWith lights up every ancestor: on /dsir/archive both "Daily
+   * Reports" (/dsir) and "Finalised Reports" (/dsir/archive) would look active.
+   * Taking the longest match keeps that correct for any future nesting too —
+   * and a report at /dsir/<id> still highlights Daily Reports, which is right.
+   */
+  const activePath = useMemo(() => {
+    const { pathname } = location
+    return [...MAIN, ...DAILY, ...CATALOG, ...ADMIN]
+      .map(i => i.to)
+      .filter(to => pathname === to || pathname.startsWith(`${to}/`))
+      .sort((a, b) => b.length - a.length)[0]
+  }, [location])
+
   // Hidden rather than shown-and-blocked: a link you can't use is just noise.
   const adminItems = ADMIN.filter(item => !item.permission || can(item.permission))
   const catalogItems = CATALOG.filter(item => !item.permission || can(item.permission))
@@ -148,9 +166,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           key={item.to}
           component={RouterNavLink}
           to={item.to}
+          // React Router's NavLink adds its own "active" class on a PREFIX
+          // match, which highlighted Daily Reports (/dsir) while sitting on
+          // /dsir/archive — a second, competing source of highlighting next to
+          // Mantine's data-active. `end` restricts it to an exact match and
+          // leaves activePath below as the single source of truth.
+          end
           label={collapsed ? undefined : item.label}
           leftSection={<item.icon size={collapsed ? 20 : 18} stroke={1.6} />}
-          active={location.pathname.startsWith(item.to)}
+          active={item.to === activePath}
           onClick={close}
           variant="light"
           aria-label={item.label}

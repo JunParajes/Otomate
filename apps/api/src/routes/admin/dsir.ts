@@ -13,6 +13,11 @@ const router = Router()
 /** How far back to look for the products a branch actually carries. */
 const PREFILL_LOOKBACK_REPORTS = 7
 
+/** Matches the serializers: a DATE column rendered as YYYY-MM-DD, anchored UTC. */
+function toDateString(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
 function parseDate(value: string): Date {
   // Stored as a DATE; anchor at UTC midnight so no timezone can shift the day.
   const date = new Date(`${value}T00:00:00.000Z`)
@@ -147,6 +152,73 @@ router.get(
       )
     }
     res.json({ data: reports.map(r => toDsirSummary(r, inboundByReport.get(r.id) ?? [])), error: null })
+  })
+)
+
+/**
+ * Archive landing: one row per branch, counting only FINALISED reports.
+ *
+ * Declared before '/:id' on purpose — Express matches in order, and '/archive'
+ * would otherwise be swallowed as a report id.
+ */
+router.get(
+  '/archive',
+  requirePermission('dsir:read'),
+  asyncHandler(async (_req, res) => {
+    const [branches, grouped] = await Promise.all([
+      prisma.branch.findMany({ orderBy: { name: 'asc' } }),
+      prisma.dsirReport.groupBy({
+        by: ['branchId'],
+        where: { status: 'FINALIZED' },
+        _count: { _all: true },
+        _min: { reportDate: true },
+        _max: { reportDate: true },
+      }),
+    ])
+
+    const byBranch = new Map(grouped.map(g => [g.branchId, g]))
+    const data = branches.map(b => {
+      const g = byBranch.get(b.id)
+      return {
+        branch: { id: b.id, name: b.name },
+        finalizedCount: g?._count._all ?? 0,
+        earliestDate: g?._min.reportDate ? toDateString(g._min.reportDate) : null,
+        latestDate: g?._max.reportDate ? toDateString(g._max.reportDate) : null,
+      }
+    })
+    res.json({ data, error: null })
+  })
+)
+
+/**
+ * Which months this branch actually has finalised reports in, so the archive's
+ * month picker only offers months with something in them.
+ *
+ * Grouped in JS rather than SQL: Prisma cannot group by a derived month without
+ * raw SQL, and selecting just the date column is a few KB even after years of
+ * daily reports.
+ */
+router.get(
+  '/archive/:branchId/months',
+  requirePermission('dsir:read'),
+  asyncHandler(async (req, res) => {
+    const branchId = pathParam(req, 'branchId')
+    const rows = await prisma.dsirReport.findMany({
+      where: { branchId, status: 'FINALIZED' },
+      select: { reportDate: true },
+      orderBy: { reportDate: 'desc' },
+    })
+
+    const counts = new Map<string, number>()
+    for (const r of rows) {
+      const month = toDateString(r.reportDate).slice(0, 7)
+      counts.set(month, (counts.get(month) ?? 0) + 1)
+    }
+    const data = [...counts.entries()]
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => b.month.localeCompare(a.month))
+
+    res.json({ data, error: null })
   })
 )
 

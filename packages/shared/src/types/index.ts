@@ -204,6 +204,27 @@ export interface DsirCollection {
 }
 
 /** Row shape for the report list — no lines, so it stays cheap. */
+/**
+ * One row on the finalised-report archive landing page.
+ *
+ * Branches with no finalised reports are still listed: "this branch has nothing
+ * yet" is information, and a branch silently missing from the page looks like a
+ * bug.
+ */
+export interface DsirArchiveBranch {
+  branch: { id: string; name: string }
+  finalizedCount: number
+  earliestDate: string | null
+  latestDate: string | null
+}
+
+/** A month that actually has finalised reports, for the archive's month picker. */
+export interface DsirArchiveMonth {
+  /** YYYY-MM */
+  month: string
+  count: number
+}
+
 export interface DsirSummary {
   id: string
   branch: { id: string; name: string }

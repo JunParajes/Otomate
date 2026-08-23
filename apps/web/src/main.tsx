@@ -15,6 +15,8 @@ import ProductsPage from '@/pages/admin/ProductsPage'
 import CategoriesPage from '@/pages/admin/CategoriesPage'
 import EmployeesPage from '@/pages/admin/EmployeesPage'
 import DsirListPage from '@/pages/dsir/DsirListPage'
+import DsirArchivePage from '@/pages/dsir/DsirArchivePage'
+import DsirArchiveBranchPage from '@/pages/dsir/DsirArchiveBranchPage'
 import DsirEntryPage from '@/pages/dsir/DsirEntryPage'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppLayout from '@/components/AppLayout'
@@ -70,6 +72,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               />
               <Route path="/dashboard" element={<Shell><DashboardPage /></Shell>} />
               <Route path="/dsir" element={<Shell permission="dsir:read"><DsirListPage /></Shell>} />
+              {/* Before /dsir/:id — otherwise ":id" matches "archive". */}
+              <Route path="/dsir/archive" element={<Shell permission="dsir:read"><DsirArchivePage /></Shell>} />
+              <Route path="/dsir/archive/:branchId" element={<Shell permission="dsir:read"><DsirArchiveBranchPage /></Shell>} />
               <Route path="/dsir/:id" element={<Shell permission="dsir:read"><DsirEntryPage /></Shell>} />
               <Route path="/catalog/products" element={<Shell permission="products:read"><ProductsPage /></Shell>} />
               <Route path="/catalog/categories" element={<Shell permission="products:read"><CategoriesPage /></Shell>} />
