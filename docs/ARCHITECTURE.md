@@ -124,6 +124,67 @@ Branch
 7. rbac middleware checks req.user.permissions
 ```
 
+## PWA / offline behaviour
+
+The web app is installable: `vite-plugin-pwa` (Workbox, `generateSW`) emits a
+manifest and a service worker at build time. Installing it to a tablet's home
+screen needs no app store, which is the intended path for branch-side capture
+later.
+
+### The API is never cached — deliberately
+
+The service worker precaches the app shell and runtime-caches **product images
+only**. Nothing under `/api` is cached, and no rule matches it, so those
+requests go straight to the network.
+
+This is a domain rule, not a performance choice. Prices here are the
+authoritative figure the day's sales are derived from, and a shortage is
+deducted from an employee's wages (see [DOMAIN.md](DOMAIN.md)). A stale price
+served from a cache would take money off someone's pay. **The correct rule is
+no rule.**
+
+Product images are the one exception, and only because their filenames are
+content-unique uuids — the URL changes when the image does, so a cached file
+cannot be stale.
+
+Offline, the shell loads and API calls fail with the existing "Could not reach
+the server" message. That is the honest behaviour: entry cannot be queued
+offline, and pretending otherwise would risk losing a form.
+
+### Caching rules that are easy to get wrong
+
+| File | Cache | Why |
+|------|-------|-----|
+| `/assets/*` | 1 year, immutable | Vite fingerprints these |
+| `sw.js`, `registerSW.js`, `manifest.webmanifest`, `index.html` | `no-cache` | see below |
+| icons, other `public/` files | 7 days | names are stable across builds, so immutable would strand a redesign for a year |
+
+`sw.js` is the trap. It ends in `.js`, so a blanket `expires 1y; immutable` rule
+catches it — and a service worker that can never update leaves every installed
+client frozen on whatever build it first saw, with no route back except clearing
+site data. `index.html` matters for the same reason: it names the fingerprinted
+assets.
+
+nginx also has no MIME type for `.webmanifest` (checked on 1.31.4), so it must be
+declared or the manifest is served as `application/octet-stream` and rejected.
+
+### Cloudflare rewrites the browser TTL
+
+The edge serves `sw.js` with `cache-control: max-age=14400` regardless of the
+origin's `no-cache`, because `.js` is on Cloudflare's default cached-extension
+list. Measured, this does **not** stop updates reaching clients:
+
+- `cf-cache-status: REVALIDATED`, and the edge ETag matches the origin's — the
+  edge revalidates rather than serving stale bytes.
+- The registration uses the default `updateViaCache: 'imports'`, so the browser
+  bypasses its own HTTP cache when fetching `sw.js` to check for updates.
+- The one file that *does* go through the HTTP cache is the `importScripts`
+  target, and that is content-hashed (`workbox-<hash>.js`), so a new build
+  imports a new name.
+
+A Cloudflare cache rule bypassing `/sw.js` would tidy the header up, but nothing
+depends on it.
+
 ## Environment Variables
 
 | Variable       | Service | Description                        |
