@@ -271,12 +271,11 @@ export default function EmployeesPage() {
                 two inputs on different lines. */}
             <Group grow align="flex-end">
               <TextInput label="Employee code" placeholder="EMP-001" description="Optional, must be unique" {...form.getInputProps('employeeCode')} />
-              <Select label="Position" size="md" data={positionOptions} {...form.getInputProps('position')} />
+              <Select label="Position" data={positionOptions} {...form.getInputProps('position')} />
             </Group>
 
             <Select
               label="Branch"
-              size="md"
               data={branchOptions}
               clearable
               placeholder="Unassigned"
@@ -287,7 +286,6 @@ export default function EmployeesPage() {
             {canLinkLogins && (
               <Select
                 label="Linked login"
-                size="md"
                 data={userOptions}
                 clearable
                 searchable

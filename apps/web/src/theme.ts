@@ -25,8 +25,20 @@ export const theme = createTheme({
   headings: { fontWeight: '650' },
   components: {
     // Admin screens are dense and form-heavy — larger default hit targets.
+    //
+    // Every control that sits on a row beside a TextInput belongs here. Mantine
+    // defaults inputs to 'sm', so anything left out is a few pixels shorter and
+    // will not line up with the field next to it — which is exactly how the
+    // Employee code and Position fields ended up on different lines.
+    //
+    // Dense screens opt out explicitly rather than relying on the default: the
+    // DSIR charge and collection rows pass size="xs", and QtyInput is a plain
+    // native input, so neither is affected by anything set here.
     TextInput: { defaultProps: { size: 'md' } },
     PasswordInput: { defaultProps: { size: 'md' } },
+    Select: { defaultProps: { size: 'md' } },
+    NumberInput: { defaultProps: { size: 'md' } },
+    Textarea: { defaultProps: { size: 'md' } },
     Button: { defaultProps: { size: 'md' } },
   },
 })
