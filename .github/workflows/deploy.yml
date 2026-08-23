@@ -92,8 +92,21 @@ jobs:
             docker compose -f docker-compose.prod.yml run --rm api \
               sh -c "npx prisma migrate deploy"
 
-            # Restart services
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            # Infrastructure first. These change rarely and are recreated the
+            # normal way; api and web are handled below. Listing them explicitly
+            # is safe — --remove-orphans only removes containers whose service is
+            # gone from the compose file, not services omitted from this list.
+            # A new infra service added later must be added here too.
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans \
+              postgres traefik cloudflared ddns
+
+            # Zero-downtime for the two services that serve traffic. Starts the
+            # replacement alongside the running container, waits for Docker to
+            # report it healthy (Traefik sends it no traffic until then), and
+            # only then removes the old one. If the replacement never turns
+            # healthy the rollout aborts and the previous version keeps serving.
+            chmod +x scripts/rollout.sh
+            ./scripts/rollout.sh api web
 
             # Clean up unused images
             docker image prune -f

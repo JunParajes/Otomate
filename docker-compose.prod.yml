@@ -107,6 +107,17 @@ services:
       - "traefik.http.routers.frontend.entrypoints=web"
       - "traefik.http.routers.frontend.priority=1"
       - "traefik.http.services.frontend.loadbalancer.server.port=80"
+      # During a rolling deploy Traefik keeps the outgoing container in its pool
+      # for a few hundred ms after it stops, and requests routed there fail with
+      # 502. Retrying picks the replacement instead. Measured: this is what takes
+      # a rollout from ~6 failed requests to zero.
+      #
+      # Safe here and ONLY here: the frontend serves static GETs. The API gets
+      # no retry, because retrying a request the server already processed would
+      # save a DSIR twice — it handles SIGTERM and drains instead.
+      - "traefik.http.middlewares.retry-frontend.retry.attempts=3"
+      - "traefik.http.middlewares.retry-frontend.retry.initialInterval=100ms"
+      - "traefik.http.routers.frontend.middlewares=retry-frontend"
     restart: unless-stopped
 
 networks:

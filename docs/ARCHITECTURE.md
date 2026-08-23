@@ -185,6 +185,63 @@ list. Measured, this does **not** stop updates reaching clients:
 A Cloudflare cache rule bypassing `/sw.js` would tidy the header up, but nothing
 depends on it.
 
+## Deploys (zero downtime)
+
+`docker compose up -d` stops the old container before the new one is ready, so
+the site returned Traefik 404s for ~15s on every deploy. Measured against a
+replica of this stack, that was **586 x 404 and 6 x 502 out of ~1000 requests**.
+
+`scripts/rollout.sh` replaces that for `api` and `web`: start the new container
+alongside the old, wait for Docker to report it healthy, then remove the old one.
+If the replacement never turns healthy the rollout **aborts and leaves the
+previous version serving** — a bad image can no longer take the site down.
+
+The infrastructure services (postgres, traefik, cloudflared, ddns) are still
+brought up the ordinary way. They change rarely, and recreating Traefik is an
+outage whatever you do.
+
+### Why it works
+
+Traefik's Docker provider only creates a server for a container once Docker
+reports it **healthy** — verified against traefik:v3 for both the `unhealthy`
+and the `starting` states. So the replacement receives no traffic until it is
+ready, and the old container serves throughout.
+
+Two requirements follow, and breaking either silently breaks the rollout:
+
+- **Every rolled service needs a HEALTHCHECK.** Without one there is nothing to
+  wait for; `rollout.sh` says so rather than pretending. Both Dockerfiles define
+  one, at a 5s interval — it was 30s, which made a rollout wait half a minute
+  for a container that was ready in seconds.
+- **Rolled services must publish no host ports.** Two containers cannot bind the
+  same port. Only Traefik publishes here.
+
+### The last few requests
+
+After the new container is healthy, Traefik keeps the outgoing one in its pool
+for a few hundred milliseconds after it stops, and requests dispatched there
+fail. The two services handle it differently:
+
+- **web** has a Traefik `retry` middleware, which re-sends to the replacement.
+  Measured: this takes a web rollout from ~6 failed requests to zero. Safe here
+  because the frontend serves static GETs.
+- **api** deliberately has **no** retry. Retrying a request the server already
+  processed would save a DSIR twice. Instead it handles `SIGTERM`: it stops
+  accepting connections and lets in-flight requests finish, so a save in
+  progress completes rather than being cut. A GET-only retry router was tried
+  and made no measurable difference, so it was left out.
+
+An api rollout therefore still fails roughly **2-3 requests out of ~1300** at
+33 req/s (0.18%) — a window of a few hundred ms. With one encoder that is
+usually zero requests, and any that do fail surface as a visible error to retry,
+not as lost data.
+
+### Migrations
+
+Migrations still run *before* the rollout, so old and new API containers briefly
+share a schema. Prefer additive migrations; a destructive one can break the
+outgoing container during the overlap.
+
 ## Environment Variables
 
 | Variable       | Service | Description                        |
