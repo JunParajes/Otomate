@@ -27,6 +27,40 @@ function parseDate(value: string): Date {
   return date
 }
 
+/**
+ * Brings a draft's carried openings up to date with its predecessor.
+ *
+ * Corrections flow forward while a day is still in progress, and stop at
+ * finalised ones: recomputing those would rewrite the derived sales of every
+ * later day from a single edit, and finalised figures may already have been
+ * acted on for payroll.
+ *
+ * Persisting here rather than overriding at serialisation keeps one version of
+ * the truth — the list, the totals and the entry screen all read the same
+ * stored numbers.
+ */
+async function refreshCarriedOpenings<T extends { id: string; status: string; branchId: string; reportDate: Date; lines: { productId: string; begBal: number; begBalRecounted: boolean }[] }>(
+  report: T
+): Promise<boolean> {
+  if (report.status !== 'DRAFT') return false
+
+  const carry = await carriedOpening(report.branchId, report.reportDate)
+  const stale = report.lines.filter(
+    l => !l.begBalRecounted && l.begBal !== (carry.balances.get(l.productId) ?? 0)
+  )
+  if (stale.length === 0) return false
+
+  await prisma.$transaction(
+    stale.map(l =>
+      prisma.dsirLine.updateMany({
+        where: { reportId: report.id, productId: l.productId },
+        data: { begBal: carry.balances.get(l.productId) ?? 0 },
+      })
+    )
+  )
+  return true
+}
+
 async function loadOr404(id: string) {
   const report = await prisma.dsirReport.findUnique({ where: { id }, include: dsirInclude })
   if (!report) throw new HttpError(404, 'Report not found', 'NOT_FOUND')
@@ -54,6 +88,40 @@ function assertEditable(report: { status: string }): void {
       'This report is finalised. Reopen it before making changes.',
       'REPORT_FINALIZED'
     )
+  }
+}
+
+export interface CarriedOpening {
+  /** productId -> the ending balance being carried forward. */
+  balances: Map<string, number>
+  /** Which report it came from, so the screen can say where the figure is from. */
+  fromDate: string | null
+}
+
+/**
+ * The opening figures a branch inherits: the ending balances of its most recent
+ * FINALISED report before this date.
+ *
+ * Finalised only, and "most recent" rather than strictly yesterday. Branches
+ * close, and forms reach the office days late (docs/DOMAIN.md), so insisting on
+ * the previous calendar day would leave openings blank whenever a day was
+ * skipped — and carrying from a draft means the figure can move while that
+ * earlier day is still being worked on.
+ */
+export async function carriedOpening(branchId: string, reportDate: Date): Promise<CarriedOpening> {
+  const previous = await prisma.dsirReport.findFirst({
+    where: { branchId, status: 'FINALIZED', reportDate: { lt: reportDate } },
+    orderBy: { reportDate: 'desc' },
+    include: { lines: { select: { productId: true, endBal: true } } },
+  })
+
+  if (!previous) return { balances: new Map(), fromDate: null }
+
+  return {
+    // Zero is a real value: a product that sold out closes at 0 and legitimately
+    // opens at 0. Absent from the map means the product was not on that report.
+    balances: new Map(previous.lines.map(l => [l.productId, l.endBal])),
+    fromDate: toDateString(previous.reportDate),
   }
 }
 
@@ -88,10 +156,12 @@ async function prefillLines(branchId: string, reportDate: Date) {
 
   if (history.length === 0 && inboundProductIds.length === 0) return []
 
-  // Carry yesterday's closing figure forward. Zero is a real value — a product
-  // that sold out closes at 0 and legitimately opens at 0.
-  const previous = history[0]
-  const closingBalance = new Map((previous?.lines ?? []).map(l => [l.productId, l.endBal]))
+  // Openings come from the previous FINALISED report, not merely the previous
+  // one: an opening carried from a draft can move while that earlier day is
+  // still being encoded. The 7-report lookback above is a separate question —
+  // which products this branch carries — and still spans drafts, because a
+  // product appearing on an unfinished day is still a product it stocks.
+  const { balances: closingBalance } = await carriedOpening(branchId, reportDate)
 
   const productIds = [
     ...new Set([...history.flatMap(r => r.lines.map(l => l.productId)), ...inboundProductIds]),
@@ -226,9 +296,16 @@ router.get(
   '/:id',
   requirePermission('dsir:read'),
   asyncHandler(async (req, res) => {
-    const report = await loadOr404(pathParam(req, 'id'))
+    const loaded = await loadOr404(pathParam(req, 'id'))
+    // Opening a draft is the moment its carried openings are brought up to
+    // date, so a correction to the previous day is already applied by the time
+    // anyone starts typing.
+    const changed = await refreshCarriedOpenings(loaded)
+    const report = changed ? await loadOr404(loaded.id) : loaded
+
     const inbound = await loadInbound(report.branchId, report.reportDate)
-    res.json({ data: toDsirDto(report, inbound), error: null })
+    const carried = await carriedOpening(report.branchId, report.reportDate)
+    res.json({ data: toDsirDto(report, inbound, carried), error: null })
   })
 )
 
@@ -265,7 +342,7 @@ router.post(
       include: dsirInclude,
     })
     res.status(201).json({
-      data: toDsirDto(report, await loadInbound(branch.id, reportDate)),
+      data: toDsirDto(report, await loadInbound(branch.id, reportDate), await carriedOpening(branch.id, reportDate)),
       error: null,
     })
   })
@@ -333,6 +410,13 @@ router.put(
     const existingPrice = new Map(report.lines.map(l => [l.productId, l.unitPriceCents]))
     const currentPrice = new Map(products.map(p => [p.id, p.priceCents]))
 
+    // The opening lock lives here, not just in the UI: unless a line is flagged
+    // as the opener's own recount, its opening IS the carried figure and
+    // whatever the client submitted for it is ignored.
+    const carry = await carriedOpening(report.branchId, report.reportDate)
+    const openingFor = (l: { productId: string; begBal: number; begBalRecounted?: boolean }) =>
+      l.begBalRecounted ? l.begBal : (carry.balances.get(l.productId) ?? 0)
+
     await prisma.$transaction([
       prisma.dsirLine.deleteMany({ where: { reportId: report.id } }),
       prisma.dsirCharge.deleteMany({ where: { reportId: report.id } }),
@@ -343,7 +427,8 @@ router.put(
           reportId: report.id,
           productId: l.productId,
           unitPriceCents: existingPrice.get(l.productId) ?? currentPrice.get(l.productId) ?? 0,
-          begBal: l.begBal,
+          begBal: openingFor(l),
+          begBalRecounted: l.begBalRecounted ?? false,
           produced: l.produced,
           overEnd: l.overEnd,
           pulledOut: l.pulledOut,
@@ -380,7 +465,7 @@ router.put(
     ])
 
     const saved = await loadOr404(report.id)
-    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate)), error: null })
+    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
   })
 )
 
@@ -395,12 +480,15 @@ router.post(
     if (report.lines.length === 0) {
       throw new HttpError(400, 'Cannot finalise a report with no products', 'EMPTY_REPORT')
     }
+    // Freeze against the latest carry: from here the openings stop tracking the
+    // previous day, so they must be current at the moment they stop moving.
+    await refreshCarriedOpenings(report)
     await prisma.dsirReport.update({
       where: { id: report.id },
       data: { status: 'FINALIZED', finalizedAt: new Date() },
     })
     const saved = await loadOr404(report.id)
-    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate)), error: null })
+    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
   })
 )
 
@@ -417,7 +505,7 @@ router.post(
       data: { status: 'DRAFT', finalizedAt: null },
     })
     const saved = await loadOr404(report.id)
-    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate)), error: null })
+    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
   })
 )
 

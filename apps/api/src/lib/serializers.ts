@@ -166,7 +166,12 @@ export type InboundTransfer = Prisma.DsirTransferGetPayload<{
  * Computes every derived figure from the SHARED formula, so the encoder's screen
  * and the server can never disagree about what a day's sales were.
  */
-export function toDsirDto(report: DsirWithRelations, inbound: InboundTransfer[] = []): DsirReportDto {
+export function toDsirDto(
+  report: DsirWithRelations,
+  inbound: InboundTransfer[] = [],
+  /** Openings inherited from the branch's previous finalised report. */
+  carried: { balances: Map<string, number>; fromDate: string | null } = { balances: new Map(), fromDate: null }
+): DsirReportDto {
   const chargedBy = new Map<string, number>()
   for (const c of report.charges) {
     chargedBy.set(c.productId, (chargedBy.get(c.productId) ?? 0) + c.quantity)
@@ -222,6 +227,10 @@ export function toDsirDto(report: DsirWithRelations, inbound: InboundTransfer[] 
       },
       unitPriceCents: l.unitPriceCents,
       begBal: l.begBal,
+      begBalRecounted: l.begBalRecounted,
+      // Sent even when it matches, so the screen can show what a recount
+      // replaced without asking for the previous report.
+      carriedBegBal: carried.fromDate === null ? null : (carried.balances.get(l.productId) ?? 0),
       produced: l.produced,
       overEnd: l.overEnd,
       pulledOut: l.pulledOut,
@@ -252,6 +261,7 @@ export function toDsirDto(report: DsirWithRelations, inbound: InboundTransfer[] 
     branch: { id: report.branch.id, name: report.branch.name },
     reportDate: report.reportDate.toISOString().slice(0, 10),
     status: report.status as DsirStatus,
+    carriedFromDate: carried.fromDate,
     usesCharges: report.usesCharges,
     usesPullOuts: report.usesPullOuts,
     usesTransfers: report.usesTransfers,

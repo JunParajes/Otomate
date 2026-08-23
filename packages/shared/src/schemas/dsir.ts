@@ -9,6 +9,13 @@ export type DsirStatus = (typeof DSIR_STATUSES)[number]
 export const dsirLineSchema = z.object({
   productId: z.string().min(1),
   begBal: qty.optional().default(0),
+  /**
+   * True when the opening is the opener's own recount rather than the figure
+   * carried from the previous finalised report. While false the server ignores
+   * whatever begBal is sent and uses the carry, so the lock cannot be bypassed
+   * by posting straight to the API.
+   */
+  begBalRecounted: z.boolean().optional().default(false),
   produced: qty.optional().default(0),
   overEnd: qty.optional().default(0),
   pulledOut: qty.optional().default(0),

@@ -219,6 +219,18 @@ model DsirLine {
   unitPriceCents Int
 
   begBal    Int @default(0)
+
+  /// Whether the opening figure is the opener's own recount rather than the
+  /// figure carried from the previous finalised report.
+  ///
+  /// While false, begBal tracks that carry: correcting a draft's predecessor
+  /// flows forward, and the encoder cannot quietly adjust an opening to make a
+  /// day balance. Setting it true is a deliberate act in the UI, and the gap
+  /// against the carried figure is then shown rather than hidden — an opener
+  /// counting fewer than the closer left is overnight loss, which docs/DOMAIN.md
+  /// treats as real signal.
+  begBalRecounted Boolean @default(false)
+
   produced  Int @default(0)
   overEnd   Int @default(0)
   pulledOut Int @default(0)

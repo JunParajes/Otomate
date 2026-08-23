@@ -21,6 +21,7 @@ import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
 import DataState from '@/components/DataState'
 import QtyInput from '@/components/QtyInput'
+import OpeningBalanceCell from '@/components/OpeningBalanceCell'
 import MoneyCountInput from '@/components/MoneyCountInput'
 import { KeypadProvider } from '@/components/keypad/KeypadContext'
 
@@ -151,8 +152,23 @@ export default function DsirEntryPage() {
   const impossibleCount = computed.filter(c => c.impossible).length
   const hasInbound = (report?.inboundTransfers.length ?? 0) > 0
 
+  /**
+   * Openings the opener recounted differently from the previous close. Overnight
+   * loss or a miscount by one of two named people — docs/DOMAIN.md calls this
+   * real signal, and it is only signal if somebody sees it.
+   */
+  const recountGaps = lines.filter(
+    l => l.begBalRecounted && l.carriedBegBal !== null && l.begBal !== l.carriedBegBal
+  )
+
   function patchLine(productId: string, field: keyof Line, value: number) {
     setLines(prev => prev.map(l => (l.productId === productId ? { ...l, [field]: value } : l)))
+    setDirty(true)
+  }
+
+  /** Declares that the opener counted this shelf themselves, unlocking the box. */
+  function recountOpening(productId: string) {
+    setLines(prev => prev.map(l => (l.productId === productId ? { ...l, begBalRecounted: true } : l)))
     setDirty(true)
   }
 
@@ -163,6 +179,11 @@ export default function DsirEntryPage() {
       productId: p.id,
       product: { id: p.id, name: p.name, sku: p.sku, unit: p.unit, category: p.category },
       unitPriceCents: p.priceCents,
+      // Starts locked like any other line. If this product was on the previous
+      // finalised report the server supplies its closing figure on save; if it
+      // genuinely needs an opening typed, that is a recount.
+      begBalRecounted: false,
+      carriedBegBal: null,
       begBal: 0, produced: 0, overEnd: 0, pulledOut: 0, endBal: 0,
       transferredIn: 0, transferredOut: 0, charged: 0, preTotal: 0, sold: 0, salesCents: 0,
     }])
@@ -177,7 +198,8 @@ export default function DsirEntryPage() {
         usesTransfers: uses.transfers, usesOverEnd: uses.overEnd,
         openedById, closedById, notes: notes.trim() || null,
         lines: lines.map(l => ({
-          productId: l.productId, begBal: l.begBal, produced: l.produced,
+          productId: l.productId, begBal: l.begBal, begBalRecounted: l.begBalRecounted,
+          produced: l.produced,
           overEnd: l.overEnd, pulledOut: l.pulledOut, endBal: l.endBal,
         })),
         charges: uses.charges ? charges : [],
@@ -201,6 +223,13 @@ export default function DsirEntryPage() {
       children: (
         <Stack gap="xs">
           <Text size="sm">It will be locked from further edits. You can reopen it if you need to.</Text>
+          {/* Worth saying at the moment it stops being editable. */}
+          {recountGaps.length > 0 && (
+            <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
+              {recountGaps.length} opening{recountGaps.length === 1 ? '' : 's'} were recounted differently
+              from what the previous report left.
+            </Alert>
+          )}
           {impossibleCount > 0 && (
             <Alert color="red" icon={<IconAlertTriangle size={16} />}>
               {impossibleCount} line{impossibleCount === 1 ? '' : 's'} show more stock leaving than was
@@ -283,6 +312,23 @@ export default function DsirEntryPage() {
         </Group>
       </Card>
 
+      {recountGaps.length > 0 && (
+        <Alert
+          color="orange"
+          icon={<IconAlertTriangle size={18} />}
+          title={`${recountGaps.length} opening${recountGaps.length === 1 ? '' : 's'} recounted differently`}
+        >
+          The opener counted something other than {report.carriedFromDate ?? 'the previous report'} left
+          on the shelf. Worth explaining — it is either overnight loss or a miscount by one of two
+          named people.
+          <Text size="sm" mt={4}>
+            {recountGaps
+              .map(l => `${l.product.name}: counted ${l.begBal}, carried ${l.carriedBegBal}`)
+              .join(' · ')}
+          </Text>
+        </Alert>
+      )}
+
       {impossibleCount > 0 && (
         <Alert color="red" icon={<IconAlertTriangle size={18} />} title={`${impossibleCount} impossible line${impossibleCount === 1 ? '' : 's'}`}>
           More stock left than was ever available. Always a miscount or a missing entry — the rows are marked below.
@@ -331,7 +377,18 @@ export default function DsirEntryPage() {
                       {l.product.sku ? ` · ${l.product.sku}` : ''}
                     </Text>
                   </Table.Td>
-                  <Table.Td><QtyInput aria-label={`${l.product.name} beginning balance`} value={l.begBal} disabled={!canWrite} onChange={v => patchLine(l.productId, 'begBal', v)} /></Table.Td>
+                  <Table.Td>
+                    <OpeningBalanceCell
+                      productName={l.product.name}
+                      value={l.begBal}
+                      recounted={l.begBalRecounted}
+                      carried={l.carriedBegBal}
+                      carriedFromDate={report.carriedFromDate}
+                      disabled={!canWrite}
+                      onChange={v => patchLine(l.productId, 'begBal', v)}
+                      onRecount={() => recountOpening(l.productId)}
+                    />
+                  </Table.Td>
                   <Table.Td><QtyInput aria-label={`${l.product.name} produced`} value={l.produced} disabled={!canWrite} onChange={v => patchLine(l.productId, 'produced', v)} /></Table.Td>
                   {hasInbound && (
                     <Table.Td ta="right">

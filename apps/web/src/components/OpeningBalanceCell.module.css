@@ -1,0 +1,46 @@
+.wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-height: 26px;
+}
+
+/* Reads as a figure, not an empty box — it is a value carried forward, and
+   nothing here invites typing. */
+.locked {
+  padding: 4px 6px;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+/* Only on hover or keyboard focus: 55 rows of always-visible pencils is noise,
+   and recounting is the exception rather than the rule. */
+.unlock {
+  opacity: 0;
+  transition: opacity 100ms;
+}
+
+.wrap:hover .unlock,
+.unlock:focus-visible {
+  opacity: 1;
+}
+
+.lockIcon {
+  color: var(--mantine-color-dimmed);
+  opacity: 0.5;
+}
+
+/* Sits under the box so a recount that disagrees with the carry is visible
+   while scanning the column, not only on hover. */
+.note {
+  position: absolute;
+  top: 100%;
+  right: 4px;
+  margin-top: -2px;
+  white-space: nowrap;
+  pointer-events: auto;
+}

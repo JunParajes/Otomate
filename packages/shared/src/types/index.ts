@@ -146,6 +146,14 @@ import type { DsirStatus } from '../schemas/dsir.js'
 
 export interface DsirLine {
   productId: string
+  /** True when the opening was recounted rather than carried forward. */
+  begBalRecounted: boolean
+  /**
+   * The opening this line inherits from the branch's previous finalised report,
+   * so a recount can be shown against what it replaced. Null when the branch has
+   * no finalised history yet.
+   */
+  carriedBegBal: number | null
   product: { id: string; name: string; sku: string | null; unit: string; category: { id: string; name: string } }
   /** Snapshot taken when the report was encoded, not the product's price today. */
   unitPriceCents: number
@@ -246,6 +254,12 @@ export interface DsirSummary {
 }
 
 export interface DsirReport extends DsirSummary {
+  /**
+   * Which report the opening balances were carried from, as YYYY-MM-DD. Null
+   * when the branch has no finalised report before this date — a first report,
+   * or a run that has never been finalised.
+   */
+  carriedFromDate: string | null
   usesCharges: boolean
   usesPullOuts: boolean
   usesTransfers: boolean
