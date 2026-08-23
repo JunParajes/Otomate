@@ -18,7 +18,7 @@ import DataState from '@/components/DataState'
 import PermissionPicker from '@/components/PermissionPicker'
 
 export default function RolesPage() {
-  const { can } = useSession()
+  const { can, refresh } = useSession()
   const roles = useResource(adminApi.listRoles)
   const permissions = useResource(adminApi.permissions)
 
@@ -40,6 +40,12 @@ export default function RolesPage() {
     try {
       await action()
       await roles.reload()
+      // The header, the branch badge and the visible nav all read from the
+      // session, so a write here can leave them stale — most visibly when you
+      // edit your own account. Refreshed unconditionally rather than only when
+      // the row is "me": changing a role you hold, or renaming your branch,
+      // changes what you see without touching your own user row.
+      await refresh()
       notifications.show({ color: 'green', title: 'Done', message })
       onDone?.()
     } catch (e) {

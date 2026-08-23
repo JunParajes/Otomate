@@ -15,7 +15,7 @@ import PageHeader from '@/components/PageHeader'
 import DataState from '@/components/DataState'
 
 export default function BranchesPage() {
-  const { can } = useSession()
+  const { can, refresh } = useSession()
   const branches = useResource(adminApi.listBranches)
   const [editing, setEditing] = useState<BranchWithUsage | null>(null)
   const [creating, setCreating] = useState(false)
@@ -32,6 +32,12 @@ export default function BranchesPage() {
     try {
       await action()
       await branches.reload()
+      // The header, the branch badge and the visible nav all read from the
+      // session, so a write here can leave them stale — most visibly when you
+      // edit your own account. Refreshed unconditionally rather than only when
+      // the row is "me": changing a role you hold, or renaming your branch,
+      // changes what you see without touching your own user row.
+      await refresh()
       notifications.show({ color: 'green', title: 'Done', message })
       onDone?.()
     } catch (e) {

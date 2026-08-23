@@ -25,7 +25,7 @@ function ok(message: string) {
 }
 
 export default function UsersPage() {
-  const { user: me, can } = useSession()
+  const { user: me, can, refresh } = useSession()
   const users = useResource(adminApi.listUsers)
   const roles = useResource(adminApi.listRoles)
   const branches = useResource(adminApi.listBranches)
@@ -66,6 +66,12 @@ export default function UsersPage() {
     try {
       await action()
       await users.reload()
+      // The header, the branch badge and the visible nav all read from the
+      // session, so a write here can leave them stale — most visibly when you
+      // edit your own account. Refreshed unconditionally rather than only when
+      // the row is "me": changing a role you hold, or renaming your branch,
+      // changes what you see without touching your own user row.
+      await refresh()
       ok(message)
       onDone?.()
     } catch (e) {

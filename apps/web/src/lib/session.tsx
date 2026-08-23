@@ -31,9 +31,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     try {
       const { data } = await api.get<ApiResponse<Me>>('/api/users/me')
-      setUser(data.error ? null : data.data)
+      if (!data.error) setUser(data.data)
     } catch {
-      setUser(null)
+      // Deliberately does NOT sign the user out. A genuine 401 is already
+      // handled globally by the interceptor in api.ts, which clears the token
+      // and redirects; anything reaching here is a network blip or a 5xx.
+      // Dropping the user on those would send someone with a perfectly valid
+      // token back to the login screen — and refresh() now runs after admin
+      // saves, so a blip mid-save would look like being logged out for editing
+      // your own account.
     } finally {
       setLoading(false)
     }
