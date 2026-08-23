@@ -130,7 +130,12 @@ enum EmployeePosition {
 model Employee {
   id           String           @id @default(cuid())
   employeeCode String?          @unique
-  name         String
+  // Stored in parts: payroll and official documents need them separately, and
+  // splitting a full name back apart guesses wrong on suffixes and middle names.
+  firstName    String
+  middleName   String?
+  lastName     String
+  suffix       String?
   position     EmployeePosition @default(OTHER)
   branchId     String?
   branch       Branch?          @relation(fields: [branchId], references: [id])
@@ -146,6 +151,7 @@ model Employee {
 
   @@index([branchId])
   @@index([isActive])
+  @@index([lastName, firstName])
 }
 
 /// DRAFT is editable; FINALIZED locks the report. Encoding runs days behind the

@@ -1,6 +1,6 @@
 import type { Branch, Prisma, Role, User } from '@prisma/client'
 import { imageUrl } from './images'
-import { computeLineTotals } from '@otomate/shared'
+import { computeLineTotals, formatEmployeeName } from '@otomate/shared'
 import type {
   DsirReport as DsirReportDto,
   DsirSummary as DsirSummaryDto,
@@ -126,7 +126,13 @@ export function toEmployeeDto(employee: EmployeeWithRelations): EmployeeDto {
   return {
     id: employee.id,
     employeeCode: employee.employeeCode,
-    name: employee.name,
+    firstName: employee.firstName,
+    middleName: employee.middleName,
+    lastName: employee.lastName,
+    suffix: employee.suffix,
+    // Assembled here so no caller has to, and so every screen shows the same
+    // thing. The parts are still sent, for anything that needs them apart.
+    name: formatEmployeeName(employee),
     position: employee.position as EmployeePosition,
     branch: employee.branch ? { id: employee.branch.id, name: employee.branch.name } : null,
     // Only the identifying bits of the linked account — never the password hash.
@@ -233,7 +239,7 @@ export function toDsirDto(report: DsirWithRelations, inbound: InboundTransfer[] 
     productId: c.productId,
     productName: c.product.name,
     employeeId: c.employeeId,
-    employeeName: c.employee.name,
+    employeeName: formatEmployeeName(c.employee),
     quantity: c.quantity,
     // Charges are paid at full selling price, so the snapshot is the right basis.
     valueCents: c.quantity * (priceOf.get(c.productId) ?? c.product.priceCents),
@@ -250,8 +256,8 @@ export function toDsirDto(report: DsirWithRelations, inbound: InboundTransfer[] 
     usesPullOuts: report.usesPullOuts,
     usesTransfers: report.usesTransfers,
     usesOverEnd: report.usesOverEnd,
-    openedBy: report.openedBy ? { id: report.openedBy.id, name: report.openedBy.name } : null,
-    closedBy: report.closedBy ? { id: report.closedBy.id, name: report.closedBy.name } : null,
+    openedBy: report.openedBy ? { id: report.openedBy.id, name: formatEmployeeName(report.openedBy) } : null,
+    closedBy: report.closedBy ? { id: report.closedBy.id, name: formatEmployeeName(report.closedBy) } : null,
     encodedBy: report.encodedBy ? { id: report.encodedBy.id, name: report.encodedBy.name } : null,
     finalizedAt: report.finalizedAt?.toISOString() ?? null,
     notes: report.notes,
@@ -276,7 +282,7 @@ export function toDsirDto(report: DsirWithRelations, inbound: InboundTransfer[] 
     collections: report.collections.map(c => ({
       id: c.id,
       employeeId: c.employeeId,
-      employeeName: c.employee?.name ?? null,
+      employeeName: c.employee ? formatEmployeeName(c.employee) : null,
       label: c.label,
       amountCents: c.amountCents,
     })),

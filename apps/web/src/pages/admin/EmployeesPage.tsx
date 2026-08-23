@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
-  ActionIcon, Badge, Button, Group, Menu, Modal, Select, Stack, Switch, Table,
+  ActionIcon, Badge, Button, Grid, Group, Menu, Modal, Select, Stack, Switch, Table,
   Text, TextInput, Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
@@ -13,7 +13,7 @@ import {
   IconDotsVertical, IconLink, IconPencil, IconPlus, IconSearch, IconUserCheck, IconUserOff,
 } from '@tabler/icons-react'
 import {
-  EMPLOYEE_POSITIONS, POSITION_LABELS, createEmployeeSchema, type Employee,
+  EMPLOYEE_POSITIONS, POSITION_LABELS, createEmployeeSchema, formatEmployeeName, type Employee,
 } from '@otomate/shared'
 import { employeeApi } from '@/lib/employees'
 import { adminApi } from '@/lib/admin'
@@ -55,7 +55,8 @@ export default function EmployeesPage() {
 
   const form = useForm({
     initialValues: {
-      name: '', employeeCode: '', position: 'OTHER',
+      firstName: '', middleName: '', lastName: '', suffix: '',
+      employeeCode: '', position: 'OTHER',
       branchId: null as string | null, userId: null as string | null, isActive: true,
     },
     validate: zodResolver(createEmployeeSchema),
@@ -67,7 +68,9 @@ export default function EmployeesPage() {
       if (branchFilter && e.branch?.id !== branchFilter) return false
       if (positionFilter && e.position !== positionFilter) return false
       if (!q) return true
-      return e.name.toLowerCase().includes(q) || (e.employeeCode ?? '').toLowerCase().includes(q)
+      const haystack = [e.name, e.firstName, e.middleName, e.lastName, e.suffix, e.employeeCode]
+        .filter(Boolean).join(' ').toLowerCase()
+      return haystack.includes(q)
     })
   }, [employees.data, search, branchFilter, positionFilter])
 
@@ -86,13 +89,20 @@ export default function EmployeesPage() {
   }
 
   function openCreate() {
-    form.setValues({ name: '', employeeCode: '', position: 'OTHER', branchId: null, userId: null, isActive: true })
+    form.setValues({
+      firstName: '', middleName: '', lastName: '', suffix: '',
+      employeeCode: '', position: 'OTHER', branchId: null, userId: null, isActive: true,
+    })
     form.clearErrors(); setCreating(true)
   }
 
   function openEdit(e: Employee) {
     form.setValues({
-      name: e.name, employeeCode: e.employeeCode ?? '', position: e.position,
+      firstName: e.firstName,
+      middleName: e.middleName ?? '',
+      lastName: e.lastName,
+      suffix: e.suffix ?? '',
+      employeeCode: e.employeeCode ?? '', position: e.position,
       branchId: e.branch?.id ?? null, userId: e.linkedUser?.id ?? null, isActive: e.isActive,
     })
     form.clearErrors(); setEditing(e)
@@ -219,7 +229,7 @@ export default function EmployeesPage() {
         opened={creating || isEditing}
         onClose={() => { setCreating(false); setEditing(null) }}
         title={isEditing ? `Edit ${editing?.name}` : 'Add employee'}
-        size="lg"
+        size="xl"
         centered
       >
         <form onSubmit={form.onSubmit(values =>
@@ -232,30 +242,52 @@ export default function EmployeesPage() {
               }
               return isEditing ? employeeApi.update(editing!.id, payload) : employeeApi.create(payload)
             },
-            isEditing ? 'Changes saved' : `${values.name} added`,
+            isEditing ? 'Changes saved' : `${formatEmployeeName(values)} added`,
             () => { setCreating(false); setEditing(null) }
           )
         )}>
           <Stack gap="md">
-            <Group grow align="flex-start">
-              <TextInput label="Full name" placeholder="Maria Santos" withAsterisk {...form.getInputProps('name')} />
+            {/* Name parts on one row, mirroring how they sit on a paper form —
+                the encoder reads left to right and tabs straight through.
+                Widths are uneven on purpose: surnames run long ("Dela Cruz"),
+                suffixes never do. They stack on a phone. */}
+            <Grid gap="sm" align="flex-start">
+              <Grid.Col span={{ base: 12, sm: 4 }}>
+                <TextInput label="First name" placeholder="Maria" withAsterisk {...form.getInputProps('firstName')} />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, sm: 3 }}>
+                <TextInput label="Middle name" placeholder="Reyes" {...form.getInputProps('middleName')} />
+              </Grid.Col>
+              <Grid.Col span={{ base: 8, sm: 3 }}>
+                <TextInput label="Surname" placeholder="Santos" withAsterisk {...form.getInputProps('lastName')} />
+              </Grid.Col>
+              <Grid.Col span={{ base: 4, sm: 2 }}>
+                <TextInput label="Suffix" placeholder="Jr." {...form.getInputProps('suffix')} />
+              </Grid.Col>
+            </Grid>
+
+            {/* flex-end, not flex-start: the description under Employee code
+                makes its label block taller, and aligning tops would leave the
+                two inputs on different lines. */}
+            <Group grow align="flex-end">
               <TextInput label="Employee code" placeholder="EMP-001" description="Optional, must be unique" {...form.getInputProps('employeeCode')} />
+              <Select label="Position" size="md" data={positionOptions} {...form.getInputProps('position')} />
             </Group>
-            <Group grow align="flex-start">
-              <Select label="Position" data={positionOptions} {...form.getInputProps('position')} />
-              <Select
-                label="Branch"
-                data={branchOptions}
-                clearable
-                placeholder="Unassigned"
-                description="Current assignment — change it when they transfer"
-                {...form.getInputProps('branchId')}
-              />
-            </Group>
+
+            <Select
+              label="Branch"
+              size="md"
+              data={branchOptions}
+              clearable
+              placeholder="Unassigned"
+              description="Current assignment — change it when they transfer"
+              {...form.getInputProps('branchId')}
+            />
 
             {canLinkLogins && (
               <Select
                 label="Linked login"
+                size="md"
                 data={userOptions}
                 clearable
                 searchable

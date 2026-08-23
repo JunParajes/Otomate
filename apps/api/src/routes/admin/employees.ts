@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { createEmployeeSchema, updateEmployeeSchema } from '@otomate/shared'
+import { createEmployeeSchema, updateEmployeeSchema, formatEmployeeName } from '@otomate/shared'
 import { prisma } from '../../prisma/client'
 import { requirePermission } from '../../middleware/auth'
 import { asyncHandler } from '../../middleware/async-handler'
@@ -31,7 +31,7 @@ async function assertLinkable(userId: string | null | undefined, selfId?: string
   if (user.employee && user.employee.id !== selfId) {
     throw new HttpError(
       409,
-      `That login is already linked to ${user.employee.name}`,
+      `That login is already linked to ${formatEmployeeName(user.employee)}`,
       'USER_ALREADY_LINKED'
     )
   }
@@ -43,7 +43,7 @@ router.get(
   asyncHandler(async (_req, res) => {
     const employees = await prisma.employee.findMany({
       include: withRelations,
-      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      orderBy: [{ isActive: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
     })
     res.json({ data: employees.map(toEmployeeDto), error: null })
   })
@@ -55,7 +55,9 @@ router.post(
   asyncHandler(async (req, res) => {
     const parsed = createEmployeeSchema.safeParse(req.body)
     if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error), 'VALIDATION_ERROR')
-    const { name, position, isActive } = parsed.data
+    const { firstName, lastName, position, isActive } = parsed.data
+    const middleName = cleanOptional(parsed.data.middleName) ?? null
+    const suffix = cleanOptional(parsed.data.suffix) ?? null
     const employeeCode = cleanOptional(parsed.data.employeeCode) ?? null
     const userId = cleanOptional(parsed.data.userId) ?? null
 
@@ -64,7 +66,11 @@ router.post(
 
     try {
       const employee = await prisma.employee.create({
-        data: { name, position, isActive, employeeCode, userId, branchId: parsed.data.branchId ?? null },
+        data: {
+          firstName, middleName, lastName, suffix,
+          position, isActive, employeeCode, userId,
+          branchId: parsed.data.branchId ?? null,
+        },
         include: withRelations,
       })
       res.status(201).json({ data: toEmployeeDto(employee), error: null })
@@ -93,7 +99,10 @@ router.patch(
       const employee = await prisma.employee.update({
         where: { id: existing.id },
         data: {
-          ...(parsed.data.name !== undefined && { name: parsed.data.name }),
+          ...(parsed.data.firstName !== undefined && { firstName: parsed.data.firstName }),
+          ...(parsed.data.lastName !== undefined && { lastName: parsed.data.lastName }),
+          ...(parsed.data.middleName !== undefined && { middleName: cleanOptional(parsed.data.middleName) ?? null }),
+          ...(parsed.data.suffix !== undefined && { suffix: cleanOptional(parsed.data.suffix) ?? null }),
           ...(parsed.data.position !== undefined && { position: parsed.data.position }),
           ...(parsed.data.isActive !== undefined && { isActive: parsed.data.isActive }),
           ...(parsed.data.branchId !== undefined && { branchId: parsed.data.branchId }),

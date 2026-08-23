@@ -127,6 +127,11 @@ import type { EmployeePosition } from '../schemas/employee.js'
 export interface Employee {
   id: string
   employeeCode: string | null
+  firstName: string
+  middleName: string | null
+  lastName: string
+  suffix: string | null
+  /** Derived from the parts by the API, so callers never have to assemble it. */
   name: string
   position: EmployeePosition
   branch: { id: string; name: string } | null
