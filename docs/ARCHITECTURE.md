@@ -236,6 +236,25 @@ An api rollout therefore still fails roughly **2-3 requests out of ~1300** at
 usually zero requests, and any that do fail surface as a visible error to retry,
 not as lost data.
 
+### A deploy that changes Traefik labels still costs downtime
+
+Both generations exist at once during a rollout, and both declare the same
+Traefik router. If their labels **differ**, Traefik logs
+
+```
+ERR HTTP router defined multiple times with different configurations
+```
+
+and disables that router for the whole overlap — so the site returns 404 even
+though a healthy container is serving. This was measured, not theorised: the
+deploy that introduced this rollout also added the `retry-frontend` labels, and
+produced a 6-second 404 window while old and new disagreed.
+
+Ordinary deploys are unaffected, because both generations carry identical
+labels. But **when you change a Traefik label, expect one deploy's worth of
+downtime**, and prefer to ship label changes on their own rather than alongside
+something urgent.
+
 ### Migrations
 
 Migrations still run *before* the rollout, so old and new API containers briefly
