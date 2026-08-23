@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
 
-    <!-- Matches the Mantine AppShell header in each scheme, so the browser and
-         the app do not show two different shades of "background" side by side. -->
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#242424" />
+    <!-- Kept in step with the resolved scheme by the script below (before first
+         paint) and then by ThemeColorSync in main.tsx. A single tag, not one per
+         `prefers-color-scheme`: those follow the OS, which is the wrong source
+         once someone has chosen a scheme explicitly. -->
+    <meta id="theme-color-active" name="theme-color" content="#ffffff" />
 
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
@@ -22,6 +23,39 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
     <title>Otomate — Bakery Management</title>
+
+    <!--
+      Applies the stored colour scheme before the bundle loads.
+
+      Without this the page paints with Mantine's default (light) until React
+      mounts, so anyone who has chosen dark gets a white flash on every load —
+      most jarring in the installed PWA, which is launched cold each time.
+
+      This mirrors Mantine's own ColorSchemeScript: same localStorage key
+      ("mantine-color-scheme-value"), same attribute, same "auto" resolution.
+      Kept inline and dependency-free so it runs during head parsing rather than
+      after a module fetch. If the Mantine key ever changes, this must follow it.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('mantine-color-scheme-value')
+          var scheme =
+            stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'auto'
+          var computed =
+            scheme !== 'auto'
+              ? scheme
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+          document.documentElement.setAttribute('data-mantine-color-scheme', computed)
+          var meta = document.getElementById('theme-color-active')
+          if (meta) meta.setAttribute('content', computed === 'dark' ? '#242424' : '#ffffff')
+        } catch (e) {
+          /* private mode, or storage blocked — fall through to the light default */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -5,17 +5,23 @@ import {
   AppShell,
   Avatar,
   Badge,
+  Box,
   Burger,
+  Center,
   Divider,
   Group,
   Menu,
   NavLink,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Text,
   Title,
   Tooltip,
   UnstyledButton,
+  useComputedColorScheme,
+  useMantineColorScheme,
+  type MantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import {
@@ -32,15 +38,53 @@ import {
   IconClipboardList,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
+  IconSun,
+  IconMoon,
+  IconDeviceDesktop,
 } from '@tabler/icons-react'
 import type { PermissionName } from '@otomate/shared'
 import { useSession } from '@/lib/session'
+import { syncThemeColor } from '@/lib/theme-color'
 
 interface NavItem {
   label: string
   to: string
   icon: typeof IconUsers
   permission?: PermissionName
+}
+
+const APPEARANCE_OPTIONS = [
+  { value: 'light', label: 'Light', icon: IconSun },
+  { value: 'dark', label: 'Dark', icon: IconMoon },
+  { value: 'auto', label: 'System', icon: IconDeviceDesktop },
+] as const
+
+/**
+ * Light / Dark / System. "System" is kept as an option rather than reduced to a
+ * two-way toggle because it is the existing default — dropping it would take
+ * away the behaviour everyone has now. Mantine persists the choice to
+ * localStorage itself, so there is nothing to save here.
+ */
+function AppearancePicker() {
+  const { colorScheme, setColorScheme } = useMantineColorScheme()
+
+  return (
+    <SegmentedControl
+      fullWidth
+      size="xs"
+      value={colorScheme}
+      onChange={value => setColorScheme(value as MantineColorScheme)}
+      data={APPEARANCE_OPTIONS.map(({ value, label, icon: Icon }) => ({
+        value,
+        label: (
+          <Center style={{ gap: 6 }}>
+            <Icon size={14} />
+            <span>{label}</span>
+          </Center>
+        ),
+      }))}
+    />
+  )
 }
 
 const MAIN: NavItem[] = [{ label: 'Dashboard', to: '/dashboard', icon: IconLayoutDashboard }]
@@ -172,7 +216,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Title>
           </Group>
 
-          <Menu position="bottom-end" withArrow shadow="md">
+          {/* Wide enough for the appearance control to breathe; the dropdown
+              would otherwise shrink to the width of the email address. */}
+          <Menu position="bottom-end" withArrow shadow="md" width={260}>
             <Menu.Target>
               <UnstyledButton>
                 <Group gap="xs" wrap="nowrap">
@@ -200,6 +246,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               >
                 Change password
               </Menu.Item>
+
+              <Menu.Divider />
+              <Menu.Label>Appearance</Menu.Label>
+              {/* Not a Menu.Item: those close the menu on click, and the point
+                  of this control is to see the change while choosing. */}
+              <Box px="xs" pb={6}>
+                <AppearancePicker />
+              </Box>
+
               <Menu.Divider />
               <Menu.Item color="red" leftSection={<IconLogout size={16} />} onClick={signOut}>
                 Sign out

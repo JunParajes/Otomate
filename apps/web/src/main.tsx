@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { MantineProvider } from '@mantine/core'
+import { MantineProvider, useComputedColorScheme } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
 import { ModalsProvider } from '@mantine/modals'
 import LoginPage from '@/pages/LoginPage'
@@ -20,10 +20,24 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 import AppLayout from '@/components/AppLayout'
 import { SessionProvider } from '@/lib/session'
 import { theme } from '@/theme'
+import { syncThemeColor } from '@/lib/theme-color'
 
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import '@mantine/dropzone/styles.css'
+
+/**
+ * Repaints the browser chrome whenever the resolved scheme changes. Lives at the
+ * root rather than in the account menu so it also covers the login page, which
+ * renders outside the app shell.
+ */
+function ThemeColorSync() {
+  const computed = useComputedColorScheme('light')
+  React.useEffect(() => {
+    syncThemeColor(computed)
+  }, [computed])
+  return null
+}
 
 /** Authenticated pages share the shell; login and 404 stand alone. */
 function Shell({ children, permission }: { children: React.ReactNode; permission?: Parameters<typeof ProtectedRoute>[0]['permission'] }) {
@@ -37,6 +51,7 @@ function Shell({ children, permission }: { children: React.ReactNode; permission
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="auto">
+      <ThemeColorSync />
       {/* bottom-right: top-right collides with each page primary action button */}
       <Notifications position="bottom-right" />
       <ModalsProvider>
