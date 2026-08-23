@@ -27,6 +27,13 @@ COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 # React Router: serve index.html for all routes
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 
+# nginx treats SIGTERM as a *fast* shutdown: it drops connections that are
+# still being served. Docker sends SIGTERM by default, so removing the outgoing
+# container during a rolling deploy cut whatever request was in flight —
+# measured as one failed request per deploy. SIGQUIT is nginx's graceful
+# shutdown: finish what is in progress, then exit.
+STOPSIGNAL SIGQUIT
+
 EXPOSE 80
 
 HEALTHCHECK --interval=5s --timeout=5s --start-period=10s \

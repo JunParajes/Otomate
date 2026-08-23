@@ -225,6 +225,10 @@ fail. The two services handle it differently:
 - **web** has a Traefik `retry` middleware, which re-sends to the replacement.
   Measured: this takes a web rollout from ~6 failed requests to zero. Safe here
   because the frontend serves static GETs.
+- **web** also sets `STOPSIGNAL SIGQUIT`. nginx treats SIGTERM as a *fast*
+  shutdown that drops in-flight connections; SIGQUIT drains first. Without it a
+  deploy cost one failed request, at the exact moment the outgoing container
+  was destroyed.
 - **api** deliberately has **no** retry. Retrying a request the server already
   processed would save a DSIR twice. Instead it handles `SIGTERM`: it stops
   accepting connections and lets in-flight requests finish, so a save in
