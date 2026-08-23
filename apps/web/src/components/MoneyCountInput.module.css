@@ -1,0 +1,67 @@
+/* Mirrors Mantine's xs input metrics so this sits level with the Select and
+   TextInput beside it in the collections row. */
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 110px;
+  height: 30px;
+  padding-inline: 8px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-default);
+  background: var(--mantine-color-body);
+}
+
+.wrap:focus-within {
+  border-color: var(--mantine-color-crust-filled);
+}
+
+.prefix {
+  margin-inline-end: 2px;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+}
+
+.input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  text-align: right;
+  color: var(--mantine-color-text);
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.input:disabled {
+  color: var(--mantine-color-dimmed);
+  cursor: not-allowed;
+}
+
+.wrap:has(.invalid) {
+  border-color: var(--mantine-color-red-6);
+}
+
+/* Below the box: "= ₱1,560.00" will not fit inside a 110px field. */
+.preview {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 2;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-crust-filled);
+  color: var(--mantine-color-black);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* Long sums extend leftwards from the cell; cap it so a runaway expression
+     cannot stretch off the side of the table. */
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  box-shadow: var(--mantine-shadow-sm);
+}

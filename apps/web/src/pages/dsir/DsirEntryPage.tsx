@@ -21,6 +21,7 @@ import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
 import DataState from '@/components/DataState'
 import QtyInput from '@/components/QtyInput'
+import MoneyCountInput from '@/components/MoneyCountInput'
 
 type Line = DsirReport['lines'][number]
 type Charge = { productId: string; employeeId: string; quantity: number }
@@ -286,6 +287,13 @@ export default function DsirEntryPage() {
         </Alert>
       )}
 
+      {/* Otherwise invisible: nobody types "*" into a box that has only ever
+          taken digits. */}
+      <Text size="xs" c="dimmed">
+        Counting a stack? Type <Text span ff="monospace" fw={600}>4*5+3*4</Text> in any count box and it
+        works out 32 — layers are multiplied before they are added, unlike on a calculator.
+      </Text>
+
       <DataState loading={products.loading} error={products.error}>
         <Table.ScrollContainer minWidth={880}>
           <Table striped="odd" highlightOnHover withTableBorder verticalSpacing={4} horizontalSpacing="xs">
@@ -461,9 +469,11 @@ export default function DsirEntryPage() {
               <TextInput placeholder="or a label" size="xs" style={{ flex: 1 }} disabled={!canWrite}
                 value={c.label ?? ''}
                 onChange={e => { const v = e.currentTarget.value; setCollections(p => p.map((x, j) => j === i ? { ...x, label: v || null } : x)); setDirty(true) }} />
-              <NumberInput size="xs" w={110} min={0} decimalScale={2} fixedDecimalScale prefix="₱" hideControls disabled={!canWrite}
-                value={c.amountCents / 100}
-                onChange={v => { const pesos = typeof v === 'number' ? v : Number(v); setCollections(p => p.map((x, j) => j === i ? { ...x, amountCents: Number.isFinite(pesos) ? Math.round(pesos * 100) : 0 } : x)); setDirty(true) }} />
+              <MoneyCountInput
+                aria-label="Amount collected"
+                disabled={!canWrite}
+                value={c.amountCents}
+                onChange={cents => { setCollections(p => p.map((x, j) => j === i ? { ...x, amountCents: cents } : x)); setDirty(true) }} />
               {canWrite && (
                 <ActionIcon variant="subtle" color="red" size="sm" aria-label="Remove collection"
                   onClick={() => { setCollections(p => p.filter((_, j) => j !== i)); setDirty(true) }}>

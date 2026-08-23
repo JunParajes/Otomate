@@ -31,3 +31,41 @@
 .highlight {
   background: var(--mantine-color-crust-light);
 }
+
+/* Anchors the "= 32" preview. display:block so the input still fills the cell. */
+.wrap {
+  position: relative;
+  display: block;
+}
+
+/* An expression the box cannot use — never committed, so the cell keeps its
+   last good value; this only marks the text being typed. */
+.input.invalid {
+  border-color: var(--mantine-color-red-6);
+}
+
+/* Floats clear of the cell: at ~52px wide there is no room for the answer
+   beside a sum like 4*5+3*4. pointer-events:none so it can never intercept a
+   click meant for the next cell. */
+.preview {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 2;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-crust-filled);
+  color: var(--mantine-color-black);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* Long sums extend leftwards from the cell; cap it so a runaway expression
+     cannot stretch off the side of the table. */
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  box-shadow: var(--mantine-shadow-sm);
+}
