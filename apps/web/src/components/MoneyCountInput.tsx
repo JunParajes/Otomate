@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { CURRENCY_SYMBOL, formatMoney } from '@otomate/shared'
 import { useExpressionInput } from '@/lib/use-expression-input'
+import { useKeypadField } from '@/lib/use-keypad-field'
 import classes from './MoneyCountInput.module.css'
 
 interface Props {
@@ -47,24 +48,31 @@ export default function MoneyCountInput({ value, onChange, disabled, placeholder
     normalise: toPesos,
   })
 
+  const keypad = useKeypadField({
+    field,
+    label: rest['aria-label'] ?? 'Amount collected',
+    formatPreview: pesos => formatMoney(Math.round(pesos * 100)),
+  })
+
   return (
-    <span className={classes.wrap}>
+    <span className={`${classes.wrap} ${keypad.isActive ? classes.keypadActive : ''}`}>
       <span className={classes.prefix} aria-hidden>{CURRENCY_SYMBOL}</span>
       <input
         {...rest}
         type="text"
-        inputMode="text"
+        inputMode={keypad.inputMode}
         className={`${classes.input} ${field.invalid ? classes.invalid : ''}`}
         disabled={disabled}
         value={field.text}
         placeholder={placeholder ?? '0.00'}
         autoComplete="off"
-        onFocus={field.onFocus}
-        onBlur={field.onBlur}
+        onFocus={e => { keypad.onFocus(); field.onFocus(e) }}
+        onPointerDown={keypad.onPointerDown}
+        onBlur={keypad.onBlur}
         onKeyDown={field.onKeyDown}
         onChange={e => field.onChange(e.currentTarget.value)}
       />
-      {field.preview !== null && (
+      {field.preview !== null && !keypad.isActive && (
         <span className={classes.preview}>
           {field.text} = {formatMoney(Math.round(field.preview * 100))}
         </span>

@@ -69,3 +69,11 @@
   pointer-events: none;
   box-shadow: var(--mantine-shadow-sm);
 }
+
+/* The box the keypad is currently driving, so it stays identifiable once focus
+   has moved to a key. */
+.input.keypadActive {
+  border-color: var(--mantine-color-crust-filled);
+  background: var(--mantine-color-body);
+  box-shadow: 0 0 0 2px var(--mantine-color-crust-light);
+}

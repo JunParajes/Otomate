@@ -22,6 +22,7 @@ import { useSession } from '@/lib/session'
 import DataState from '@/components/DataState'
 import QtyInput from '@/components/QtyInput'
 import MoneyCountInput from '@/components/MoneyCountInput'
+import { KeypadProvider } from '@/components/keypad/KeypadContext'
 
 type Line = DsirReport['lines'][number]
 type Charge = { productId: string; employeeId: string; quantity: number }
@@ -218,7 +219,8 @@ export default function DsirEntryPage() {
   if (error || !report) return <Alert color="red" title="Could not load">{error}</Alert>
 
   return (
-    <Stack gap="md">
+    <KeypadProvider>
+      <Stack gap="md">
       <Group justify="space-between" align="flex-start" wrap="wrap">
         <Group gap="sm">
           <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/dsir')} aria-label="Back">
@@ -538,7 +540,8 @@ export default function DsirEntryPage() {
             onChange={e => { setNotes(e.currentTarget.value); setDirty(true) }} />
         </Group>
       </Card>
-    </Stack>
+      </Stack>
+    </KeypadProvider>
   )
 }
 

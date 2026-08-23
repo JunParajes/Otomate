@@ -65,3 +65,8 @@
   pointer-events: none;
   box-shadow: var(--mantine-shadow-sm);
 }
+
+.wrap.keypadActive {
+  border-color: var(--mantine-color-crust-filled);
+  box-shadow: 0 0 0 2px var(--mantine-color-crust-light);
+}

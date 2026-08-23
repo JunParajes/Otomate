@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react'
 import { useExpressionInput } from '@/lib/use-expression-input'
+import { useKeypadField } from '@/lib/use-keypad-field'
 import classes from './QtyInput.module.css'
 
 interface Props {
@@ -41,6 +42,12 @@ function QtyInputImpl({ value, onChange, disabled, highlight, ...rest }: Props) 
     normalise: toCount,
   })
 
+  const keypad = useKeypadField({
+    field,
+    label: rest['aria-label'],
+    formatPreview: String,
+  })
+
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => field.onChange(e.currentTarget.value),
     [field]
@@ -51,12 +58,15 @@ function QtyInputImpl({ value, onChange, disabled, highlight, ...rest }: Props) 
       <input
         {...rest}
         type="text"
-        // Not "numeric": that keypad has no operators, and this box now takes them.
-        inputMode="text"
+        // Not "numeric": that keypad has no operators, and this box now takes
+        // them. On touch it becomes "none" so the system keyboard stays down
+        // and the app's own keypad is used instead.
+        inputMode={keypad.inputMode}
         className={[
           classes.input,
           highlight ? classes.highlight : '',
           field.invalid ? classes.invalid : '',
+          keypad.isActive ? classes.keypadActive : '',
         ]
           .filter(Boolean)
           .join(' ')}
@@ -64,8 +74,9 @@ function QtyInputImpl({ value, onChange, disabled, highlight, ...rest }: Props) 
         value={field.text}
         placeholder="0"
         autoComplete="off"
-        onFocus={field.onFocus}
-        onBlur={field.onBlur}
+        onFocus={e => { keypad.onFocus(); field.onFocus(e) }}
+        onPointerDown={keypad.onPointerDown}
+        onBlur={keypad.onBlur}
         onKeyDown={field.onKeyDown}
         onChange={handleChange}
       />
@@ -74,7 +85,7 @@ function QtyInputImpl({ value, onChange, disabled, highlight, ...rest }: Props) 
           component was written to avoid. The cell is ~52px wide, far too narrow
           for "4*5+3*4" — the box scrolls and hides the start of what was
           typed, so the chip repeats the whole sum beside its answer. */}
-      {field.preview !== null && (
+      {field.preview !== null && !keypad.isActive && (
         <span className={classes.preview}>
           {field.text} = {field.preview}
         </span>

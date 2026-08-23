@@ -1,0 +1,32 @@
+.dock {
+  position: fixed;
+  right: var(--mantine-spacing-md);
+  bottom: var(--mantine-spacing-md);
+  z-index: 300;
+  width: 260px;
+  background: var(--mantine-color-body);
+}
+
+/* Clear of the notification stack, which also sits bottom-right. */
+@media (max-width: 480px) {
+  .dock {
+    right: var(--mantine-spacing-xs);
+    bottom: var(--mantine-spacing-xs);
+    width: calc(100vw - var(--mantine-spacing-xs) * 2);
+  }
+}
+
+.readout {
+  background: var(--mantine-color-default-hover);
+  text-align: right;
+  min-height: 56px;
+}
+
+/* Size and padding come from px/h style props on the Button, not from here:
+   the size prop sets --button-padding-x inline at 22px, and a class cannot
+   outrank an inline style. In a three-column grid that padding left ~26px for
+   the glyph inside an overflow:hidden label, which clipped every digit. */
+.key {
+  font-size: var(--mantine-font-size-lg);
+  font-variant-numeric: tabular-nums;
+}

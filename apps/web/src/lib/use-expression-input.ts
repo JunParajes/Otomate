@@ -23,6 +23,15 @@ export interface ExpressionInput {
   onFocus: (e: { currentTarget: { select: () => void } }) => void
   onBlur: () => void
   onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
+  /**
+   * Appends from an on-screen keypad; 'back' and 'clear' are the two commands.
+   * Stable across renders — the keypad stores this callback when a box is
+   * opened, so a closure over `draft` would freeze at whatever it was then and
+   * every key would look like the first one.
+   */
+  press: (key: string) => void
+  /** Ends the edit the way blurring does, for the keypad's Done button. Also stable. */
+  finish: () => void
 }
 
 /**
@@ -33,66 +42,85 @@ export interface ExpressionInput {
  * committed as soon as it parses, which keeps the existing live behaviour — the
  * row's derived *sold* figure moves as you type — and means a half-typed "4*"
  * simply leaves the last good value in place rather than writing nonsense.
- *
- * Nothing invalid is ever committed, and no box is ever left displaying text
- * that is not a real value: blur discards the draft and shows the number again.
  */
 export function useExpressionInput({ value, onChange, format, normalise }: Options): ExpressionInput {
   const [draft, setDraft] = useState<string | null>(null)
   // What the box held before this edit started, so an abandoned half-typed sum
-  // can be undone. See handleBlur.
+  // can be undone. See finish().
   const valueOnFocus = useRef(value)
 
-  const handleChange = useCallback(
-    (raw: string) => {
-      const cleaned = stripDisallowed(raw)
-      setDraft(cleaned)
+  // Everything the stable callbacks below need, refreshed each render. They are
+  // handed to the keypad once and must not go stale.
+  const latest = useRef({ draft, value, format, normalise, onChange })
+  latest.current = { draft, value, format, normalise, onChange }
 
-      const result = evaluateExpression(cleaned)
-      if (!result.ok) return
-      const next = normalise(result.value)
-      if (next === null || next === value) return
-      onChange(next)
+  const applyText = useCallback((next: string) => {
+    const cleaned = stripDisallowed(next)
+    setDraft(cleaned)
+
+    const result = evaluateExpression(cleaned)
+    if (!result.ok) return
+    const committed = latest.current.normalise(result.value)
+    if (committed === null || committed === latest.current.value) return
+    latest.current.onChange(committed)
+  }, [])
+
+  /**
+   * The first key after opening replaces, matching what typing does — focus
+   * selects the contents, so a keystroke overwrites rather than appends. An
+   * operator is the exception: pressing × on a box holding 32 extends it to
+   * "32*", which is how a calculator behaves.
+   */
+  const press = useCallback(
+    (key: string) => {
+      const { draft: current, value: v, format: fmt } = latest.current
+      const text = current ?? fmt(v)
+
+      if (key === 'clear') return applyText('')
+      if (key === 'back') return applyText(text.slice(0, -1))
+
+      const startFresh = current === null && /[0-9]/.test(key)
+      applyText(startFresh ? key : text + key)
     },
-    [normalise, onChange, value]
+    [applyText]
   )
 
   /**
    * Leaving a box mid-expression must not record the fragment that happened to
    * parse. Typing "4*5+3*4" passes through "4", which commits 4 on the way —
-   * tab away at "4*" and the cell would keep 4: a wrong count that looks
+   * tab away at "4*" and the box would keep 4: a wrong count that looks
    * entirely ordinary once the red border goes. An incomplete sum therefore
    * puts back whatever was there before the edit began.
    */
-  const handleBlur = useCallback(() => {
-    if (draft !== null && draft.trim() !== '') {
-      const result = evaluateExpression(draft)
-      const usable = result.ok ? normalise(result.value) : null
-      if (usable === null && value !== valueOnFocus.current) onChange(valueOnFocus.current)
+  const finish = useCallback(() => {
+    const { draft: current, value: v, normalise: norm, onChange: commit } = latest.current
+    if (current !== null && current.trim() !== '') {
+      const result = evaluateExpression(current)
+      const usable = result.ok ? norm(result.value) : null
+      if (usable === null && v !== valueOnFocus.current) commit(valueOnFocus.current)
     }
     setDraft(null)
-  }, [draft, normalise, onChange, value])
+  }, [])
 
   const handleFocus = useCallback(
     (e: { currentTarget: { select: () => void } }) => {
-      valueOnFocus.current = value
+      valueOnFocus.current = latest.current.value
       e.currentTarget.select()
     },
-    [value]
+    []
   )
 
-  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') {
-      // Blur restores the pre-edit value for anything incomplete.
-      setDraft(null)
-      e.currentTarget.blur()
-    } else if (e.key === 'Enter') {
-      // The value is already committed; this just puts the box back to showing
-      // the number rather than the sum that produced it.
-      setDraft(null)
-      e.currentTarget.blur()
-    }
-  }, [])
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      // Both put the box back to showing its number; the value is already
+      // committed, and finish() undoes anything incomplete.
+      if (e.key === 'Escape' || e.key === 'Enter') {
+        finish()
+        e.currentTarget.blur()
+      }
+    },
+    [finish]
+  )
 
   const parsed = draft === null ? null : evaluateExpression(draft)
   const normalised = parsed?.ok ? normalise(parsed.value) : null
@@ -103,9 +131,11 @@ export function useExpressionInput({ value, onChange, format, normalise }: Optio
     invalid: draft !== null && draft.trim() !== '' && normalised === null,
     // Only worth showing for something that is actually a sum — "38" explains itself.
     preview: draft !== null && looksLikeExpression(draft) ? normalised : null,
-    onChange: handleChange,
+    onChange: applyText,
     onFocus: handleFocus,
-    onBlur: handleBlur,
+    onBlur: finish,
     onKeyDown: handleKeyDown,
+    press,
+    finish,
   }
 }
