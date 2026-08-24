@@ -1,0 +1,36 @@
+.body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A card, not a list row: a fingertip target that shows the name and the price
+   together, since the catalogue has genuine duplicate names at different price
+   points (docs/DOMAIN.md) and picking the wrong one misprices the whole day. */
+.card {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  text-align: left;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+  cursor: pointer;
+  transition: border-color 100ms, background 100ms;
+}
+
+.card:hover:not(:disabled) {
+  border-color: var(--mantine-color-crust-filled);
+}
+
+.chosen {
+  border-color: var(--mantine-color-crust-filled);
+  background: var(--mantine-color-crust-light);
+}
+
+/* Already on the form: visible so it is obvious why it cannot be picked, rather
+   than being missing and looking like the catalogue is wrong. */
+.taken {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

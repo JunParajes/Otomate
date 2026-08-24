@@ -22,6 +22,7 @@ import { useSession } from '@/lib/session'
 import DataState from '@/components/DataState'
 import QtyInput from '@/components/QtyInput'
 import OpeningBalanceCell from '@/components/OpeningBalanceCell'
+import AddProductsModal from '@/components/AddProductsModal'
 import MoneyCountInput from '@/components/MoneyCountInput'
 import { KeypadProvider } from '@/components/keypad/KeypadContext'
 import classes from './DsirEntryPage.module.css'
@@ -50,6 +51,7 @@ export default function DsirEntryPage() {
   const [notes, setNotes] = useState('')
   const [dirty, setDirty] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
   /**
    * Bumped by every edit. A save compares this against the value it started
    * with: if they differ the user has typed during the round trip, and applying
@@ -107,13 +109,6 @@ export default function DsirEntryPage() {
 
   /** Price and unit are shown because the catalogue has duplicate names at
    *  different price points — 'cheese dog' at ₱5 and at ₱50. */
-  const productOptions = useMemo(
-    () => (products.data ?? [])
-      .filter(p => !lines.some(l => l.productId === p.id))
-      .map(p => ({ value: p.id, label: `${p.name} — ${formatMoney(p.priceCents)} per ${p.unit.toLowerCase()}` })),
-    [products.data, lines]
-  )
-
   const chargedBy = useMemo(() => {
     const m = new Map<string, number>()
     for (const c of charges) m.set(c.productId, (m.get(c.productId) ?? 0) + c.quantity)
@@ -189,10 +184,10 @@ export default function DsirEntryPage() {
     markEdited()
   }
 
-  function addProduct(productId: string | null) {
-    const p = (products.data ?? []).find(x => x.id === productId)
-    if (!p) return
-    setLines(prev => [...prev, {
+  function addProducts(productIds: string[]) {
+    const chosen = (products.data ?? []).filter(p => productIds.includes(p.id))
+    if (chosen.length === 0) return
+    setLines(prev => [...prev, ...chosen.map(p => ({
       productId: p.id,
       product: { id: p.id, name: p.name, sku: p.sku, unit: p.unit, category: p.category },
       unitPriceCents: p.priceCents,
@@ -203,7 +198,7 @@ export default function DsirEntryPage() {
       carriedBegBal: null,
       begBal: 0, produced: 0, overEnd: 0, pulledOut: 0, endBal: 0,
       transferredIn: 0, transferredOut: 0, charged: 0, preTotal: 0, sold: 0, salesCents: 0,
-    }])
+    }))])
     markEdited()
   }
 
@@ -496,17 +491,25 @@ export default function DsirEntryPage() {
       </DataState>
 
       {canWrite && (
-        <Select
-          placeholder="Add a product not listed above…"
-          data={productOptions}
-          value={null}
-          onChange={addProduct}
-          searchable
-          clearable={false}
-          nothingFoundMessage="No matching product"
-          maw={430}
-        />
+        <Group>
+          <Button
+            variant="default"
+            leftSection={<IconPlus size={16} />}
+            onClick={() => setPickerOpen(true)}
+          >
+            Add products
+          </Button>
+          <Text size="sm" c="dimmed">{lines.length} on this form</Text>
+        </Group>
       )}
+
+      <AddProductsModal
+        opened={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        products={products.data ?? []}
+        alreadyAdded={new Set(lines.map(l => l.productId))}
+        onAdd={addProducts}
+      />
 
       <Group align="flex-start" grow gap="md" wrap="wrap">
         {uses.charges && (
