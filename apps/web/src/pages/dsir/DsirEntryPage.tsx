@@ -7,7 +7,8 @@ import {
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
 import {
-  IconAlertTriangle, IconArrowLeft, IconCheck, IconLock, IconLockOpen, IconPlus, IconTrash,
+  IconAlertTriangle, IconArrowLeft, IconArrowsSort, IconCheck, IconLock, IconLockOpen,
+  IconPlus, IconTrash,
 } from '@tabler/icons-react'
 import {
   computeLineTotals, formatMoney, isImpossibleLine,
@@ -23,6 +24,7 @@ import DataState from '@/components/DataState'
 import QtyInput from '@/components/QtyInput'
 import OpeningBalanceCell from '@/components/OpeningBalanceCell'
 import AddProductsModal from '@/components/AddProductsModal'
+import ColumnMenu, { type QtyColumn } from '@/components/ColumnMenu'
 import MoneyCountInput from '@/components/MoneyCountInput'
 import { KeypadProvider } from '@/components/keypad/KeypadContext'
 import classes from './DsirEntryPage.module.css'
@@ -34,6 +36,14 @@ type Collection = { employeeId: string | null; label: string | null; amountCents
 
 /** Long enough not to save mid-word, short enough that little is ever at risk. */
 const AUTOSAVE_DELAY_MS = 2000
+
+type SortMode = 'entry' | 'name' | 'category'
+
+const SORT_OPTIONS = [
+  { value: 'entry', label: 'As entered' },
+  { value: 'category', label: 'By category' },
+  { value: 'name', label: 'A – Z' },
+]
 
 export default function DsirEntryPage() {
   const { id = '' } = useParams()
@@ -52,6 +62,8 @@ export default function DsirEntryPage() {
   const [dirty, setDirty] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [sortBy, setSortBy] = useState<SortMode>('entry')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   /**
    * Bumped by every edit. A save compares this against the value it started
    * with: if they differ the user has typed during the round trip, and applying
@@ -109,6 +121,26 @@ export default function DsirEntryPage() {
 
   /** Price and unit are shown because the catalogue has duplicate names at
    *  different price points — 'cheese dog' at ₱5 and at ₱50. */
+  /**
+   * A view over the rows, not a reordering of them. `lines` stays in the
+   * encoder's order, so switching to A–Z to find something and switching back
+   * cannot quietly rewrite what gets saved.
+   */
+  const visibleLines = useMemo(() => {
+    if (sortBy === 'entry') return lines
+    const copy = [...lines]
+    if (sortBy === 'name') {
+      copy.sort((a, b) => a.product.name.localeCompare(b.product.name))
+    } else {
+      copy.sort(
+        (a, b) =>
+          a.product.category.name.localeCompare(b.product.category.name) ||
+          a.product.name.localeCompare(b.product.name)
+      )
+    }
+    return copy
+  }, [lines, sortBy])
+
   const chargedBy = useMemo(() => {
     const m = new Map<string, number>()
     for (const c of charges) m.set(c.productId, (m.get(c.productId) ?? 0) + c.quantity)
@@ -129,8 +161,10 @@ export default function DsirEntryPage() {
   }, [transfers])
 
   /** Same shared formula the server uses, so the screen can never disagree with it. */
+  // Built from the sorted view so the grid renders in the chosen order; the
+  // totals below are sums, which sorting cannot change.
   const computed = useMemo(
-    () => lines.map(l => {
+    () => visibleLines.map(l => {
       const totals = computeLineTotals(
         {
           begBal: l.begBal, produced: l.produced,
@@ -144,7 +178,7 @@ export default function DsirEntryPage() {
       )
       return { line: l, totals, impossible: isImpossibleLine(totals) }
     }),
-    [lines, chargedBy, transferredBy, receivedBy]
+    [visibleLines, chargedBy, transferredBy, receivedBy]
   )
 
   const salesCents = computed.reduce((s, c) => s + c.totals.salesCents, 0)
@@ -179,6 +213,45 @@ export default function DsirEntryPage() {
   }
 
   /** Declares that the opener counted this shelf themselves, unlocking the box. */
+  /**
+   * Which quantity columns are on the form right now. Beginning balance is
+   * absent on purpose: it is carried from the previous finalised report and
+   * locked, so a bulk action must not be able to overwrite it wholesale — that
+   * is exactly the tampering the lock exists to prevent.
+   */
+  const bulkColumns = useMemo(() => {
+    const cols: { column: QtyColumn; label: string }[] = [{ column: 'produced', label: "Prod'd" }]
+    if (uses.overEnd) cols.push({ column: 'overEnd', label: 'Over end' })
+    if (uses.pullOuts) cols.push({ column: 'pulledOut', label: 'Pulled' })
+    cols.push({ column: 'endBal', label: 'End' })
+    return cols
+  }, [uses.overEnd, uses.pullOuts])
+
+  function toggleSelected(productId: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(productId)) next.delete(productId)
+      else next.add(productId)
+      return next
+    })
+  }
+
+  function removeSelected() {
+    setLines(prev => prev.filter(l => !selected.has(l.productId)))
+    setSelected(new Set())
+    markEdited()
+  }
+
+  function clearColumn(column: QtyColumn) {
+    setLines(prev => prev.map(l => ({ ...l, [column]: 0 })))
+    markEdited()
+  }
+
+  function copyColumn(from: QtyColumn, to: QtyColumn) {
+    setLines(prev => prev.map(l => ({ ...l, [to]: l[from] })))
+    markEdited()
+  }
+
   function recountOpening(productId: string) {
     setLines(prev => prev.map(l => (l.productId === productId ? { ...l, begBalRecounted: true } : l)))
     markEdited()
@@ -408,7 +481,20 @@ export default function DsirEntryPage() {
               <Table.Tr>
                 <Table.Th>Product</Table.Th>
                 <Table.Th w={78} ta="right">Beg</Table.Th>
-                <Table.Th w={78} ta="right">Prod'd</Table.Th>
+                <Table.Th w={96} ta="right">
+                  <Group gap={2} justify="flex-end" wrap="nowrap">
+                    <span>Prod'd</span>
+                    {canWrite && (
+                      <ColumnMenu
+                        label="Prod'd"
+                        column="produced"
+                        sources={bulkColumns.filter(c => c.column !== 'produced')}
+                        onClear={clearColumn}
+                        onCopy={copyColumn}
+                      />
+                    )}
+                  </Group>
+                </Table.Th>
                 {hasInbound && (
                   <Table.Th w={70} ta="right">
                     <Tooltip label="Received from another branch. Entered by the sending branch, not here.">
@@ -417,13 +503,52 @@ export default function DsirEntryPage() {
                   </Table.Th>
                 )}
                 {uses.transfers && <Table.Th w={70} ta="right">Out</Table.Th>}
-                {uses.overEnd && <Table.Th w={78} ta="right">Over end</Table.Th>}
+                {uses.overEnd && <Table.Th w={108} ta="right">
+                  <Group gap={2} justify="flex-end" wrap="nowrap">
+                    <span>Over end</span>
+                    {canWrite && (
+                      <ColumnMenu
+                        label="Over end"
+                        column="overEnd"
+                        sources={bulkColumns.filter(c => c.column !== 'overEnd')}
+                        onClear={clearColumn}
+                        onCopy={copyColumn}
+                      />
+                    )}
+                  </Group>
+                </Table.Th>}
                 {uses.charges && <Table.Th w={70} ta="right">Chg</Table.Th>}
-                {uses.pullOuts && <Table.Th w={78} ta="right">Pulled</Table.Th>}
-                <Table.Th w={78} ta="right">End</Table.Th>
+                {uses.pullOuts && <Table.Th w={100} ta="right">
+                  <Group gap={2} justify="flex-end" wrap="nowrap">
+                    <span>Pulled</span>
+                    {canWrite && (
+                      <ColumnMenu
+                        label="Pulled"
+                        column="pulledOut"
+                        sources={bulkColumns.filter(c => c.column !== 'pulledOut')}
+                        onClear={clearColumn}
+                        onCopy={copyColumn}
+                      />
+                    )}
+                  </Group>
+                </Table.Th>}
+                <Table.Th w={96} ta="right">
+                  <Group gap={2} justify="flex-end" wrap="nowrap">
+                    <span>End</span>
+                    {canWrite && (
+                      <ColumnMenu
+                        label="End"
+                        column="endBal"
+                        sources={bulkColumns.filter(c => c.column !== 'endBal')}
+                        onClear={clearColumn}
+                        onCopy={copyColumn}
+                      />
+                    )}
+                  </Group>
+                </Table.Th>
                 <Table.Th w={70} ta="right">Sold</Table.Th>
                 <Table.Th w={104} ta="right">Sales</Table.Th>
-                <Table.Th w={36} />
+                <Table.Th w={68} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -477,10 +602,21 @@ export default function DsirEntryPage() {
                   </Table.Td>
                   <Table.Td>
                     {canWrite && (
-                      <ActionIcon variant="subtle" color="gray" size="sm" aria-label={`Remove ${l.product.name}`}
-                        onClick={() => { setLines(prev => prev.filter(x => x.productId !== l.productId)); markEdited() }}>
-                        <IconTrash size={14} />
-                      </ActionIcon>
+                      <Group gap={2} wrap="nowrap" justify="flex-end">
+                        {/* Ticking rows is for clearing several at once; the bin
+                            stays for the common case of dropping just one. */}
+                        <Checkbox
+                          size="xs"
+                          checked={selected.has(l.productId)}
+                          onChange={() => toggleSelected(l.productId)}
+                          aria-label={`Select ${l.product.name}`}
+                          tabIndex={-1}
+                        />
+                        <ActionIcon variant="subtle" color="gray" size="sm" aria-label={`Remove ${l.product.name}`}
+                          onClick={() => { setLines(prev => prev.filter(x => x.productId !== l.productId)); markEdited() }}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Group>
                     )}
                   </Table.Td>
                 </Table.Tr>
@@ -491,15 +627,37 @@ export default function DsirEntryPage() {
       </DataState>
 
       {canWrite && (
-        <Group>
-          <Button
-            variant="default"
-            leftSection={<IconPlus size={16} />}
-            onClick={() => setPickerOpen(true)}
-          >
-            Add products
-          </Button>
-          <Text size="sm" c="dimmed">{lines.length} on this form</Text>
+        <Group justify="space-between" wrap="wrap" gap="sm">
+          <Group gap="sm" wrap="wrap">
+            <Button
+              variant="default"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setPickerOpen(true)}
+            >
+              Add products
+            </Button>
+            {selected.size > 0 && (
+              <Button
+                variant="light"
+                color="red"
+                leftSection={<IconTrash size={16} />}
+                onClick={removeSelected}
+              >
+                Remove {selected.size}
+              </Button>
+            )}
+            <Text size="sm" c="dimmed">{lines.length} on this form</Text>
+          </Group>
+          <Select
+            size="xs"
+            w={150}
+            data={SORT_OPTIONS}
+            value={sortBy}
+            onChange={v => setSortBy((v as SortMode) ?? 'entry')}
+            allowDeselect={false}
+            leftSection={<IconArrowsSort size={14} />}
+            aria-label="Sort products"
+          />
         </Group>
       )}
 

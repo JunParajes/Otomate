@@ -172,7 +172,8 @@ async function prefillLines(branchId: string, reportDate: Date) {
   })
   products.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
 
-  return products.map(p => ({
+  return products.map((p, index) => ({
+    position: index,
     productId: p.id,
     unitPriceCents: p.priceCents,
     begBal: closingBalance.get(p.id) ?? 0,
@@ -423,9 +424,11 @@ router.put(
       prisma.dsirTransfer.deleteMany({ where: { reportId: report.id } }),
       prisma.dsirCollection.deleteMany({ where: { reportId: report.id } }),
       prisma.dsirLine.createMany({
-        data: input.lines.map(l => ({
+        data: input.lines.map((l, index) => ({
           reportId: report.id,
           productId: l.productId,
+          // The client sends lines in the order they appear on screen.
+          position: index,
           unitPriceCents: existingPrice.get(l.productId) ?? currentPrice.get(l.productId) ?? 0,
           begBal: openingFor(l),
           begBalRecounted: l.begBalRecounted ?? false,

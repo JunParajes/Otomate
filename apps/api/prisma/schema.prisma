@@ -218,6 +218,11 @@ model DsirLine {
   /// report — and those figures drive wage deductions.
   unitPriceCents Int
 
+  /// The order the encoder put this line in. Without it the row order is
+  /// whatever Postgres returns, which is not defined and shifts as rows are
+  /// rewritten — so "the order I added them in" was not recoverable at all.
+  position Int @default(0)
+
   begBal    Int @default(0)
 
   /// Whether the opening figure is the opener's own recount rather than the
@@ -238,6 +243,7 @@ model DsirLine {
 
   @@unique([reportId, productId])
   @@index([productId])
+  @@index([reportId, position])
 }
 
 /// An employee mistake — dropped or burned stock — charged to them at full
