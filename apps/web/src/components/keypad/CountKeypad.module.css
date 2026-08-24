@@ -1,7 +1,9 @@
 .dock {
   position: fixed;
   right: var(--mantine-spacing-md);
-  bottom: var(--mantine-spacing-md);
+  /* Clears the DSIR save bar pinned along the bottom of that screen, which is
+     the only screen this keypad appears on. */
+  bottom: 76px;
   z-index: 300;
   width: 260px;
   background: var(--mantine-color-body);
@@ -11,7 +13,7 @@
 @media (max-width: 480px) {
   .dock {
     right: var(--mantine-spacing-xs);
-    bottom: var(--mantine-spacing-xs);
+    bottom: 72px;
     width: calc(100vw - var(--mantine-spacing-xs) * 2);
   }
 }

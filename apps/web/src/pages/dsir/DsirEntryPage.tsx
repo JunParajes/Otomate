@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ActionIcon, Alert, Badge, Button, Card, Center, Checkbox, Divider, Group, Loader,
@@ -24,11 +24,15 @@ import QtyInput from '@/components/QtyInput'
 import OpeningBalanceCell from '@/components/OpeningBalanceCell'
 import MoneyCountInput from '@/components/MoneyCountInput'
 import { KeypadProvider } from '@/components/keypad/KeypadContext'
+import classes from './DsirEntryPage.module.css'
 
 type Line = DsirReport['lines'][number]
 type Charge = { productId: string; employeeId: string; quantity: number }
 type Transfer = { productId: string; toBranchId: string; quantity: number }
 type Collection = { employeeId: string | null; label: string | null; amountCents: number }
+
+/** Long enough not to save mid-word, short enough that little is ever at risk. */
+const AUTOSAVE_DELAY_MS = 2000
 
 export default function DsirEntryPage() {
   const { id = '' } = useParams()
@@ -45,6 +49,13 @@ export default function DsirEntryPage() {
   const [closedById, setClosedById] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [dirty, setDirty] = useState(false)
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  /**
+   * Bumped by every edit. A save compares this against the value it started
+   * with: if they differ the user has typed during the round trip, and applying
+   * the server's response would wipe what they just entered.
+   */
+  const editSeq = useRef(0)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +63,12 @@ export default function DsirEntryPage() {
   const products = useResource(catalogApi.listProducts)
   const employees = useResource(employeeApi.list)
   const branches = useResource(adminApi.listBranches)
+
+  /** Single funnel for "the user changed something". */
+  const markEdited = useCallback(() => {
+    editSeq.current += 1
+    setDirty(true)
+  }, [])
 
   const hydrate = useCallback((r: DsirReport) => {
     setReport(r)
@@ -163,13 +180,13 @@ export default function DsirEntryPage() {
 
   function patchLine(productId: string, field: keyof Line, value: number) {
     setLines(prev => prev.map(l => (l.productId === productId ? { ...l, [field]: value } : l)))
-    setDirty(true)
+    markEdited()
   }
 
   /** Declares that the opener counted this shelf themselves, unlocking the box. */
   function recountOpening(productId: string) {
     setLines(prev => prev.map(l => (l.productId === productId ? { ...l, begBalRecounted: true } : l)))
-    setDirty(true)
+    markEdited()
   }
 
   function addProduct(productId: string | null) {
@@ -187,10 +204,11 @@ export default function DsirEntryPage() {
       begBal: 0, produced: 0, overEnd: 0, pulledOut: 0, endBal: 0,
       transferredIn: 0, transferredOut: 0, charged: 0, preTotal: 0, sold: 0, salesCents: 0,
     }])
-    setDirty(true)
+    markEdited()
   }
 
-  async function save(then?: 'finalize') {
+  async function save(then?: 'finalize', options?: { silent?: boolean }) {
+    const startedAt = editSeq.current
     setSaving(true)
     try {
       const payload: SaveDsirInput = {
@@ -208,14 +226,47 @@ export default function DsirEntryPage() {
       }
       let saved = await dsirApi.save(id, payload)
       if (then === 'finalize') saved = await dsirApi.finalize(id)
-      hydrate(saved)
-      notifications.show({ color: 'green', title: 'Saved', message: then === 'finalize' ? 'Report finalised' : 'Changes saved' })
+
+      // Only take the server's version if nothing was typed while it was in
+      // flight. Otherwise keep what is on screen — the next autosave reconciles
+      // it — because hydrating here would silently undo those keystrokes.
+      if (editSeq.current === startedAt) {
+        hydrate(saved)
+      } else {
+        setReport(saved)
+      }
+      setSavedAt(new Date())
+
+      // Autosave stays quiet: a toast every few seconds is noise. The status
+      // beside the buttons says what happened. Failures always speak up.
+      if (!options?.silent) {
+        notifications.show({ color: 'green', title: 'Saved', message: then === 'finalize' ? 'Report finalised' : 'Changes saved' })
+      }
     } catch (e) {
-      notifications.show({ color: 'red', title: 'Failed', message: e instanceof Error ? e.message : 'Could not save' })
+      notifications.show({ color: 'red', title: 'Could not save', message: e instanceof Error ? e.message : 'Something went wrong' })
     } finally {
       setSaving(false)
     }
   }
+
+  /**
+   * Autosaves a draft a couple of seconds after typing stops.
+   *
+   * The encoder works down ~50 rows on a tablet, and the report is long enough
+   * that Save was off-screen for most of it. Worse, tapping a sidebar link ends
+   * the page without warning: the beforeunload guard only covers closing or
+   * reloading the tab, and intercepting in-app navigation would mean rewriting
+   * how routing works. Saving continuously removes the problem instead of
+   * warning about it.
+   *
+   * Finalising stays deliberate — this only ever saves a draft.
+   */
+  useEffect(() => {
+    if (!dirty || locked || !canWrite || saving) return
+    const timer = setTimeout(() => { void save(undefined, { silent: true }) }, AUTOSAVE_DELAY_MS)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, locked, canWrite, saving, lines, charges, transfers, collections, uses, openedById, closedById, notes])
 
   function confirmFinalize() {
     modals.openConfirmModal({
@@ -249,7 +300,7 @@ export default function DsirEntryPage() {
 
   return (
     <KeypadProvider>
-      <Stack gap="md">
+      <Stack gap="md" className={classes.page}>
       <Group justify="space-between" align="flex-start" wrap="wrap">
         <Group gap="sm">
           <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/dsir')} aria-label="Back">
@@ -264,17 +315,11 @@ export default function DsirEntryPage() {
             <Text size="sm" c="dimmed" ff="monospace">{report.reportDate}</Text>
           </Stack>
         </Group>
-        <Group gap="xs">
-          {locked && can('dsir:finalize') && (
-            <Button variant="default" leftSection={<IconLockOpen size={16} />} onClick={() => void dsirApi.reopen(id).then(hydrate)}>
-              Reopen
-            </Button>
-          )}
-          {canWrite && <Button variant="default" onClick={() => void save()} loading={saving}>Save draft</Button>}
-          {canWrite && can('dsir:finalize') && (
-            <Button leftSection={<IconLock size={16} />} onClick={confirmFinalize} loading={saving}>Finalise</Button>
-          )}
-        </Group>
+        {locked && can('dsir:finalize') && (
+          <Button variant="default" leftSection={<IconLockOpen size={16} />} onClick={() => void dsirApi.reopen(id).then(hydrate)}>
+            Reopen
+          </Button>
+        )}
       </Group>
 
       {locked && (
@@ -300,14 +345,14 @@ export default function DsirEntryPage() {
                 onChange={e => {
                   const checked = e.currentTarget.checked
                   setUses(u => ({ ...u, [key]: checked }))
-                  setDirty(true)
+                  markEdited()
                 }}
               />
             ))}
           </Group>
           <Group gap="sm" wrap="wrap">
-            <Select label="Opened by" size="xs" w={170} data={employeeOptions} value={openedById} onChange={v => { setOpenedById(v); setDirty(true) }} clearable searchable disabled={!canWrite} />
-            <Select label="Closed by" size="xs" w={170} data={employeeOptions} value={closedById} onChange={v => { setClosedById(v); setDirty(true) }} clearable searchable disabled={!canWrite} />
+            <Select label="Opened by" size="xs" w={170} data={employeeOptions} value={openedById} onChange={v => { setOpenedById(v); markEdited() }} clearable searchable disabled={!canWrite} />
+            <Select label="Closed by" size="xs" w={170} data={employeeOptions} value={closedById} onChange={v => { setClosedById(v); markEdited() }} clearable searchable disabled={!canWrite} />
           </Group>
         </Group>
       </Card>
@@ -343,8 +388,27 @@ export default function DsirEntryPage() {
       </Text>
 
       <DataState loading={products.loading} error={products.error}>
-        <Table.ScrollContainer minWidth={880}>
-          <Table striped="odd" highlightOnHover withTableBorder verticalSpacing={4} horizontalSpacing="xs">
+        {/* Not Table.ScrollContainer. Its overflow-x makes it the containing
+            block for position:sticky, so the column names would stick to a box
+            that never scrolls vertically and simply never move. Nesting a
+            vertical scroller inside it does not help either: scrolling the page
+            then slides the whole grid up behind the fixed app header.
+
+            So the horizontal scroller only exists on screens too narrow for the
+            table (see the CSS). At the widths this is actually used at — iPad
+            landscape and up — there is no overflow container, and the header
+            sticks to the page under the app bar. */}
+        <div className={classes.gridScroll}>
+          <Table
+            striped="odd"
+            highlightOnHover
+            withTableBorder
+            verticalSpacing={4}
+            horizontalSpacing="xs"
+            stickyHeader
+            stickyHeaderOffset={56}
+            className={classes.grid}
+          >
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Product</Table.Th>
@@ -419,7 +483,7 @@ export default function DsirEntryPage() {
                   <Table.Td>
                     {canWrite && (
                       <ActionIcon variant="subtle" color="gray" size="sm" aria-label={`Remove ${l.product.name}`}
-                        onClick={() => { setLines(prev => prev.filter(x => x.productId !== l.productId)); setDirty(true) }}>
+                        onClick={() => { setLines(prev => prev.filter(x => x.productId !== l.productId)); markEdited() }}>
                         <IconTrash size={14} />
                       </ActionIcon>
                     )}
@@ -428,7 +492,7 @@ export default function DsirEntryPage() {
               ))}
             </Table.Tbody>
           </Table>
-        </Table.ScrollContainer>
+        </div>
       </DataState>
 
       {canWrite && (
@@ -449,21 +513,21 @@ export default function DsirEntryPage() {
           <ListPanel
             title="Charges"
             hint="Employee mistakes, paid at full price via payroll."
-            onAdd={canWrite ? () => { setCharges(p => [...p, { productId: '', employeeId: '', quantity: 1 }]); setDirty(true) } : undefined}
+            onAdd={canWrite ? () => { setCharges(p => [...p, { productId: '', employeeId: '', quantity: 1 }]); markEdited() } : undefined}
             rows={charges.map((c, i) => (
               <Group key={i} gap="xs" wrap="nowrap">
                 <Select placeholder="Product" size="xs" style={{ flex: 2 }} searchable disabled={!canWrite}
                   data={lines.map(l => ({ value: l.productId, label: l.product.name }))}
                   value={c.productId || null}
-                  onChange={v => { setCharges(p => p.map((x, j) => j === i ? { ...x, productId: v ?? '' } : x)); setDirty(true) }} />
+                  onChange={v => { setCharges(p => p.map((x, j) => j === i ? { ...x, productId: v ?? '' } : x)); markEdited() }} />
                 <Select placeholder="Who" size="xs" style={{ flex: 2 }} searchable disabled={!canWrite}
                   data={employeeOptions} value={c.employeeId || null}
-                  onChange={v => { setCharges(p => p.map((x, j) => j === i ? { ...x, employeeId: v ?? '' } : x)); setDirty(true) }} />
+                  onChange={v => { setCharges(p => p.map((x, j) => j === i ? { ...x, employeeId: v ?? '' } : x)); markEdited() }} />
                 <NumberInput size="xs" w={70} min={1} hideControls disabled={!canWrite} value={c.quantity}
-                  onChange={v => { setCharges(p => p.map((x, j) => j === i ? { ...x, quantity: Number(v) || 1 } : x)); setDirty(true) }} />
+                  onChange={v => { setCharges(p => p.map((x, j) => j === i ? { ...x, quantity: Number(v) || 1 } : x)); markEdited() }} />
                 {canWrite && (
                   <ActionIcon variant="subtle" color="red" size="sm" aria-label="Remove charge"
-                    onClick={() => { setCharges(p => p.filter((_, j) => j !== i)); setDirty(true) }}>
+                    onClick={() => { setCharges(p => p.filter((_, j) => j !== i)); markEdited() }}>
                     <IconTrash size={14} />
                   </ActionIcon>
                 )}
@@ -476,22 +540,22 @@ export default function DsirEntryPage() {
           <ListPanel
             title="Transfers out"
             hint="Stock moved to another branch."
-            onAdd={canWrite ? () => { setTransfers(p => [...p, { productId: '', toBranchId: '', quantity: 1 }]); setDirty(true) } : undefined}
+            onAdd={canWrite ? () => { setTransfers(p => [...p, { productId: '', toBranchId: '', quantity: 1 }]); markEdited() } : undefined}
             rows={transfers.map((t, i) => (
               <Group key={i} gap="xs" wrap="nowrap">
                 <Select placeholder="Product" size="xs" style={{ flex: 2 }} searchable disabled={!canWrite}
                   data={lines.map(l => ({ value: l.productId, label: l.product.name }))}
                   value={t.productId || null}
-                  onChange={v => { setTransfers(p => p.map((x, j) => j === i ? { ...x, productId: v ?? '' } : x)); setDirty(true) }} />
+                  onChange={v => { setTransfers(p => p.map((x, j) => j === i ? { ...x, productId: v ?? '' } : x)); markEdited() }} />
                 <Select placeholder="To branch" size="xs" style={{ flex: 2 }} searchable disabled={!canWrite}
                   data={(branches.data ?? []).filter(b => b.id !== report.branch.id).map(b => ({ value: b.id, label: b.name }))}
                   value={t.toBranchId || null}
-                  onChange={v => { setTransfers(p => p.map((x, j) => j === i ? { ...x, toBranchId: v ?? '' } : x)); setDirty(true) }} />
+                  onChange={v => { setTransfers(p => p.map((x, j) => j === i ? { ...x, toBranchId: v ?? '' } : x)); markEdited() }} />
                 <NumberInput size="xs" w={70} min={1} hideControls disabled={!canWrite} value={t.quantity}
-                  onChange={v => { setTransfers(p => p.map((x, j) => j === i ? { ...x, quantity: Number(v) || 1 } : x)); setDirty(true) }} />
+                  onChange={v => { setTransfers(p => p.map((x, j) => j === i ? { ...x, quantity: Number(v) || 1 } : x)); markEdited() }} />
                 {canWrite && (
                   <ActionIcon variant="subtle" color="red" size="sm" aria-label="Remove transfer"
-                    onClick={() => { setTransfers(p => p.filter((_, j) => j !== i)); setDirty(true) }}>
+                    onClick={() => { setTransfers(p => p.filter((_, j) => j !== i)); markEdited() }}>
                     <IconTrash size={14} />
                   </ActionIcon>
                 )}
@@ -519,23 +583,23 @@ export default function DsirEntryPage() {
         <ListPanel
           title="Cash collected"
           hint="One row per cashier — not fixed slots."
-          onAdd={canWrite ? () => { setCollections(p => [...p, { employeeId: null, label: null, amountCents: 0 }]); setDirty(true) } : undefined}
+          onAdd={canWrite ? () => { setCollections(p => [...p, { employeeId: null, label: null, amountCents: 0 }]); markEdited() } : undefined}
           rows={collections.map((c, i) => (
             <Group key={i} gap="xs" wrap="nowrap">
               <Select placeholder="Cashier" size="xs" style={{ flex: 2 }} searchable clearable disabled={!canWrite}
                 data={employeeOptions} value={c.employeeId}
-                onChange={v => { setCollections(p => p.map((x, j) => j === i ? { ...x, employeeId: v } : x)); setDirty(true) }} />
+                onChange={v => { setCollections(p => p.map((x, j) => j === i ? { ...x, employeeId: v } : x)); markEdited() }} />
               <TextInput placeholder="or a label" size="xs" style={{ flex: 1 }} disabled={!canWrite}
                 value={c.label ?? ''}
-                onChange={e => { const v = e.currentTarget.value; setCollections(p => p.map((x, j) => j === i ? { ...x, label: v || null } : x)); setDirty(true) }} />
+                onChange={e => { const v = e.currentTarget.value; setCollections(p => p.map((x, j) => j === i ? { ...x, label: v || null } : x)); markEdited() }} />
               <MoneyCountInput
                 aria-label="Amount collected"
                 disabled={!canWrite}
                 value={c.amountCents}
-                onChange={cents => { setCollections(p => p.map((x, j) => j === i ? { ...x, amountCents: cents } : x)); setDirty(true) }} />
+                onChange={cents => { setCollections(p => p.map((x, j) => j === i ? { ...x, amountCents: cents } : x)); markEdited() }} />
               {canWrite && (
                 <ActionIcon variant="subtle" color="red" size="sm" aria-label="Remove collection"
-                  onClick={() => { setCollections(p => p.filter((_, j) => j !== i)); setDirty(true) }}>
+                  onClick={() => { setCollections(p => p.filter((_, j) => j !== i)); markEdited() }}>
                   <IconTrash size={14} />
                 </ActionIcon>
               )}
@@ -594,9 +658,42 @@ export default function DsirEntryPage() {
           </Stack>
           <Textarea placeholder="Notes (optional)" size="xs" autosize minRows={1} maxRows={3} w={280}
             disabled={!canWrite} value={notes}
-            onChange={e => { setNotes(e.currentTarget.value); setDirty(true) }} />
+            onChange={e => { setNotes(e.currentTarget.value); markEdited() }} />
         </Group>
       </Card>
+
+      {/* Always reachable. The report runs to ~50 rows, and having Save only at
+          the top meant scrolling the whole way back to keep work. */}
+      {canWrite && (
+        <Paper className={classes.actionBar} withBorder shadow="sm" p="sm" radius={0}>
+          <Group justify="space-between" wrap="nowrap" gap="sm">
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+              {saving ? (
+                <Text size="sm" c="dimmed">Saving…</Text>
+              ) : dirty ? (
+                <Text size="sm" c="orange">Unsaved changes</Text>
+              ) : savedAt ? (
+                <Group gap={4} wrap="nowrap">
+                  <IconCheck size={14} color="var(--mantine-color-green-6)" />
+                  <Text size="sm" c="dimmed">
+                    Saved {savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </Group>
+              ) : (
+                <Text size="sm" c="dimmed">All changes save automatically</Text>
+              )}
+            </Group>
+            <Group gap="xs" wrap="nowrap">
+              <Button variant="default" onClick={() => void save()} loading={saving}>Save now</Button>
+              {can('dsir:finalize') && (
+                <Button leftSection={<IconLock size={16} />} onClick={confirmFinalize} loading={saving}>
+                  Finalise
+                </Button>
+              )}
+            </Group>
+          </Group>
+        </Paper>
+      )}
       </Stack>
     </KeypadProvider>
   )

@@ -1,0 +1,46 @@
+/* Pinned to the bottom of the viewport, spanning the content area beside the
+   navbar. Below the keypad's z-index so the two never fight; the keypad is
+   offset upward to sit clear of it. */
+.actionBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  background: var(--mantine-color-body);
+}
+
+@media (min-width: 48em) {
+  .actionBar {
+    /* Clears the navbar, whose width changes when the rail collapses. */
+    left: var(--app-shell-navbar-width, 0);
+  }
+}
+
+/* Height of the bar plus breathing room, so the last row and the totals card
+   are never trapped underneath it. */
+.page {
+  padding-bottom: 76px;
+}
+
+/* No overflow at all by default, so the sticky column header resolves against
+   the page rather than against this element. */
+.gridScroll {
+  overflow: visible;
+}
+
+.grid {
+  min-width: 880px;
+}
+
+/* Below the width the table needs, scrolling sideways matters more than the
+   sticky header — and the two cannot coexist, because an overflow container
+   captures position:sticky. */
+@media (max-width: 70em) {
+  .gridScroll {
+    overflow-x: auto;
+  }
+  .grid {
+    min-width: 880px;
+  }
+}
