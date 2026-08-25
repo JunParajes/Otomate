@@ -44,3 +44,15 @@
     min-width: 880px;
   }
 }
+
+/* A section heading, not a row of data: no hover, no stripe, and it must not
+   read as something you can edit. Sticky so the section you are in stays named
+   as you scroll past the header. */
+.categoryRow td {
+  background: var(--mantine-color-default-hover);
+  padding-top: 6px;
+  padding-bottom: 6px;
+  position: sticky;
+  top: 56px;
+  z-index: 1;
+}

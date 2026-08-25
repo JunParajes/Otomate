@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ActionIcon, Alert, Badge, Button, Card, Center, Checkbox, Divider, Group, Loader,
@@ -148,6 +148,29 @@ export default function DsirEntryPage() {
     return copy
   }, [lines, sortBy])
 
+  /**
+   * Whether the rows currently sit in category blocks.
+   *
+   * Separators only make sense when each category is one contiguous run —
+   * sorted by category, and usually in catalogue order too, which is how the
+   * printed sheet is laid out. Under A–Z the categories interleave, and a
+   * heading every few rows would be noise rather than structure, so they are
+   * dropped rather than repeated.
+   */
+  const groupedByCategory = useMemo(() => {
+    const seen = new Set<string>()
+    let previous: string | null = null
+    for (const l of visibleLines) {
+      const id = l.product.category.id
+      if (id !== previous) {
+        if (seen.has(id)) return false
+        seen.add(id)
+        previous = id
+      }
+    }
+    return seen.size > 1
+  }, [visibleLines])
+
   const chargedBy = useMemo(() => {
     const m = new Map<string, number>()
     for (const c of charges) m.set(c.productId, (m.get(c.productId) ?? 0) + c.quantity)
@@ -205,6 +228,19 @@ export default function DsirEntryPage() {
   const impossibleCount = computed.filter(c => c.impossible).length
   const hasInbound = (report?.inboundTransfers.length ?? 0) > 0
 
+  /** Columns currently rendered, so a separator can span the whole width. */
+  const columnCount = useMemo(
+    () =>
+      7 +
+      (hasInbound ? 1 : 0) +
+      (uses.transfers ? 1 : 0) +
+      (uses.overEnd ? 1 : 0) +
+      (uses.charges ? 1 : 0) +
+      (uses.pullOuts ? 1 : 0),
+    [hasInbound, uses.transfers, uses.overEnd, uses.charges, uses.pullOuts]
+  )
+
+
   /**
    * Openings the opener recounted differently from the previous close. Overnight
    * loss or a miscount by one of two named people — docs/DOMAIN.md calls this
@@ -252,6 +288,74 @@ export default function DsirEntryPage() {
     return cols
   }, [uses.overEnd, uses.pullOuts])
 
+  /**
+   * Whether a row holds anything worth losing.
+   *
+   * A carried opening counts: the encoder did not type it, but removing the row
+   * still drops stock the branch was recorded as holding. Charges and transfers
+   * count for a harder reason — the API checks that their product exists in the
+   * catalogue but not that it still has a line, so removing one silently strands
+   * a charge that keeps counting toward the money while showing against nothing.
+   */
+  function rowHasEntries(l: Line): boolean {
+    if (l.begBal || l.produced || l.overEnd || l.pulledOut || l.endBal) return true
+    if (charges.some(c => c.productId === l.productId)) return true
+    if (transfers.some(t => t.productId === l.productId)) return true
+    return false
+  }
+
+  function describeEntries(l: Line): string {
+    const parts: string[] = []
+    if (l.begBal) parts.push(`opening ${l.begBal}`)
+    if (l.produced) parts.push(`produced ${l.produced}`)
+    if (l.overEnd) parts.push(`over end ${l.overEnd}`)
+    if (l.pulledOut) parts.push(`pulled out ${l.pulledOut}`)
+    if (l.endBal) parts.push(`ending ${l.endBal}`)
+    const c = charges.filter(x => x.productId === l.productId).reduce((n, x) => n + x.quantity, 0)
+    if (c) parts.push(`${c} charged to staff`)
+    const t = transfers.filter(x => x.productId === l.productId).reduce((n, x) => n + x.quantity, 0)
+    if (t) parts.push(`${t} transferred out`)
+    return parts.join(' · ')
+  }
+
+  function removeLine(productId: string) {
+    setLines(prev => prev.filter(l => l.productId !== productId))
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.delete(productId)
+      return next
+    })
+    markEdited()
+  }
+
+  /** One tap when the row is empty; a question first when it is not. */
+  function confirmRemoveLine(l: Line) {
+    if (!rowHasEntries(l)) {
+      removeLine(l.productId)
+      return
+    }
+    modals.openConfirmModal({
+      title: `Remove ${l.product.name}?`,
+      children: (
+        <Stack gap="xs">
+          <Text size="sm">This row has figures on it:</Text>
+          <Text size="sm" fw={600}>{describeEntries(l)}</Text>
+          <Text size="sm" c="dimmed">
+            Removing it discards them. Anything charged or transferred against this
+            product is removed with it.
+          </Text>
+        </Stack>
+      ),
+      labels: { confirm: 'Remove it', cancel: 'Keep it' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => {
+        setCharges(prev => prev.filter(c => c.productId !== l.productId))
+        setTransfers(prev => prev.filter(t => t.productId !== l.productId))
+        removeLine(l.productId)
+      },
+    })
+  }
+
   function toggleSelected(productId: string) {
     setSelected(prev => {
       const next = new Set(prev)
@@ -262,9 +366,39 @@ export default function DsirEntryPage() {
   }
 
   function removeSelected() {
-    setLines(prev => prev.filter(l => !selected.has(l.productId)))
-    setSelected(new Set())
-    markEdited()
+    const chosen = lines.filter(l => selected.has(l.productId))
+    const withEntries = chosen.filter(rowHasEntries)
+
+    const drop = () => {
+      const ids = new Set(chosen.map(l => l.productId))
+      setCharges(prev => prev.filter(c => !ids.has(c.productId)))
+      setTransfers(prev => prev.filter(t => !ids.has(t.productId)))
+      setLines(prev => prev.filter(l => !ids.has(l.productId)))
+      setSelected(new Set())
+      markEdited()
+    }
+
+    if (withEntries.length === 0) {
+      drop()
+      return
+    }
+    modals.openConfirmModal({
+      title: `Remove ${chosen.length} product${chosen.length === 1 ? '' : 's'}?`,
+      children: (
+        <Stack gap="xs">
+          <Text size="sm">
+            {withEntries.length} of them {withEntries.length === 1 ? 'has' : 'have'} figures entered:
+          </Text>
+          <Text size="sm" fw={600} lineClamp={4}>
+            {withEntries.map(l => l.product.name).join(', ')}
+          </Text>
+          <Text size="sm" c="dimmed">Removing them discards those figures.</Text>
+        </Stack>
+      ),
+      labels: { confirm: 'Remove them', cancel: 'Keep them' },
+      confirmProps: { color: 'red' },
+      onConfirm: drop,
+    })
   }
 
   /** Drops the sum recorded for a field, used when a bulk action replaces it. */
@@ -587,8 +721,22 @@ export default function DsirEntryPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {computed.map(({ line: l, totals, impossible }) => (
-                <Table.Tr key={l.productId} bg={impossible ? 'var(--mantine-color-red-light)' : undefined}>
+              {computed.map(({ line: l, totals, impossible }, rowIndex) => {
+                const previousCategory = rowIndex > 0 ? computed[rowIndex - 1]!.line.product.category.id : null
+                const startsCategory = groupedByCategory && l.product.category.id !== previousCategory
+
+                return (
+                <Fragment key={l.productId}>
+                {startsCategory && (
+                  <Table.Tr className={classes.categoryRow}>
+                    <Table.Td colSpan={columnCount}>
+                      <Text size="xs" fw={700} tt="uppercase" c="dimmed">
+                        {l.product.category.name}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                <Table.Tr bg={impossible ? 'var(--mantine-color-red-light)' : undefined}>
                   {/* The name opens the roomy editor; the figures beside it still
                       edit in place, so a quick single correction stays quick. */}
                   <Table.Td
@@ -657,15 +805,22 @@ export default function DsirEntryPage() {
                           aria-label={`Select ${l.product.name}`}
                           tabIndex={-1}
                         />
-                        <ActionIcon variant="subtle" color="gray" size="sm" aria-label={`Remove ${l.product.name}`}
-                          onClick={() => { setLines(prev => prev.filter(x => x.productId !== l.productId)); markEdited() }}>
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          size="sm"
+                          aria-label={`Remove ${l.product.name}`}
+                          onClick={() => confirmRemoveLine(l)}
+                        >
                           <IconTrash size={14} />
                         </ActionIcon>
                       </Group>
                     )}
                   </Table.Td>
                 </Table.Tr>
-              ))}
+                </Fragment>
+                )
+              })}
             </Table.Tbody>
           </Table>
         </div>
