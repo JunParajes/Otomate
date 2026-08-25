@@ -432,6 +432,7 @@ router.put(
           unitPriceCents: existingPrice.get(l.productId) ?? currentPrice.get(l.productId) ?? 0,
           begBal: openingFor(l),
           begBalRecounted: l.begBalRecounted ?? false,
+          enteredAs: l.enteredAs ?? Prisma.DbNull,
           produced: l.produced,
           overEnd: l.overEnd,
           pulledOut: l.pulledOut,

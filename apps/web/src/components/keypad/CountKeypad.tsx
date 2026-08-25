@@ -70,6 +70,10 @@ export default function CountKeypad({
       shadow={embedded ? undefined : 'lg'}
       radius="md"
       p="sm"
+      // Embedded, it stretches to whatever height the panel gives it so the
+      // keys grow with the screen instead of leaving the modal half empty.
+      h={embedded ? '100%' : undefined}
+      style={embedded ? { display: 'flex', flexDirection: 'column' } : undefined}
     >
       <Group justify="space-between" wrap="nowrap" mb={6} gap="xs">
         <Text size="xs" c="dimmed" fw={600} lineClamp={1}>{label}</Text>
@@ -82,14 +86,23 @@ export default function CountKeypad({
 
       {/* The running sum and its total, so a stack can be checked before it is
           committed — the box itself is far too narrow to show both. */}
-      <Paper className={classes.readout} radius="sm" p="xs" mb="xs">
-        <Text size="sm" ff="monospace" c="dimmed" lineClamp={1}>{text || '0'}</Text>
-        <Text size="xl" fw={700} ff="monospace" c={preview === null ? 'dimmed' : undefined} lineClamp={1}>
+      <Paper className={classes.readout} radius="sm" p={embedded ? 'md' : 'xs'} mb="xs">
+        <Text size={embedded ? 'lg' : 'sm'} ff="monospace" c="dimmed" lineClamp={1}>{text || '0'}</Text>
+        <Text
+          size={embedded ? '32px' : 'xl'}
+          fw={700}
+          ff="monospace"
+          c={preview === null ? 'dimmed' : undefined}
+          lineClamp={1}
+        >
           {preview ?? '—'}
         </Text>
       </Paper>
 
-      <SimpleGrid cols={4} spacing={6}>
+      <SimpleGrid
+        cols={4}
+        spacing={embedded ? 10 : 6}
+      >
         {KEYS.map(k => (
           <Button
             key={k.label}
@@ -97,8 +110,12 @@ export default function CountKeypad({
             color={k.operator ? 'crust' : undefined}
             size="md"
             px={0}
-            h={46}
-            className={classes.key}
+            // Sized against the viewport rather than stretched by flex: the
+            // flex chain through Paper > SimpleGrid > row collapsed instead of
+            // filling, which made the keys smaller than they started. A clamp
+            // grows them with the screen and cannot fall below a fingertip.
+            h={embedded ? 'clamp(56px, 10vh, 92px)' : 46}
+            className={embedded ? `${classes.key} ${classes.keyLarge}` : classes.key}
             // Never a tab stop: the grid already has hundreds, and the encoder
             // must not have to tab past a keypad to reach the next box.
             tabIndex={-1}
@@ -112,7 +129,7 @@ export default function CountKeypad({
         ))}
       </SimpleGrid>
 
-      <Button fullWidth mt="xs" disabled={disabled} onMouseDown={e => e.preventDefault()} onClick={onDone}>
+      <Button fullWidth mt="xs" size={embedded ? 'lg' : 'md'} disabled={disabled} onMouseDown={e => e.preventDefault()} onClick={onDone}>
         Done
       </Button>
     </Paper>

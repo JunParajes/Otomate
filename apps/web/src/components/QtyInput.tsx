@@ -5,10 +5,12 @@ import classes from './QtyInput.module.css'
 
 interface Props {
   value: number
-  onChange: (next: number) => void
+  onChange: (next: number, enteredAs: string | null) => void
   disabled?: boolean
   'aria-label': string
   highlight?: boolean
+  /** The sum this figure was counted from, if it was counted rather than typed. */
+  enteredAs?: string
 }
 
 const MAX_QTY = 1_000_000
@@ -34,7 +36,7 @@ const showCount = (value: number) => (value === 0 ? '' : String(value))
  * "4*5+3*4" for a 4x5 layer under a 3x4 one and it commits 32. See
  * lib/count-expression.ts for why that is not left to a calculator.
  */
-function QtyInputImpl({ value, onChange, disabled, highlight, ...rest }: Props) {
+function QtyInputImpl({ value, onChange, disabled, highlight, enteredAs, ...rest }: Props) {
   const field = useExpressionInput({
     value,
     onChange,
@@ -67,12 +69,16 @@ function QtyInputImpl({ value, onChange, disabled, highlight, ...rest }: Props) 
           highlight ? classes.highlight : '',
           field.invalid ? classes.invalid : '',
           keypad.isActive ? classes.keypadActive : '',
+          // A quiet dotted underline: the grid has ~275 of these and a badge on
+          // each would be unreadable. The editor is where the sum is spelled out.
+          enteredAs && !keypad.isActive ? classes.counted : '',
         ]
           .filter(Boolean)
           .join(' ')}
         disabled={disabled}
         value={field.text}
         placeholder="0"
+        title={enteredAs ? `Counted as ${enteredAs}` : undefined}
         autoComplete="off"
         onFocus={e => { keypad.onFocus(); field.onFocus(e) }}
         onPointerDown={keypad.onPointerDown}

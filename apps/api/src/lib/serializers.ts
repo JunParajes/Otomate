@@ -3,6 +3,7 @@ import { imageUrl } from './images'
 import { computeLineTotals, formatEmployeeName } from '@otomate/shared'
 import type {
   DsirReport as DsirReportDto,
+  DsirLine as DsirLineDto,
   DsirSummary as DsirSummaryDto,
   DsirStatus,
   Employee as EmployeeDto,
@@ -228,6 +229,8 @@ export function toDsirDto(
       unitPriceCents: l.unitPriceCents,
       begBal: l.begBal,
       begBalRecounted: l.begBalRecounted,
+      // Stored as JSON; the shape is enforced by the Zod schema on the way in.
+      enteredAs: (l.enteredAs as DsirLineDto['enteredAs']) ?? null,
       // Sent even when it matches, so the screen can show what a recount
       // replaced without asking for the previous report.
       carriedBegBal: carried.fromDate === null ? null : (carried.balances.get(l.productId) ?? 0),

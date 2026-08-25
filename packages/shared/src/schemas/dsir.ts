@@ -16,6 +16,21 @@ export const dsirLineSchema = z.object({
    * by posting straight to the API.
    */
   begBalRecounted: z.boolean().optional().default(false),
+  /**
+   * How each figure was counted, for the ones that were counted rather than
+   * typed. Keys are the quantity fields; an absent key means the figure was
+   * entered as a plain number and there is nothing to explain.
+   */
+  enteredAs: z
+    .object({
+      begBal: z.string().max(80).optional(),
+      produced: z.string().max(80).optional(),
+      overEnd: z.string().max(80).optional(),
+      pulledOut: z.string().max(80).optional(),
+      endBal: z.string().max(80).optional(),
+    })
+    .nullable()
+    .optional(),
   produced: qty.optional().default(0),
   overEnd: qty.optional().default(0),
   pulledOut: qty.optional().default(0),

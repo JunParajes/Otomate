@@ -2,12 +2,34 @@
   padding-top: var(--mantine-spacing-md);
 }
 
+/* The offsets that used to eat the width are set as props on the Modal itself;
+   see the note there. */
+.content {
+  max-height: 97vh;
+}
+
+/* Fills the screen rather than floating in the middle of it: this view exists
+   to buy space, and a small modal would defeat the point. */
 .split {
-  min-height: 380px;
+  min-height: 78vh;
 }
 
 .left {
   padding-right: var(--mantine-spacing-lg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Lets the keypad claim the full column height. */
+.right {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The derived figures settle at the bottom of the column, so the gap sits
+   between the inputs and the summary rather than below everything. */
+.summary {
+  margin-top: auto;
 }
 
 /* The vertical rule between the figures and the keypad. Only from sm up: the
@@ -33,11 +55,11 @@
 /* Roomy targets: the whole point of this view is that a figure is not a 50px
    box any more. */
 .input {
-  width: 120px;
+  width: 150px;
 }
 
 .input input {
-  height: 44px;
-  font-size: var(--mantine-font-size-lg);
+  height: 56px;
+  font-size: 24px;
   border-color: var(--mantine-color-default-border);
 }

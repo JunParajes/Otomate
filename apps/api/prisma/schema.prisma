@@ -225,6 +225,18 @@ model DsirLine {
 
   begBal    Int @default(0)
 
+  /// How each figure was counted, when it was counted rather than simply typed:
+  /// { "endBal": "4*5+3*4" } means the 32 came from a 4x5 layer under a 3x4 one.
+  ///
+  /// A stack is counted layer by layer, and the arithmetic is the only record of
+  /// how the encoder arrived at a number — worth keeping when a count is later
+  /// questioned. Kept as JSON rather than a column per field because it is read
+  /// back for display and never queried on.
+  ///
+  /// Cleared per field whenever that figure is typed plainly, so it can never
+  /// describe a number it no longer explains.
+  enteredAs Json?
+
   /// Whether the opening figure is the opener's own recount rather than the
   /// figure carried from the previous finalised report.
   ///

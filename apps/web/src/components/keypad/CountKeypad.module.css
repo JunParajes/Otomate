@@ -38,3 +38,9 @@
   width: 100%;
   background: transparent;
 }
+
+/* Only inside the editor, where there is a column to fill. The docked keypad
+   stays small so it does not swallow the grid behind it. */
+.keyLarge {
+  font-size: 26px;
+}

@@ -11,7 +11,7 @@ interface Props {
   carried: number | null
   carriedFromDate: string | null
   disabled?: boolean
-  onChange: (next: number) => void
+  onChange: (next: number, enteredAs: string | null) => void
   onRecount: () => void
 }
 

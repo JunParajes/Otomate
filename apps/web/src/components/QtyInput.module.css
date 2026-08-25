@@ -77,3 +77,11 @@
   background: var(--mantine-color-body);
   box-shadow: 0 0 0 2px var(--mantine-color-crust-light);
 }
+
+/* Marks a figure that was counted from a sum rather than typed. Deliberately
+   faint — this is an annotation on a dense grid, and the product editor is
+   where the sum itself is shown. */
+.input.counted {
+  text-decoration: underline dotted var(--mantine-color-crust-filled);
+  text-underline-offset: 3px;
+}

@@ -40,6 +40,10 @@ const AUTOSAVE_DELAY_MS = 2000
 
 type SortMode = 'entry' | 'name' | 'category'
 
+const COUNT_FIELDS = ['begBal', 'produced', 'overEnd', 'pulledOut', 'endBal'] as const
+type CountField = (typeof COUNT_FIELDS)[number]
+const isCountField = (f: string): f is CountField => (COUNT_FIELDS as readonly string[]).includes(f)
+
 const SORT_OPTIONS = [
   { value: 'entry', label: 'As entered' },
   { value: 'category', label: 'By category' },
@@ -210,8 +214,26 @@ export default function DsirEntryPage() {
     l => l.begBalRecounted && l.carriedBegBal !== null && l.begBal !== l.carriedBegBal
   )
 
-  function patchLine(productId: string, field: keyof Line, value: number) {
-    setLines(prev => prev.map(l => (l.productId === productId ? { ...l, [field]: value } : l)))
+  /**
+   * `enteredAs` is the sum behind the figure, or null when it was typed plainly.
+   * Storing null must actually remove the old entry: a stale "4*5+3*4" sitting
+   * beside a figure someone has since retyped would explain a number that no
+   * longer came from it, which is worse than showing nothing.
+   */
+  function patchLine(productId: string, field: keyof Line, value: number, enteredAs?: string | null) {
+    setLines(prev =>
+      prev.map(l => {
+        if (l.productId !== productId) return l
+        const next = { ...l, [field]: value }
+        if (enteredAs !== undefined && isCountField(field)) {
+          const entries = { ...(l.enteredAs ?? {}) }
+          if (enteredAs) entries[field] = enteredAs
+          else delete entries[field]
+          next.enteredAs = Object.keys(entries).length > 0 ? entries : null
+        }
+        return next
+      })
+    )
     markEdited()
   }
 
@@ -245,13 +267,22 @@ export default function DsirEntryPage() {
     markEdited()
   }
 
+  /** Drops the sum recorded for a field, used when a bulk action replaces it. */
+  function withoutEntry(line: Line, field: CountField): Line['enteredAs'] {
+    if (!line.enteredAs) return null
+    const rest = { ...line.enteredAs }
+    delete rest[field]
+    return Object.keys(rest).length > 0 ? rest : null
+  }
+
   function clearColumn(column: QtyColumn) {
-    setLines(prev => prev.map(l => ({ ...l, [column]: 0 })))
+    setLines(prev => prev.map(l => ({ ...l, [column]: 0, enteredAs: withoutEntry(l, column) })))
     markEdited()
   }
 
   function copyColumn(from: QtyColumn, to: QtyColumn) {
-    setLines(prev => prev.map(l => ({ ...l, [to]: l[from] })))
+    // The copied figure was not counted here, so it carries no explanation.
+    setLines(prev => prev.map(l => ({ ...l, [to]: l[from], enteredAs: withoutEntry(l, to) })))
     markEdited()
   }
 
@@ -272,6 +303,7 @@ export default function DsirEntryPage() {
       // genuinely needs an opening typed, that is a recount.
       begBalRecounted: false,
       carriedBegBal: null,
+      enteredAs: null,
       begBal: 0, produced: 0, overEnd: 0, pulledOut: 0, endBal: 0,
       transferredIn: 0, transferredOut: 0, charged: 0, preTotal: 0, sold: 0, salesCents: 0,
     }))])
@@ -288,7 +320,7 @@ export default function DsirEntryPage() {
         openedById, closedById, notes: notes.trim() || null,
         lines: lines.map(l => ({
           productId: l.productId, begBal: l.begBal, begBalRecounted: l.begBalRecounted,
-          produced: l.produced,
+          enteredAs: l.enteredAs, produced: l.produced,
           overEnd: l.overEnd, pulledOut: l.pulledOut, endBal: l.endBal,
         })),
         charges: uses.charges ? charges : [],
@@ -582,11 +614,11 @@ export default function DsirEntryPage() {
                       carried={l.carriedBegBal}
                       carriedFromDate={report.carriedFromDate}
                       disabled={!canWrite}
-                      onChange={v => patchLine(l.productId, 'begBal', v)}
+                      onChange={(v, e) => patchLine(l.productId, 'begBal', v, e)}
                       onRecount={() => recountOpening(l.productId)}
                     />
                   </Table.Td>
-                  <Table.Td><QtyInput aria-label={`${l.product.name} produced`} value={l.produced} disabled={!canWrite} onChange={v => patchLine(l.productId, 'produced', v)} /></Table.Td>
+                  <Table.Td><QtyInput aria-label={`${l.product.name} produced`} value={l.produced} disabled={!canWrite} onChange={(v, e) => patchLine(l.productId, 'produced', v, e)} enteredAs={l.enteredAs?.produced} /></Table.Td>
                   {hasInbound && (
                     <Table.Td ta="right">
                       <Text size="sm" c={receivedBy.get(l.productId) ? 'crust.7' : 'dimmed'} fw={receivedBy.get(l.productId) ? 600 : 400}>
@@ -598,15 +630,15 @@ export default function DsirEntryPage() {
                     <Table.Td ta="right"><Text size="sm" c="dimmed">{transferredBy.get(l.productId) ?? 0}</Text></Table.Td>
                   )}
                   {uses.overEnd && (
-                    <Table.Td><QtyInput aria-label={`${l.product.name} over end`} value={l.overEnd} disabled={!canWrite} onChange={v => patchLine(l.productId, 'overEnd', v)} /></Table.Td>
+                    <Table.Td><QtyInput aria-label={`${l.product.name} over end`} value={l.overEnd} disabled={!canWrite} onChange={(v, e) => patchLine(l.productId, 'overEnd', v, e)} enteredAs={l.enteredAs?.overEnd} /></Table.Td>
                   )}
                   {uses.charges && (
                     <Table.Td ta="right"><Text size="sm" c="dimmed">{chargedBy.get(l.productId) ?? 0}</Text></Table.Td>
                   )}
                   {uses.pullOuts && (
-                    <Table.Td><QtyInput aria-label={`${l.product.name} pulled out`} value={l.pulledOut} disabled={!canWrite} onChange={v => patchLine(l.productId, 'pulledOut', v)} /></Table.Td>
+                    <Table.Td><QtyInput aria-label={`${l.product.name} pulled out`} value={l.pulledOut} disabled={!canWrite} onChange={(v, e) => patchLine(l.productId, 'pulledOut', v, e)} enteredAs={l.enteredAs?.pulledOut} /></Table.Td>
                   )}
-                  <Table.Td><QtyInput aria-label={`${l.product.name} ending balance`} value={l.endBal} disabled={!canWrite} onChange={v => patchLine(l.productId, 'endBal', v)} /></Table.Td>
+                  <Table.Td><QtyInput aria-label={`${l.product.name} ending balance`} value={l.endBal} disabled={!canWrite} onChange={(v, e) => patchLine(l.productId, 'endBal', v, e)} enteredAs={l.enteredAs?.endBal} /></Table.Td>
                   <Table.Td ta="right">
                     <Text size="sm" fw={600} c={impossible ? 'red' : undefined}>{totals.sold}</Text>
                   </Table.Td>
@@ -695,7 +727,7 @@ export default function DsirEntryPage() {
               const next = computed[idx + delta]
               if (next) setEditingProductId(next.line.productId)
             }}
-            onPatch={(field, value) => editingProductId && patchLine(editingProductId, field, value)}
+            onPatch={(field, value, enteredAs) => editingProductId && patchLine(editingProductId, field, value, enteredAs)}
             onRecount={() => editingProductId && recountOpening(editingProductId)}
           />
         )

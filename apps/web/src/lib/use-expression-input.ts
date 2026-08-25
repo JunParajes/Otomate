@@ -4,7 +4,12 @@ import { evaluateExpression, looksLikeExpression, stripDisallowed } from './coun
 interface Options {
   /** The committed value, in whatever unit the box displays (units, pesos…). */
   value: number
-  onChange: (next: number) => void
+  /**
+   * `enteredAs` is the sum that produced the value ("4*5+3*4"), or null when a
+   * plain number was typed. Null must be honoured: leaving a stale expression
+   * behind would have it explaining a figure it no longer describes.
+   */
+  onChange: (next: number, enteredAs: string | null) => void
   /** How a committed value is rendered when the box is not being edited. */
   format: (value: number) => string
   /**
@@ -61,8 +66,12 @@ export function useExpressionInput({ value, onChange, format, normalise }: Optio
     const result = evaluateExpression(cleaned)
     if (!result.ok) return
     const committed = latest.current.normalise(result.value)
-    if (committed === null || committed === latest.current.value) return
-    latest.current.onChange(committed)
+    if (committed === null) return
+
+    const enteredAs = looksLikeExpression(cleaned) ? cleaned.trim() : null
+    // Sent even when the number is unchanged: retyping 32 as a plain 32 has to
+    // clear the sum that used to explain it.
+    latest.current.onChange(committed, enteredAs)
   }, [])
 
   /**
@@ -97,7 +106,7 @@ export function useExpressionInput({ value, onChange, format, normalise }: Optio
     if (current !== null && current.trim() !== '') {
       const result = evaluateExpression(current)
       const usable = result.ok ? norm(result.value) : null
-      if (usable === null && v !== valueOnFocus.current) commit(valueOnFocus.current)
+      if (usable === null && v !== valueOnFocus.current) commit(valueOnFocus.current, null)
     }
     setDraft(null)
   }, [])

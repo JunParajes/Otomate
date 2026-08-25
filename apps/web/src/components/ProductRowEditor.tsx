@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import {
   ActionIcon, Badge, Divider, Grid, Group, Modal, Paper, Stack, Text, Tooltip,
 } from '@mantine/core'
-import { IconAlertTriangle, IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
+import { IconAlertTriangle, IconChevronLeft, IconChevronRight, IconMathSymbols } from '@tabler/icons-react'
 import { formatMoney, type DsirLine } from '@otomate/shared'
 import { useKeypad } from './keypad/KeypadContext'
 import CountKeypad from './keypad/CountKeypad'
@@ -31,8 +31,45 @@ interface Props {
   canWrite: boolean
   onClose: () => void
   onStep: (delta: number) => void
-  onPatch: (field: 'begBal' | 'produced' | 'overEnd' | 'pulledOut' | 'endBal', value: number) => void
+  onPatch: (
+    field: 'begBal' | 'produced' | 'overEnd' | 'pulledOut' | 'endBal',
+    value: number,
+    enteredAs: string | null
+  ) => void
   onRecount: () => void
+}
+
+/**
+ * A figure and, underneath it, the sum it was counted from.
+ *
+ * Shown here rather than only on hover because this is the view someone opens
+ * to understand a number, and "32" alone does not say a 4x5 layer sat under a
+ * 3x4 one. Absent entirely when the figure was simply typed, so the panel stays
+ * quiet for the ordinary case.
+ */
+function CountedField({
+  label, note, enteredAs, children,
+}: {
+  label: string
+  note?: string
+  enteredAs?: string
+  children: React.ReactNode
+}) {
+  return (
+    <Group justify="space-between" wrap="nowrap" align="flex-start">
+      <Stack gap={2} style={{ minWidth: 0 }}>
+        <Text size="sm" fw={600}>{label}</Text>
+        {note && <Text size="xs" c="dimmed">{note}</Text>}
+        {enteredAs && (
+          <Group gap={4} wrap="nowrap">
+            <IconMathSymbols size={12} opacity={0.6} />
+            <Text size="xs" c="dimmed" ff="monospace">counted as {enteredAs}</Text>
+          </Group>
+        )}
+      </Stack>
+      {children}
+    </Group>
+  )
 }
 
 function Figure({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -82,10 +119,15 @@ export default function ProductRowEditor({
     <Modal
       opened
       onClose={onClose}
-      size="92%"
+      size="96%"
+      // Mantine offsets the modal from the viewport edges (41px/59px by
+      // default) and then sizes it as a percentage of what is left, so "95%"
+      // was really 85% of the screen. These reclaim that margin.
+      xOffset="1vw"
+      yOffset="1vh"
       centered
       withCloseButton={false}
-      classNames={{ body: classes.body }}
+      classNames={{ body: classes.body, content: classes.content }}
     >
       <Group justify="space-between" wrap="nowrap" mb="sm">
         <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
@@ -122,18 +164,18 @@ export default function ProductRowEditor({
       <Grid gap={0} className={classes.split}>
         {/* Figures */}
         <Grid.Col span={{ base: 12, sm: 7 }} className={classes.left}>
-          <Stack gap="sm">
-            <Group justify="space-between" wrap="nowrap">
-              <Stack gap={2} style={{ minWidth: 0 }}>
-                <Text size="sm" fw={600}>Beginning balance</Text>
-                <Text size="xs" c="dimmed">
-                  {line.begBalRecounted
-                    ? 'Recounted by the opener'
-                    : carriedFromDate
-                      ? `Carried from ${carriedFromDate}`
-                      : 'No finalised report to carry from'}
-                </Text>
-              </Stack>
+          <Stack gap="sm" style={{ flex: 1 }}>
+            <CountedField
+              label="Beginning balance"
+              note={
+                line.begBalRecounted
+                  ? 'Recounted by the opener'
+                  : carriedFromDate
+                    ? `Carried from ${carriedFromDate}`
+                    : 'No finalised report to carry from'
+              }
+              enteredAs={line.enteredAs?.begBal}
+            >
               <OpeningBalanceCell
                 productName={line.product.name}
                 value={line.begBal}
@@ -141,64 +183,60 @@ export default function ProductRowEditor({
                 carried={line.carriedBegBal}
                 carriedFromDate={carriedFromDate}
                 disabled={!canWrite}
-                onChange={v => onPatch('begBal', v)}
+                onChange={(v, e) => onPatch('begBal', v, e)}
                 onRecount={onRecount}
               />
-            </Group>
+            </CountedField>
 
             <Divider />
 
-            <Group justify="space-between" wrap="nowrap">
-              <Text size="sm" fw={600}>Produced</Text>
+            <CountedField label="Produced" enteredAs={line.enteredAs?.produced}>
               <div className={classes.input}>
                 <QtyInput
                   aria-label={`${line.product.name} produced`}
                   value={line.produced}
                   disabled={!canWrite}
-                  onChange={v => onPatch('produced', v)}
+                  onChange={(v, e) => onPatch('produced', v, e)}
                 />
               </div>
-            </Group>
+            </CountedField>
 
             {uses.overEnd && (
-              <Group justify="space-between" wrap="nowrap">
-                <Text size="sm" fw={600}>Over end</Text>
+              <CountedField label="Over end" enteredAs={line.enteredAs?.overEnd}>
                 <div className={classes.input}>
                   <QtyInput
                     aria-label={`${line.product.name} over end`}
                     value={line.overEnd}
                     disabled={!canWrite}
-                    onChange={v => onPatch('overEnd', v)}
+                    onChange={(v, e) => onPatch('overEnd', v, e)}
                   />
                 </div>
-              </Group>
+              </CountedField>
             )}
 
             {uses.pullOuts && (
-              <Group justify="space-between" wrap="nowrap">
-                <Text size="sm" fw={600}>Pulled out</Text>
+              <CountedField label="Pulled out" enteredAs={line.enteredAs?.pulledOut}>
                 <div className={classes.input}>
                   <QtyInput
                     aria-label={`${line.product.name} pulled out`}
                     value={line.pulledOut}
                     disabled={!canWrite}
-                    onChange={v => onPatch('pulledOut', v)}
+                    onChange={(v, e) => onPatch('pulledOut', v, e)}
                   />
                 </div>
-              </Group>
+              </CountedField>
             )}
 
-            <Group justify="space-between" wrap="nowrap">
-              <Text size="sm" fw={600}>Ending balance</Text>
+            <CountedField label="Ending balance" enteredAs={line.enteredAs?.endBal}>
               <div className={classes.input}>
                 <QtyInput
                   aria-label={`${line.product.name} ending balance`}
                   value={line.endBal}
                   disabled={!canWrite}
-                  onChange={v => onPatch('endBal', v)}
+                  onChange={(v, e) => onPatch('endBal', v, e)}
                 />
               </div>
-            </Group>
+            </CountedField>
 
             <Divider label="Not typed here" labelPosition="center" />
 
@@ -210,7 +248,7 @@ export default function ProductRowEditor({
               <Figure label="Charged to staff" value={String(charged)} hint="Entered in the charges list below the grid" />
             )}
 
-            <Paper withBorder p="sm" radius="md" bg={totals.impossible ? 'var(--mantine-color-red-light)' : undefined}>
+            <Paper className={classes.summary} withBorder p="md" radius="md" bg={totals.impossible ? 'var(--mantine-color-red-light)' : undefined}>
               <Stack gap={6}>
                 <Figure label="Available" value={String(totals.preTotal)} hint="Opening + produced + received − sent + over end" />
                 <Figure label="Sold" value={String(totals.sold)} hint="What is left once everything else is accounted for" />

@@ -149,6 +149,11 @@ export interface DsirLine {
   /** True when the opening was recounted rather than carried forward. */
   begBalRecounted: boolean
   /**
+   * How a figure was counted, where it was counted rather than typed:
+   * { endBal: '4*5+3*4' }. Absent keys were entered as plain numbers.
+   */
+  enteredAs: Partial<Record<'begBal' | 'produced' | 'overEnd' | 'pulledOut' | 'endBal', string>> | null
+  /**
    * The opening this line inherits from the branch's previous finalised report,
    * so a recount can be shown against what it replaced. Null when the branch has
    * no finalised history yet.
