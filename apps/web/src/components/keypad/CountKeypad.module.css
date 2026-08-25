@@ -32,3 +32,9 @@
   font-size: var(--mantine-font-size-lg);
   font-variant-numeric: tabular-nums;
 }
+
+/* Inside the product editor: fills its column instead of floating. */
+.embedded {
+  width: 100%;
+  background: transparent;
+}

@@ -8,7 +8,7 @@ import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
 import {
   IconAlertTriangle, IconArrowLeft, IconArrowsSort, IconCheck, IconLock, IconLockOpen,
-  IconPlus, IconTrash,
+  IconPlus, IconTrash, IconChevronRight,
 } from '@tabler/icons-react'
 import {
   computeLineTotals, formatMoney, isImpossibleLine,
@@ -25,6 +25,7 @@ import QtyInput from '@/components/QtyInput'
 import OpeningBalanceCell from '@/components/OpeningBalanceCell'
 import AddProductsModal from '@/components/AddProductsModal'
 import ColumnMenu, { type QtyColumn } from '@/components/ColumnMenu'
+import ProductRowEditor from '@/components/ProductRowEditor'
 import MoneyCountInput from '@/components/MoneyCountInput'
 import { KeypadProvider } from '@/components/keypad/KeypadContext'
 import classes from './DsirEntryPage.module.css'
@@ -64,6 +65,8 @@ export default function DsirEntryPage() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>('entry')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  /** Product being edited in the full-screen editor, by id. */
+  const [editingProductId, setEditingProductId] = useState<string | null>(null)
   /**
    * Bumped by every edit. A save compares this against the value it started
    * with: if they differ the user has typed during the round trip, and applying
@@ -554,12 +557,22 @@ export default function DsirEntryPage() {
             <Table.Tbody>
               {computed.map(({ line: l, totals, impossible }) => (
                 <Table.Tr key={l.productId} bg={impossible ? 'var(--mantine-color-red-light)' : undefined}>
-                  <Table.Td>
-                    <Text size="sm" fw={500} lh={1.2}>{l.product.name}</Text>
-                    <Text size="xs" c="dimmed" lh={1.2}>
-                      {formatMoney(l.unitPriceCents)} per {l.product.unit.toLowerCase()}
-                      {l.product.sku ? ` · ${l.product.sku}` : ''}
-                    </Text>
+                  {/* The name opens the roomy editor; the figures beside it still
+                      edit in place, so a quick single correction stays quick. */}
+                  <Table.Td
+                    onClick={() => setEditingProductId(l.productId)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <Group gap={4} wrap="nowrap">
+                      <Stack gap={0} style={{ minWidth: 0 }}>
+                        <Text size="sm" fw={500} lh={1.2}>{l.product.name}</Text>
+                        <Text size="xs" c="dimmed" lh={1.2}>
+                          {formatMoney(l.unitPriceCents)} per {l.product.unit.toLowerCase()}
+                          {l.product.sku ? ` · ${l.product.sku}` : ''}
+                        </Text>
+                      </Stack>
+                      <IconChevronRight size={14} opacity={0.35} />
+                    </Group>
                   </Table.Td>
                   <Table.Td>
                     <OpeningBalanceCell
@@ -660,6 +673,33 @@ export default function DsirEntryPage() {
           />
         </Group>
       )}
+
+      {/* Driven off the sorted view, so prev/next walks the order on screen. */}
+      {(() => {
+        const idx = computed.findIndex(c => c.line.productId === editingProductId)
+        const current = idx >= 0 ? computed[idx] : null
+        return (
+          <ProductRowEditor
+            line={current?.line ?? null}
+            totals={current ? { ...current.totals, impossible: current.impossible } : null}
+            index={idx}
+            count={computed.length}
+            carriedFromDate={report.carriedFromDate}
+            uses={uses}
+            transferredIn={receivedBy.get(editingProductId ?? '') ?? 0}
+            transferredOut={transferredBy.get(editingProductId ?? '') ?? 0}
+            charged={chargedBy.get(editingProductId ?? '') ?? 0}
+            canWrite={canWrite}
+            onClose={() => setEditingProductId(null)}
+            onStep={delta => {
+              const next = computed[idx + delta]
+              if (next) setEditingProductId(next.line.productId)
+            }}
+            onPatch={(field, value) => editingProductId && patchLine(editingProductId, field, value)}
+            onRecount={() => editingProductId && recountOpening(editingProductId)}
+          />
+        )
+      })()}
 
       <AddProductsModal
         opened={pickerOpen}

@@ -1,0 +1,43 @@
+.body {
+  padding-top: var(--mantine-spacing-md);
+}
+
+.split {
+  min-height: 380px;
+}
+
+.left {
+  padding-right: var(--mantine-spacing-lg);
+}
+
+/* The vertical rule between the figures and the keypad. Only from sm up: the
+   two columns stack on a phone, where a divider down the middle means nothing. */
+@media (min-width: 48em) {
+  .right {
+    border-left: 1px solid var(--mantine-color-default-border);
+    padding-left: var(--mantine-spacing-lg);
+  }
+}
+
+@media (max-width: 47.99em) {
+  .left {
+    padding-right: 0;
+    padding-bottom: var(--mantine-spacing-md);
+    border-bottom: 1px solid var(--mantine-color-default-border);
+  }
+  .right {
+    padding-top: var(--mantine-spacing-md);
+  }
+}
+
+/* Roomy targets: the whole point of this view is that a figure is not a 50px
+   box any more. */
+.input {
+  width: 120px;
+}
+
+.input input {
+  height: 44px;
+  font-size: var(--mantine-font-size-lg);
+  border-color: var(--mantine-color-default-border);
+}

@@ -8,6 +8,10 @@ interface Props {
   preview: string | null
   onPress: (key: string) => void
   onDone: () => void
+  /** Rendered inside a panel rather than floating over the page. */
+  embedded?: boolean
+  /** No field is being edited yet — the keys are inert until one is tapped. */
+  disabled?: boolean
 }
 
 interface Key {
@@ -55,14 +59,25 @@ const KEYS: Key[] = [
  * the eye can learn, and never covers the row being counted — which an anchored
  * popover does on a grid this tall.
  */
-export default function CountKeypad({ label, text, preview, onPress, onDone }: Props) {
+export default function CountKeypad({
+  label, text, preview, onPress, onDone, embedded = false, disabled = false,
+}: Props) {
   return (
-    <Paper className={classes.dock} data-count-keypad withBorder shadow="lg" radius="md" p="sm">
+    <Paper
+      className={embedded ? classes.embedded : classes.dock}
+      data-count-keypad
+      withBorder={!embedded}
+      shadow={embedded ? undefined : 'lg'}
+      radius="md"
+      p="sm"
+    >
       <Group justify="space-between" wrap="nowrap" mb={6} gap="xs">
         <Text size="xs" c="dimmed" fw={600} lineClamp={1}>{label}</Text>
-        <ActionIcon variant="subtle" color="gray" size="sm" onClick={onDone} aria-label="Close keypad">
-          <IconX size={14} />
-        </ActionIcon>
+        {!embedded && (
+          <ActionIcon variant="subtle" color="gray" size="sm" onClick={onDone} aria-label="Close keypad">
+            <IconX size={14} />
+          </ActionIcon>
+        )}
       </Group>
 
       {/* The running sum and its total, so a stack can be checked before it is
@@ -87,6 +102,7 @@ export default function CountKeypad({ label, text, preview, onPress, onDone }: P
             // Never a tab stop: the grid already has hundreds, and the encoder
             // must not have to tab past a keypad to reach the next box.
             tabIndex={-1}
+            disabled={disabled}
             aria-label={k.ariaLabel}
             onMouseDown={e => e.preventDefault()}
             onClick={() => onPress(k.insert)}
@@ -96,7 +112,7 @@ export default function CountKeypad({ label, text, preview, onPress, onDone }: P
         ))}
       </SimpleGrid>
 
-      <Button fullWidth mt="xs" onMouseDown={e => e.preventDefault()} onClick={onDone}>
+      <Button fullWidth mt="xs" disabled={disabled} onMouseDown={e => e.preventDefault()} onClick={onDone}>
         Done
       </Button>
     </Paper>

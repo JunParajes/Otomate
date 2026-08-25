@@ -13,6 +13,14 @@ export interface KeypadField {
 }
 
 interface KeypadApi {
+  /** The field being driven, so a panel can render its own keypad for it. */
+  field: KeypadField | null
+  /**
+   * Set while something else owns the keypad — the product editor renders one
+   * inside itself, and a second floating copy over the top would be absurd.
+   */
+  dockHidden: boolean
+  setDockHidden: (hidden: boolean) => void
   /**
    * Whether this is a touch device. Resolved once here rather than in each
    * count box — a DSIR is ~275 boxes, and that many matchMedia listeners is
@@ -49,6 +57,7 @@ const KeypadContext = createContext<KeypadApi | null>(null)
 export function KeypadProvider({ children }: { children: ReactNode }) {
   const isTouch = useMediaQuery('(pointer: coarse)') ?? false
   const [field, setField] = useState<KeypadField | null>(null)
+  const [dockHidden, setDockHidden] = useState(false)
   // Read by the callbacks below. finish() is a side effect, so it must not run
   // inside a state updater — StrictMode calls those twice.
   const fieldRef = useRef<KeypadField | null>(null)
@@ -73,14 +82,14 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const api = useMemo<KeypadApi>(
-    () => ({ isTouch, activeId: field?.id ?? null, open, sync, closeActive, close }),
-    [isTouch, field?.id, open, sync, closeActive, close]
+    () => ({ isTouch, field, dockHidden, setDockHidden, activeId: field?.id ?? null, open, sync, closeActive, close }),
+    [isTouch, field, dockHidden, open, sync, closeActive, close]
   )
 
   return (
     <KeypadContext.Provider value={api}>
       {children}
-      {field && (
+      {field && !dockHidden && (
         <CountKeypad
           label={field.label}
           text={field.text}
