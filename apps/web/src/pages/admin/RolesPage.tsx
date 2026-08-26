@@ -1,8 +1,5 @@
 import { useState } from 'react'
-import {
-  ActionIcon, Alert, Badge, Button, Group, Modal, Select, Stack, Table, Text,
-  TextInput, Textarea, Tooltip,
-} from '@mantine/core'
+import { Alert, Badge, Button, Group, Modal, Select, Stack, Table, Text, TextInput, Textarea, Tooltip } from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
 // on zod 4 that is undefined and validation throws instead of showing messages.
@@ -12,6 +9,7 @@ import { IconAlertTriangle, IconLock, IconPencil, IconPlus, IconTrash } from '@t
 import { createRoleSchema, type RoleWithUsage } from '@otomate/shared'
 import { adminApi } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
+import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
 import { useSession } from '@/lib/session'
 import PageHeader from '@/components/PageHeader'
 import DataState from '@/components/DataState'
@@ -25,6 +23,7 @@ export default function RolesPage() {
   const [editing, setEditing] = useState<RoleWithUsage | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<RoleWithUsage | null>(null)
+  const [acting, setActing] = useState<RoleWithUsage | null>(null)
   const [reassignTo, setReassignTo] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -92,12 +91,14 @@ export default function RolesPage() {
                 <Table.Th>Role</Table.Th>
                 <Table.Th>Permissions</Table.Th>
                 <Table.Th w={90}>Users</Table.Th>
-                <Table.Th w={100} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {(roles.data ?? []).map(role => (
-                <Table.Tr key={role.id}>
+                <Table.Tr
+                  key={role.id}
+                  {...rowActionProps(canWrite && !role.isSystem, () => setActing(role))}
+                >
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
                       <Stack gap={2}>
@@ -134,23 +135,6 @@ export default function RolesPage() {
                   <Table.Td>
                     <Badge variant="light" color={role.userCount > 0 ? 'blue' : 'gray'}>{role.userCount}</Badge>
                   </Table.Td>
-                  <Table.Td>
-                    {canWrite && !role.isSystem && (
-                      <Group gap={4} wrap="nowrap">
-                        <ActionIcon variant="subtle" color="gray" onClick={() => openEdit(role)} aria-label={`Edit ${role.name}`}>
-                          <IconPencil size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => { setReassignTo(null); setDeleting(role) }}
-                          aria-label={`Delete ${role.name}`}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Group>
-                    )}
-                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -159,6 +143,26 @@ export default function RolesPage() {
       </DataState>
 
       {/* Create and edit share one form — the fields are identical. */}
+      <RowActionsSheet
+        opened={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.name ?? ''}
+        subtitle={acting?.description ?? `${acting?.userCount ?? 0} user(s)`}
+        actions={
+          acting
+            ? ([
+                { label: 'Edit', icon: <IconPencil size={18} />, onClick: () => openEdit(acting) },
+                {
+                  label: 'Delete',
+                  icon: <IconTrash size={18} />,
+                  destructive: true,
+                  onClick: () => { setReassignTo(null); setDeleting(acting) },
+                },
+              ] satisfies RowAction[])
+            : []
+        }
+      />
+
       <Modal
         opened={creating || isEditing}
         onClose={() => { setCreating(false); setEditing(null) }}

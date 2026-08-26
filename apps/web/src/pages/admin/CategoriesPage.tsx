@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ActionIcon, Badge, Button, Group, Modal, NumberInput, Stack, Switch, Table, Text, TextInput, Textarea } from '@mantine/core'
+import { Badge, Button, Group, Modal, NumberInput, Stack, Switch, Table, Text, TextInput, Textarea } from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
 // on zod 4 that is undefined and validation throws instead of showing messages.
@@ -10,6 +10,7 @@ import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import { createCategorySchema, type CategoryWithUsage } from '@otomate/shared'
 import { catalogApi } from '@/lib/catalog'
 import { useResource } from '@/hooks/useResource'
+import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
 import { useSession } from '@/lib/session'
 import PageHeader from '@/components/PageHeader'
 import DataState from '@/components/DataState'
@@ -18,6 +19,7 @@ export default function CategoriesPage() {
   const { can } = useSession()
   const categories = useResource(catalogApi.listCategories)
   const [editing, setEditing] = useState<CategoryWithUsage | null>(null)
+  const [acting, setActing] = useState<CategoryWithUsage | null>(null)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -85,12 +87,15 @@ export default function CategoriesPage() {
                 <Table.Th w={110}>Products</Table.Th>
                 <Table.Th w={110}>Status</Table.Th>
                 <Table.Th w={90}>Order</Table.Th>
-                <Table.Th w={100} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {(categories.data ?? []).map(c => (
-                <Table.Tr key={c.id} opacity={c.isActive ? 1 : 0.55}>
+                <Table.Tr
+                  key={c.id}
+                  opacity={c.isActive ? 1 : 0.55}
+                  {...rowActionProps(canWrite, () => setActing(c))}
+                >
                   <Table.Td>
                     <Stack gap={2}>
                       <Text fw={500}>{c.name}</Text>
@@ -100,25 +105,42 @@ export default function CategoriesPage() {
                   <Table.Td><Badge variant="light" color={c.productCount > 0 ? 'blue' : 'gray'}>{c.productCount}</Badge></Table.Td>
                   <Table.Td><Badge variant="light" color={c.isActive ? 'green' : 'gray'}>{c.isActive ? 'Active' : 'Inactive'}</Badge></Table.Td>
                   <Table.Td><Text size="sm" c="dimmed">{c.sortOrder}</Text></Table.Td>
-                  <Table.Td>
-                    {canWrite && (
-                      <Group gap={4} wrap="nowrap">
-                        <ActionIcon variant="subtle" color="gray" aria-label={`Edit ${c.name}`}
-                          onClick={() => { form.setValues({ name: c.name, description: c.description ?? '', isActive: c.isActive, sortOrder: c.sortOrder }); form.clearErrors(); setEditing(c) }}>
-                          <IconPencil size={16} />
-                        </ActionIcon>
-                        <ActionIcon variant="subtle" color="red" aria-label={`Delete ${c.name}`} onClick={() => confirmDelete(c)}>
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Group>
-                    )}
-                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
       </DataState>
+
+      <RowActionsSheet
+        opened={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.name ?? ''}
+        subtitle={acting ? `${acting.productCount} product(s) · ${acting.isActive ? 'Active' : 'Inactive'}` : undefined}
+        actions={
+          acting
+            ? ([
+                {
+                  label: 'Edit',
+                  icon: <IconPencil size={18} />,
+                  onClick: () => {
+                    form.setValues({ name: acting.name, description: acting.description ?? '', isActive: acting.isActive, sortOrder: acting.sortOrder })
+                    form.clearErrors()
+                    setEditing(acting)
+                  },
+                },
+                {
+                  label: 'Delete',
+                  icon: <IconTrash size={18} />,
+                  destructive: true,
+                  disabled: acting.productCount > 0,
+                  disabledReason: 'Products use this category — move them first',
+                  onClick: () => confirmDelete(acting),
+                },
+              ] satisfies RowAction[])
+            : []
+        }
+      />
 
       <Modal opened={creating || isEditing} onClose={() => { setCreating(false); setEditing(null) }} title={isEditing ? `Edit ${editing?.name}` : 'Add category'} centered>
         <form onSubmit={form.onSubmit(values =>

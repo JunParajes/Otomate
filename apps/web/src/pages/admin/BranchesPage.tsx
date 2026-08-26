@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ActionIcon, Badge, Button, Group, Modal, Stack, Switch, Table, Text, TextInput } from '@mantine/core'
+import { Badge, Button, Group, Modal, Stack, Switch, Table, Text, TextInput } from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
 // on zod 4 that is undefined and validation throws instead of showing messages.
@@ -10,6 +10,7 @@ import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import { createBranchSchema } from '@otomate/shared'
 import { adminApi, type BranchWithUsage } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
+import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
 import { useSession } from '@/lib/session'
 import PageHeader from '@/components/PageHeader'
 import DataState from '@/components/DataState'
@@ -18,6 +19,7 @@ export default function BranchesPage() {
   const { can, refresh } = useSession()
   const branches = useResource(adminApi.listBranches)
   const [editing, setEditing] = useState<BranchWithUsage | null>(null)
+  const [acting, setActing] = useState<BranchWithUsage | null>(null)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -90,12 +92,15 @@ export default function BranchesPage() {
                 <Table.Th>Branch</Table.Th>
                 <Table.Th w={110}>Users</Table.Th>
                 <Table.Th w={120}>Status</Table.Th>
-                <Table.Th w={100} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {(branches.data ?? []).map(branch => (
-                <Table.Tr key={branch.id} opacity={branch.isActive ? 1 : 0.55}>
+                <Table.Tr
+                  key={branch.id}
+                  opacity={branch.isActive ? 1 : 0.55}
+                  {...rowActionProps(canWrite, () => setActing(branch))}
+                >
                   <Table.Td><Text fw={500}>{branch.name}</Text></Table.Td>
                   <Table.Td>
                     <Badge variant="light" color={branch.userCount > 0 ? 'blue' : 'gray'}>{branch.userCount}</Badge>
@@ -105,33 +110,42 @@ export default function BranchesPage() {
                       {branch.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </Table.Td>
-                  <Table.Td>
-                    {canWrite && (
-                      <Group gap={4} wrap="nowrap">
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          aria-label={`Edit ${branch.name}`}
-                          onClick={() => {
-                            form.setValues({ name: branch.name, isActive: branch.isActive })
-                            form.clearErrors()
-                            setEditing(branch)
-                          }}
-                        >
-                          <IconPencil size={16} />
-                        </ActionIcon>
-                        <ActionIcon variant="subtle" color="red" aria-label={`Delete ${branch.name}`} onClick={() => confirmDelete(branch)}>
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Group>
-                    )}
-                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
       </DataState>
+
+      <RowActionsSheet
+        opened={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.name ?? ''}
+        subtitle={acting ? `${acting.userCount} user(s) · ${acting.isActive ? 'Active' : 'Inactive'}` : undefined}
+        actions={
+          acting
+            ? ([
+                {
+                  label: 'Edit',
+                  icon: <IconPencil size={18} />,
+                  onClick: () => {
+                    form.setValues({ name: acting.name, isActive: acting.isActive })
+                    form.clearErrors()
+                    setEditing(acting)
+                  },
+                },
+                {
+                  label: 'Delete',
+                  icon: <IconTrash size={18} />,
+                  destructive: true,
+                  disabled: acting.userCount > 0,
+                  disabledReason: 'Users are assigned here — reassign them first',
+                  onClick: () => confirmDelete(acting),
+                },
+              ] satisfies RowAction[])
+            : []
+        }
+      />
 
       <Modal
         opened={creating || isEditing}

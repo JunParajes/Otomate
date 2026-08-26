@@ -1,21 +1,17 @@
 import { useMemo, useState } from 'react'
-import {
-  ActionIcon, Badge, Button, Grid, Group, Menu, Modal, Select, Stack, Switch, Table,
-  Text, TextInput, Tooltip,
-} from '@mantine/core'
+import { Badge, Button, Grid, Group, Modal, Select, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
 // on zod 4 that is undefined and validation throws instead of showing messages.
 import { zod4Resolver as zodResolver } from 'mantine-form-zod-resolver'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import {
-  IconDotsVertical, IconLink, IconPencil, IconPlus, IconSearch, IconUserCheck, IconUserOff,
-} from '@tabler/icons-react'
+import { IconLink, IconPencil, IconPlus, IconSearch, IconUserCheck, IconUserOff } from '@tabler/icons-react'
 import {
   EMPLOYEE_POSITIONS, POSITION_LABELS, createEmployeeSchema, formatEmployeeName, type Employee,
 } from '@otomate/shared'
 import { employeeApi } from '@/lib/employees'
+import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
 import { adminApi } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
@@ -32,6 +28,7 @@ export default function EmployeesPage() {
 
   const [editing, setEditing] = useState<Employee | null>(null)
   const [creating, setCreating] = useState(false)
+  const [acting, setActing] = useState<Employee | null>(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [branchFilter, setBranchFilter] = useState<string | null>(null)
@@ -168,12 +165,15 @@ export default function EmployeesPage() {
                 <Table.Th w={150}>Branch</Table.Th>
                 <Table.Th w={170}>Login</Table.Th>
                 <Table.Th w={110}>Status</Table.Th>
-                <Table.Th w={60} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {visible.map(e => (
-                <Table.Tr key={e.id} opacity={e.isActive ? 1 : 0.55}>
+                <Table.Tr
+                  key={e.id}
+                  opacity={e.isActive ? 1 : 0.55}
+                  {...rowActionProps(canWrite, () => setActing(e))}
+                >
                   <Table.Td>
                     <Stack gap={2}>
                       <Text fw={500}>{e.name}</Text>
@@ -196,34 +196,32 @@ export default function EmployeesPage() {
                   <Table.Td>
                     <Badge variant="light" color={e.isActive ? 'green' : 'gray'}>{e.isActive ? 'Active' : 'Inactive'}</Badge>
                   </Table.Td>
-                  <Table.Td>
-                    {canWrite && (
-                      <Menu position="bottom-end" withArrow>
-                        <Menu.Target>
-                          <ActionIcon variant="subtle" color="gray" aria-label={`Actions for ${e.name}`}>
-                            <IconDotsVertical size={16} />
-                          </ActionIcon>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item leftSection={<IconPencil size={14} />} onClick={() => openEdit(e)}>Edit</Menu.Item>
-                          <Menu.Divider />
-                          <Menu.Item
-                            color={e.isActive ? 'red' : 'green'}
-                            leftSection={e.isActive ? <IconUserOff size={14} /> : <IconUserCheck size={14} />}
-                            onClick={() => confirmToggle(e)}
-                          >
-                            {e.isActive ? 'Deactivate' : 'Reactivate'}
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                    )}
-                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
       </DataState>
+
+      <RowActionsSheet
+        opened={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.name ?? ''}
+        subtitle={acting ? [POSITION_LABELS[acting.position], acting.branch?.name ?? 'Unassigned'].join(' · ') : undefined}
+        actions={
+          acting
+            ? ([
+                { label: 'Edit', icon: <IconPencil size={18} />, onClick: () => openEdit(acting) },
+                {
+                  label: acting.isActive ? 'Deactivate' : 'Reactivate',
+                  icon: acting.isActive ? <IconUserOff size={18} /> : <IconUserCheck size={18} />,
+                  destructive: acting.isActive,
+                  onClick: () => confirmToggle(acting),
+                },
+              ] satisfies RowAction[])
+            : []
+        }
+      />
 
       <Modal
         opened={creating || isEditing}

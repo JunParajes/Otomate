@@ -1,0 +1,60 @@
+/* Every rule here is written twice — `.action.action` rather than `.action`.
+   UnstyledButton ships a reset (border: 0, padding: 0, colour inherited) whose
+   selector is one class, same as ours, and Mantine's sheet is injected after
+   this module: on a tie the later rule wins, so the single-class version was
+   silently dropping the padding, the borders and the red. Doubling the class
+   costs nothing and puts these one step above the reset. */
+
+/* Full-width rows, sized for a fingertip — the point of the change is that the
+   old target was a 36px icon at the edge of the table. */
+.action.action {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+}
+
+.action.action:hover:not(.disabled) {
+  background: var(--mantine-color-default-hover);
+  border-color: var(--mantine-color-crust-filled);
+}
+
+.action.destructive {
+  color: var(--mantine-color-red-7);
+  border-color: var(--mantine-color-red-3);
+}
+
+.action.destructive:hover:not(.disabled) {
+  background: var(--mantine-color-red-light);
+  border-color: var(--mantine-color-red-6);
+}
+
+/* Greyed rather than removed: a missing option reads as a bug, a greyed one
+   with a reason reads as an answer. */
+.action.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The row carries the whole action target now; `highlightOnHover` already
+   shades it, this says it can be pressed. Focus is made visible because the row
+   is reachable by Tab — an invisible focus ring on a whole table row is worse
+   than none. */
+.clickableRow {
+  cursor: pointer;
+}
+
+.clickableRow:focus-visible {
+  outline: 2px solid var(--mantine-color-crust-filled);
+  outline-offset: -2px;
+}
+
+.separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--mantine-color-default-border);
+}

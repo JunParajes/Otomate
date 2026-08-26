@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
-  ActionIcon, Avatar, Badge, Button, Group, Menu, Modal, NumberInput, Select, Stack,
-  Switch, Table, Text, TextInput, Textarea, Tooltip,
+  Avatar, Badge, Button, Group, Modal, NumberInput, Select, Stack, Switch, Table, Text,
+  TextInput, Textarea, Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
@@ -9,11 +9,12 @@ import { useForm } from '@mantine/form'
 import { zod4Resolver as zodResolver } from 'mantine-form-zod-resolver'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconDotsVertical, IconPackageOff, IconPackage, IconPencil, IconPhoto, IconPlus, IconSearch } from '@tabler/icons-react'
+import { IconPackageOff, IconPackage, IconPencil, IconPhoto, IconPlus, IconSearch } from '@tabler/icons-react'
 import {
   PRODUCT_UNITS, createProductSchema, formatMoney, marginPercent, type Product,
 } from '@otomate/shared'
 import { catalogApi } from '@/lib/catalog'
+import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
 import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
 import PageHeader from '@/components/PageHeader'
@@ -32,6 +33,7 @@ export default function ProductsPage() {
 
   const [editing, setEditing] = useState<Product | null>(null)
   const [creating, setCreating] = useState(false)
+  const [acting, setActing] = useState<Product | null>(null)
   const [saving, setSaving] = useState(false)
   const [pendingImage, setPendingImage] = useState<File | null>(null)
   const [search, setSearch] = useState('')
@@ -182,14 +184,17 @@ export default function ProductsPage() {
                 <Table.Th w={140}>Price</Table.Th>
                 {canSeeCost && <Table.Th w={150}>Cost / margin</Table.Th>}
                 <Table.Th w={110}>Status</Table.Th>
-                <Table.Th w={60} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {visible.map(p => {
                 const margin = canSeeCost ? marginPercent(p.priceCents, p.costCents ?? null) : null
                 return (
-                  <Table.Tr key={p.id} opacity={p.isActive ? 1 : 0.55}>
+                  <Table.Tr
+                    key={p.id}
+                    opacity={p.isActive ? 1 : 0.55}
+                    {...rowActionProps(canWrite, () => setActing(p))}
+                  >
                     <Table.Td>
                       <Avatar src={p.imageUrl} radius="sm" size={44}>
                         <IconPhoto size={18} opacity={0.5} />
@@ -227,28 +232,6 @@ export default function ProductsPage() {
                     <Table.Td>
                       <Badge variant="light" color={p.isActive ? 'green' : 'gray'}>{p.isActive ? 'Active' : 'Inactive'}</Badge>
                     </Table.Td>
-                    <Table.Td>
-                      {canWrite && (
-                        <Menu position="bottom-end" withArrow>
-                          <Menu.Target>
-                            <ActionIcon variant="subtle" color="gray" aria-label={`Actions for ${p.name}`}>
-                              <IconDotsVertical size={16} />
-                            </ActionIcon>
-                          </Menu.Target>
-                          <Menu.Dropdown>
-                            <Menu.Item leftSection={<IconPencil size={14} />} onClick={() => openEdit(p)}>Edit</Menu.Item>
-                            <Menu.Divider />
-                            <Menu.Item
-                              color={p.isActive ? 'red' : 'green'}
-                              leftSection={p.isActive ? <IconPackageOff size={14} /> : <IconPackage size={14} />}
-                              onClick={() => confirmToggle(p)}
-                            >
-                              {p.isActive ? 'Deactivate' : 'Reactivate'}
-                            </Menu.Item>
-                          </Menu.Dropdown>
-                        </Menu>
-                      )}
-                    </Table.Td>
                   </Table.Tr>
                 )
               })}
@@ -256,6 +239,26 @@ export default function ProductsPage() {
           </Table>
         </Table.ScrollContainer>
       </DataState>
+
+      <RowActionsSheet
+        opened={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.name ?? ''}
+        subtitle={acting ? `${acting.category.name} · ${formatMoney(acting.priceCents)} per ${acting.unit.toLowerCase()}` : undefined}
+        actions={
+          acting
+            ? ([
+                { label: 'Edit', icon: <IconPencil size={18} />, onClick: () => openEdit(acting) },
+                {
+                  label: acting.isActive ? 'Deactivate' : 'Reactivate',
+                  icon: acting.isActive ? <IconPackageOff size={18} /> : <IconPackage size={18} />,
+                  destructive: acting.isActive,
+                  onClick: () => confirmToggle(acting),
+                },
+              ] satisfies RowAction[])
+            : []
+        }
+      />
 
       <Modal
         opened={creating || isEditing}

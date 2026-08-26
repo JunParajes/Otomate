@@ -69,6 +69,46 @@ HTTP status codes:
 - **Theme changes go in `apps/web/src/theme.ts`**, never per-component overrides
 - Default sizes for inputs and buttons are set globally in the theme — don't pass `size` per component
 
+### Beating a Mantine reset from a CSS Module
+
+A CSS Module class and a Mantine component class are both **one class**, so
+specificity ties — and Mantine's stylesheet is injected *after* the module, so
+Mantine wins. Styling `UnstyledButton` with a plain `.action { padding: … }`
+silently does nothing.
+
+Write the selector twice. It is still one class in the markup:
+
+```css
+/* .action alone loses to UnstyledButton's reset; .action.action outranks it */
+.action.action { padding: 12px 14px; border: 1px solid …; }
+```
+
+Check the computed style in a browser rather than the file — this failure is
+invisible in the diff, and it has bitten twice (here, and the keypad's
+`--button-padding-x`, which Mantine sets *inline* and no class can outrank).
+
+## List Row Actions
+
+Admin lists do **not** carry a trailing column of action buttons. The row itself
+opens `RowActionsSheet`, which names the record and lists what can be done to it.
+
+```tsx
+<Table.Tr {...rowActionProps(canWrite, () => setActing(item))}>
+```
+
+- Use `rowActionProps` rather than a hand-written `onClick` — it also makes the
+  row focusable and Enter/Space-activatable, which a bare `onClick` on a `<tr>`
+  is not.
+- Pass `enabled: false` for rows with nothing to do (system roles), so they are
+  neither focusable nor pointer-cursored.
+- Mark destructive actions `destructive: true`; they render red, below a rule.
+- Prefer `disabled` + `disabledReason` over hiding an action — a missing option
+  reads as a bug, a greyed one with a reason reads as an answer.
+- Don't put anything else clickable inside the row; the row owns the tap.
+
+The reason is the tablet: the old target was a ~36px icon at the far edge of a
+wide table, and the first thing to scroll out of reach. The row is 744×50px.
+
 ## Shared Validation Schemas
 
 Zod schemas used by **both** api and web live in `packages/shared/src/schemas/`.

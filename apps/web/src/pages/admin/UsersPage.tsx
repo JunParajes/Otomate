@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
-  ActionIcon, Badge, Button, Group, Menu, Modal, PasswordInput, Select, Stack,
-  Switch, Table, Text, TextInput, Tooltip,
+  Badge, Button, Group, Modal, PasswordInput, Select, Stack, Switch, Table, Text, TextInput,
+  Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
@@ -9,11 +9,12 @@ import { useForm } from '@mantine/form'
 import { zod4Resolver as zodResolver } from 'mantine-form-zod-resolver'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconDotsVertical, IconKey, IconPencil, IconPlus, IconUserOff, IconUserCheck } from '@tabler/icons-react'
+import { IconKey, IconPencil, IconPlus, IconUserOff, IconUserCheck } from '@tabler/icons-react'
 import { createUserSchema, updateUserSchema, type User } from '@otomate/shared'
 import { adminApi } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
+import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
 import PageHeader from '@/components/PageHeader'
 import DataState from '@/components/DataState'
 
@@ -33,6 +34,8 @@ export default function UsersPage() {
   const [editing, setEditing] = useState<User | null>(null)
   const [creating, setCreating] = useState(false)
   const [resetting, setResetting] = useState<User | null>(null)
+  /** Row whose action sheet is open. */
+  const [acting, setActing] = useState<User | null>(null)
   const [saving, setSaving] = useState(false)
 
   const canWrite = can('users:write')
@@ -120,12 +123,15 @@ export default function UsersPage() {
                 <Table.Th>Role</Table.Th>
                 <Table.Th>Branch</Table.Th>
                 <Table.Th>Status</Table.Th>
-                <Table.Th w={60} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {(users.data ?? []).map(u => (
-                <Table.Tr key={u.id} opacity={u.isActive ? 1 : 0.55}>
+                <Table.Tr
+                  key={u.id}
+                  opacity={u.isActive ? 1 : 0.55}
+                  {...rowActionProps(canWrite, () => setActing(u))}
+                >
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
                       <Text fw={500}>{u.name}</Text>
@@ -149,42 +155,44 @@ export default function UsersPage() {
                       )}
                     </Group>
                   </Table.Td>
-                  <Table.Td>
-                    {canWrite && (
-                      <Menu position="bottom-end" withArrow>
-                        <Menu.Target>
-                          <ActionIcon variant="subtle" color="gray" aria-label={`Actions for ${u.name}`}>
-                            <IconDotsVertical size={16} />
-                          </ActionIcon>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item leftSection={<IconPencil size={14} />} onClick={() => openEdit(u)}>Edit</Menu.Item>
-                          <Menu.Item
-                            leftSection={<IconKey size={14} />}
-                            onClick={() => { resetForm.setValues({ password: '', mustChangePassword: true }); setResetting(u) }}
-                          >
-                            Reset password
-                          </Menu.Item>
-                          <Menu.Divider />
-                          {/* The API blocks self-deactivation; don't offer it either. */}
-                          <Menu.Item
-                            color={u.isActive ? 'red' : 'green'}
-                            disabled={u.id === me?.id}
-                            leftSection={u.isActive ? <IconUserOff size={14} /> : <IconUserCheck size={14} />}
-                            onClick={() => confirmToggleActive(u)}
-                          >
-                            {u.isActive ? 'Deactivate' : 'Reactivate'}
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                    )}
-                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
       </DataState>
+
+      <RowActionsSheet
+        opened={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.name ?? ''}
+        subtitle={acting ? `${acting.email} · ${acting.role.name}` : undefined}
+        actions={
+          acting
+            ? ([
+                { label: 'Edit', icon: <IconPencil size={18} />, onClick: () => openEdit(acting) },
+                {
+                  label: 'Reset password',
+                  icon: <IconKey size={18} />,
+                  onClick: () => {
+                    resetForm.setValues({ password: '', mustChangePassword: true })
+                    setResetting(acting)
+                  },
+                },
+                {
+                  label: acting.isActive ? 'Deactivate' : 'Reactivate',
+                  icon: acting.isActive ? <IconUserOff size={18} /> : <IconUserCheck size={18} />,
+                  destructive: acting.isActive,
+                  // The API blocks self-deactivation; say so rather than
+                  // offering a button that fails.
+                  disabled: acting.id === me?.id,
+                  disabledReason: 'You cannot deactivate your own account',
+                  onClick: () => confirmToggleActive(acting),
+                },
+              ] satisfies RowAction[])
+            : []
+        }
+      />
 
       <Modal opened={creating} onClose={() => setCreating(false)} title="Add user" size="lg" centered>
         <form onSubmit={createForm.onSubmit(values => run(() => adminApi.createUser(values), `${values.name} added`, () => setCreating(false)))}>
