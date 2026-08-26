@@ -522,6 +522,40 @@ router.delete(
     if (report.status === 'FINALIZED') {
       throw new HttpError(409, 'Finalised reports cannot be deleted. Reopen it first.', 'REPORT_FINALIZED')
     }
+
+    // A finalised report must not change, and deleting this could change one.
+    //
+    // Stock sent to another branch is read live off THIS report by the receiving
+    // branch (loadInbound), never copied into it. So deleting a draft that sends
+    // 20 units removes 20 from the receiver's available stock, raising its
+    // derived sold and its sales — and if that report is already closed, its
+    // variance moves after the fact. Variance is what gets deducted from a
+    // cashier's wages (docs/DOMAIN.md), so this is not a display detail.
+    //
+    // Reopening the receiver first makes the change visible to whoever owns it,
+    // which is the point.
+    const closedReceivers = report.transfers.length
+      ? await prisma.dsirReport.findMany({
+          where: {
+            reportDate: report.reportDate,
+            status: 'FINALIZED',
+            branchId: { in: [...new Set(report.transfers.map(t => t.toBranchId))] },
+          },
+          include: { branch: true },
+        })
+      : []
+
+    if (closedReceivers.length > 0) {
+      const names = closedReceivers.map(r => r.branch.name).join(', ')
+      throw new HttpError(
+        409,
+        `This draft sends stock to ${names}, whose report for ${toDateString(report.reportDate)} is already finalised. ` +
+          `Deleting it would change that report's sales. Reopen ${closedReceivers.length === 1 ? 'it' : 'them'} first, ` +
+          `or remove the transfers from this draft.`,
+        'RECEIVER_FINALIZED'
+      )
+    }
+
     await prisma.dsirReport.delete({ where: { id: report.id } })
     res.json({ data: { success: true }, error: null })
   })

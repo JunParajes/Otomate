@@ -7,7 +7,41 @@ Reviewed and updated as items are closed. Newest concerns at the top of each sec
 
 ## 🟠 Medium
 
-### 0. SSH is exposed to the internet (password auth now off)
+### 0. A finalised report's figures are not actually frozen
+
+**Status:** Open as of 2026-08-26. Found while adding draft deletion; the delete
+path is now guarded, the underlying coupling is not.
+
+Stock sent between branches is stored **once**, on the sending report, and read
+live by the receiver (`loadInbound` in `apps/api/src/routes/admin/dsir.ts`). It
+is never copied into the receiving report. So the receiver's *available* stock —
+and therefore its derived **sold** and **sales** — is recomputed from the
+sender's current data on every read, including after it has been finalised.
+
+Measured, before the guard existed:
+
+```
+Branch B: opening 0, produced 100, received 20, ending 40  → sold 80, sales ₱240
+Branch B finalised.
+Branch A's DRAFT (which sent the 20) deleted.
+Branch B, still FINALIZED, now reads:                        sold 60, sales ₱180
+```
+
+₱60 moved on a closed report. Variance is what gets deducted from a cashier's
+wages (see [DOMAIN.md](DOMAIN.md)), so this is not cosmetic.
+
+**What is guarded:** `DELETE /api/admin/dsir/:id` refuses when the draft's
+transfers point at a branch whose report for that date is already finalised
+(`RECEIVER_FINALIZED`), telling the operator to reopen it first.
+
+**What is not:** editing or reopening the sending report still moves the
+receiver's numbers, because nothing snapshots the inbound quantity. The real fix
+is to freeze inbound transfers into the receiving report at finalisation, the
+way `unitPriceCents` is already snapshotted onto `DsirLine` and for exactly the
+same reason. That is a schema change plus a migration, so it has not been done
+here.
+
+### 1. SSH is exposed to the internet (password auth now off)
 
 **Status:** Open as of 2026-08-26. `server.otomate.uk` resolves to the public IP
 and the router forwards a port to SSH, which is how deploys reach the machine.
@@ -35,7 +69,7 @@ those 876 attempts unwinnable rather than merely slow. The rest of the plan is
 kept in that document for when this is picked up again.
 
 
-### 1. Backups are local only — no off-machine copy
+### 2. Backups are local only — no off-machine copy
 
 **Status:** Nightly backups run as of 2026-08-23 — `pg_dump` plus a tar of the
 `product-images` volume, 14 days retained, on a systemd timer. The restore
@@ -61,7 +95,7 @@ employee records. `gpg` is already installed.
 
 
 
-### 2. CI has no typecheck, lint or test gate
+### 3. CI has no typecheck, lint or test gate
 
 `.github/workflows/deploy.yml` goes straight from `push` to building images to
 production. Nothing verifies the code first — every deploy so far has been gated
@@ -70,7 +104,7 @@ only by a local `tsc --noEmit` run by hand.
 **What to do:** add a job running `pnpm -r exec tsc --noEmit` as a `needs:`
 prerequisite of `build-and-push`.
 
-### 3. The server does not power itself back on
+### 4. The server does not power itself back on
 
 **Measured 2026-08-26:** at 2% battery UPower runs `CriticalPowerAction=HybridSleep`,
 which leaves the machine *suspended* — and a suspended machine ignores AC
@@ -94,7 +128,7 @@ that nothing turns the machine back on when mains power returns.
 Requires physical access at boot. The battery is effectively a built-in UPS; this
 is the missing half.
 
-### 4. There are no automated tests
+### 5. There are no automated tests
 
 Every feature so far has been verified by driving the running app. That has caught
 real bugs a build could not — but it is manual and not repeatable in CI.
@@ -103,14 +137,14 @@ real bugs a build could not — but it is manual and not repeatable in CI.
 
 ## 🟡 Low — known, documented, not urgent
 
-### 5. `@types/express@^5` is paired with `express@^4.21.2`
+### 6. `@types/express@^5` is paired with `express@^4.21.2`
 
 A types/runtime major mismatch. It has already produced one confusing failure:
 `req.params.id` typed as `string | string[]`, which silently broke Prisma's type
 inference three files away. Worked around with `pathParam()` in `apps/api/src/lib/http.ts`.
 Aligning the types to `^4` is a small, isolated change.
 
-### 6. Server `.env` values are unquoted
+### 7. Server `.env` values are unquoted
 
 A `$` in a password is expanded by any script that sources the file, corrupting
 `DATABASE_URL` (Prisma reports `P1013: invalid port number`, which points nowhere
@@ -119,7 +153,7 @@ the containers work. Documented in `docs/CONVENTIONS.md`.
 
 **What to do:** single-quote the values in `~/otomate/.env`. Compose strips the quotes.
 
-### 7. Frontend bundle is not code-split
+### 8. Frontend bundle is not code-split
 
 ~740 KB (~225 KB gzipped) in one chunk. Fine today; worth `manualChunks` or route-level
 `lazy()` once there are more pages.

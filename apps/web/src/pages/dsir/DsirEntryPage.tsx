@@ -65,6 +65,8 @@ export default function DsirEntryPage() {
   const [closedById, setClosedById] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [dirty, setDirty] = useState(false)
+  /** Set once deletion starts, so a queued autosave does not race the DELETE. */
+  const deleting = useRef(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>('entry')
@@ -499,11 +501,82 @@ export default function DsirEntryPage() {
    * Finalising stays deliberate — this only ever saves a draft.
    */
   useEffect(() => {
-    if (!dirty || locked || !canWrite || saving) return
+    if (!dirty || locked || !canWrite || saving || deleting.current) return
     const timer = setTimeout(() => { void save(undefined, { silent: true }) }, AUTOSAVE_DELAY_MS)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirty, locked, canWrite, saving, lines, charges, transfers, collections, uses, openedById, closedById, notes])
+
+  /**
+   * Throws away a draft, and the manual counting behind it.
+   *
+   * Safe against the rest of the system in one direction and not the other, so
+   * both are stated rather than assumed:
+   *  - Openings carry from the previous FINALISED report, so a draft is never a
+   *    carry source and deleting one cannot move another report's opening.
+   *  - Transfers OUT of this draft are read live by the receiving branch, whose
+   *    report loses those units when this goes. The dialog says so when the
+   *    draft actually has any, rather than warning on every delete.
+   */
+  async function remove() {
+    if (!report) return
+    // Stop a queued autosave from firing a PUT at a row that is being deleted.
+    deleting.current = true
+    setDirty(false)
+    try {
+      await dsirApi.remove(id)
+      notifications.show({ color: 'green', title: 'Draft deleted', message: `${report.branch.name} · ${report.reportDate}` })
+      navigate('/dsir')
+    } catch (e) {
+      deleting.current = false
+      notifications.show({
+        color: 'red',
+        title: 'Could not delete',
+        message: e instanceof Error ? e.message : 'The draft is still there',
+      })
+    }
+  }
+
+  function confirmDelete() {
+    if (!report) return
+    // What the encoder actually loses, counted rather than described vaguely.
+    const parts = [
+      lines.length && `${lines.length} product${lines.length === 1 ? '' : 's'}`,
+      charges.length && `${charges.length} charge${charges.length === 1 ? '' : 's'}`,
+      transfers.length && `${transfers.length} transfer${transfers.length === 1 ? '' : 's'}`,
+      collections.length && `${collections.length} collection${collections.length === 1 ? '' : 's'}`,
+    ].filter(Boolean) as string[]
+
+    modals.openConfirmModal({
+      title: 'Delete this draft?',
+      children: (
+        <Stack gap="xs">
+          <Text size="sm">
+            <b>{report.branch.name}</b> · <Text span ff="monospace">{report.reportDate}</Text>
+          </Text>
+          <Text size="sm">
+            {parts.length > 0
+              ? `${parts.join(', ')} will be permanently deleted.`
+              : 'This draft is empty and will be permanently deleted.'}
+            {' '}This cannot be undone.
+          </Text>
+          {transfers.length > 0 && (
+            <Alert color="orange" icon={<IconAlertTriangle size={16} />} p="xs">
+              <Text size="xs">
+                This draft sends stock to another branch. Those units will also
+                disappear from the receiving branch's report for this date, which
+                raises its sales. If that report is already finalised this will be
+                refused — reopen it first.
+              </Text>
+            </Alert>
+          )}
+        </Stack>
+      ),
+      labels: { confirm: 'Delete draft', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => void remove(),
+    })
+  }
 
   function confirmFinalize() {
     modals.openConfirmModal({
@@ -552,11 +625,22 @@ export default function DsirEntryPage() {
             <Text size="sm" c="dimmed" ff="monospace">{report.reportDate}</Text>
           </Stack>
         </Group>
-        {locked && can('dsir:finalize') && (
-          <Button variant="default" leftSection={<IconLockOpen size={16} />} onClick={() => void dsirApi.reopen(id).then(hydrate)}>
-            Reopen
-          </Button>
-        )}
+        {/* Up here, not in the pinned action bar: that bar is under the
+            encoder's thumb for the whole of a 50-row form, and Delete does not
+            belong next to Save. Reaching this means scrolling to the top, where
+            the branch and date are on screen to confirm against. */}
+        <Group gap="xs" wrap="nowrap">
+          {!locked && can('dsir:write') && (
+            <Button variant="subtle" color="red" leftSection={<IconTrash size={16} />} onClick={confirmDelete}>
+              Delete draft
+            </Button>
+          )}
+          {locked && can('dsir:finalize') && (
+            <Button variant="default" leftSection={<IconLockOpen size={16} />} onClick={() => void dsirApi.reopen(id).then(hydrate)}>
+              Reopen
+            </Button>
+          )}
+        </Group>
       </Group>
 
       {locked && (
