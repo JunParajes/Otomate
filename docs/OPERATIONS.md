@@ -18,11 +18,15 @@ generic usernames (admin, support, operator, ubnt), and sshd answers
 `fail2ban` is active and absorbing most of it, and the scanning is untargeted
 rather than aimed at this business. That is luck, not a defence.
 
-**What to do:** [REMOTE-ACCESS.md](REMOTE-ACCESS.md) has the runbook. Turning off
-password authentication is a two-line change and closes the actual risk; moving
-admin access to Tailscale and closing the forward removes the exposure entirely.
-The CI workflow already has the Tailscale step, skipped until its secrets exist,
-so this can be done without breaking deploys partway.
+**Decision 2026-08-26:** the port forward **stays for now**. Moving admin access
+to Tailscale was considered and deferred; the arrangement is what makes remote
+access work today, and it is not being changed while travelling.
+
+**Still worth doing on its own:** turning off password authentication is a
+two-line change ([REMOTE-ACCESS.md](REMOTE-ACCESS.md) step 1). It does not alter
+how access works — keys already carry every real login — and it is what makes
+those 876 attempts unwinnable rather than merely slow. The rest of the plan is
+kept in that document for when this is picked up again.
 
 
 ### 1. Backups are local only — no off-machine copy

@@ -1,12 +1,32 @@
 # Remote access to the server
 
-How to reach the machine from outside the shop, and why it is set up this way.
+How the machine is reached from outside the shop today, and a plan — **not yet
+adopted** — for tightening it later.
 
-> The **web app** is not affected by any of this. `https://otomate.uk` is served
-> through the Cloudflare Tunnel and works from anywhere already. This document is
-> only about reaching the *server* — SSH, deploys, administration.
+> The **web app** is unaffected by any of this. `https://otomate.uk` is served
+> through the Cloudflare Tunnel and works from anywhere already. This is only
+> about reaching the *server*: SSH, deploys, administration.
 
-## The problem being solved
+## How it works today
+
+`server.otomate.uk` resolves to the home connection's public IP, and the router
+forwards an SSH port to the machine. The `ddns` container keeps that record
+current within five minutes of the address changing, which is what makes it
+survive the blackouts that move it.
+
+```
+ssh <user>@server.otomate.uk -p <forwarded port>
+```
+
+This works from anywhere, and it is how GitHub Actions deploys. Nothing needs
+setting up to use it.
+
+**Status:** the Tailscale plan below was considered on 2026-08-26 and
+**deferred** — the port-forward arrangement stays for now, with the security
+work to be revisited later. The rest of this document is kept because the
+measurements in it are real and worth not re-discovering.
+
+## The problem it would solve
 
 SSH already worked from anywhere: `server.otomate.uk` tracks the public IP and
 the router forwarded a port to it. That is also the problem. Measured on
@@ -34,13 +54,18 @@ Nothing inbound stays open, so there is nothing left to scan.
 
 ---
 
-## Order matters
+## The deferred plan
+
+Not adopted. Kept so it does not have to be worked out again from scratch.
 
 Each step is reversible, and **the port is closed last**, once the replacement
 is proven. Do not close it while travelling: if Tailscale is the only way in and
 something goes wrong, the machine is at home and you are not.
 
-### 1. Turn off password authentication (do this first, regardless)
+Step 1 below is worth noting separately: it has nothing to do with Tailscale,
+changes nothing about how access works, and takes about thirty seconds.
+
+### 1. Turn off password authentication — independent of everything else
 
 The single biggest win, and independent of everything below. Keys already work —
 this only stops passwords being *accepted*, which is what those 876 attempts
@@ -93,9 +118,10 @@ Succeeding on home wifi proves nothing, because the LAN route still works there.
 
 ### 4. Point deploys at it
 
-`.github/workflows/deploy.yml` already has a **Join Tailscale** step. It is
-skipped while `TS_OAUTH_CLIENT_ID` is unset, so deploys keep working over the
-public address until you finish this — setting it up cannot strand you halfway.
+The workflow would need a **Join Tailscale** step (`tailscale/github-action@v3`,
+using an OAuth client tagged `tag:ci`). One was added and then removed when this
+was deferred; add it back guarded on its secret being present, so deploys keep
+working over the public address until the switch is finished.
 
 1. Tailscale admin console → *Settings* → *OAuth clients* → generate one with
    the **Devices: write** scope and the tag `tag:ci`.
