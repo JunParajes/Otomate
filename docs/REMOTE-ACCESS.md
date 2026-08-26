@@ -140,6 +140,89 @@ are harmless to leave running, and leaving them means the DNS record is still
 current if you ever need to reopen the port to recover. Remove them only if you
 want the tidiness.
 
+## Surviving a blackout
+
+Tailscale reconnecting is the easy half. The daemon is enabled at boot by the
+installer, node state lives in `/var/lib/tailscale`, and it retries continuously
+— so once the machine is up and the ISP is back, it rejoins on its own with no
+credentials to re-enter.
+
+Two things break that, and neither is Tailscale's fault.
+
+### 1. The node key expires — the silent one
+
+Tailscale node keys expire after 180 days by default. When that happens the
+machine drops off the tailnet and needs an interactive login to come back, which
+is impossible remotely and gives no warning beforehand.
+
+**Tailscale admin console → Machines → the server → Disable key expiry.**
+
+Do it the moment the machine appears. Six months is exactly long enough to have
+forgotten this document exists.
+
+### 2. The machine never comes back on
+
+This is the real risk, and it predates Tailscale. Measured on 2026-08-26:
+
+| | |
+|---|---|
+| Chassis | laptop — the battery is a built-in UPS |
+| Battery | 103%, healthy |
+| At 2% battery | `CriticalPowerAction=HybridSleep` |
+| RAM vs swap | 7.1 GB against a 4 GB swap file |
+
+So a blackout goes: the laptop keeps running on battery while **the router does
+not**, meaning it is already unreachable; the battery drains; at 2% it suspends.
+When power returns the router boots — and the laptop stays asleep, because
+resuming needs a wake event and AC returning is not one.
+
+Worse, hibernating 7.1 GB of RAM into 4 GB of swap is not guaranteed to succeed
+under load, so even the suspend is unreliable.
+
+**Two changes, and the first needs you physically at the machine:**
+
+```bash
+# BIOS/UEFI: enable "Restore on AC Power Loss" (sometimes "AC Recovery",
+# "After Power Failure"). Requires a reboot into firmware — this is the one
+# step that cannot be done remotely, so do it before travelling.
+```
+
+```bash
+# End in a state AC-restore can actually boot from. Suspended machines ignore
+# returning power; powered-off ones do not.
+sudo mkdir -p /etc/UPower
+sudo sed -i 's/^CriticalPowerAction=.*/CriticalPowerAction=PowerOff/' /etc/UPower/UPower.conf
+sudo systemctl restart upower
+grep CriticalPowerAction /etc/UPower/UPower.conf
+```
+
+Losing in-flight state on a hard stop is fine here: Postgres is crash-safe, all
+six containers carry `restart: unless-stopped`, and Docker is enabled at boot.
+The app comes back on its own. An unreachable machine does not.
+
+### Prove it rather than assume it
+
+Once Tailscale is installed, reboot the server and confirm it returns without
+help:
+
+```bash
+sudo reboot
+# wait, then from your laptop — over the tailnet, not the LAN:
+ssh <user>@jserver 'tailscale status | head -2; docker ps --format "{{.Names}}: {{.Status}}"'
+```
+
+That proves the software path: daemon at boot, state persisted, containers back.
+It does **not** prove the firmware path — only cutting mains power does, which is
+worth doing once while you are still standing next to it.
+
+### What none of this fixes
+
+If the ISP itself is down, the server is unreachable no matter what. Tailscale
+needs an outbound path like everything else. A blackout long enough to outlast
+the battery means the app is offline until someone is home, and that is a
+property of running it on a laptop in a house rather than something to configure
+away.
+
 ## If Tailscale is ever the problem
 
 Signs: `tailscale status` reports `Logged out` or the daemon is not running.

@@ -62,6 +62,19 @@ prerequisite of `build-and-push`.
 
 ### 3. The server does not power itself back on
 
+**Measured 2026-08-26:** at 2% battery UPower runs `CriticalPowerAction=HybridSleep`,
+which leaves the machine *suspended* — and a suspended machine ignores AC
+returning, because resuming needs a wake event. It also tries to hibernate 7.1 GB
+of RAM into a 4 GB swap file, which is not guaranteed to succeed under load.
+
+Two changes, in [REMOTE-ACCESS.md](REMOTE-ACCESS.md): set the critical action to
+`PowerOff` so there is something for AC-restore to boot, and enable *Restore on
+AC Power Loss* in firmware. The second needs physical access and is the only
+part of the remote-access work that cannot be done from away.
+
+This matters more now than it did: once admin access moves to Tailscale and the
+SSH forward closes, a machine that does not boot has no route back in at all.
+
 It is a laptop (`chassis_type: 10`). Lid close is already ignored, but UPower's
 default `CriticalPowerAction=HybridSleep` at 2% battery still applies — which is
 correct behaviour and is why the database survived the blackout intact. The gap is
