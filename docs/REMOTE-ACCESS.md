@@ -65,16 +65,52 @@ something goes wrong, the machine is at home and you are not.
 Step 1 below is worth noting separately: it has nothing to do with Tailscale,
 changes nothing about how access works, and takes about thirty seconds.
 
-### 1. Turn off password authentication — independent of everything else
+### 1. Turn off password authentication — DONE 2026-08-26
 
-The single biggest win, and independent of everything below. Keys already work —
-this only stops passwords being *accepted*, which is what those 876 attempts
-were hoping for.
+Keys already carried every real login, so this changed nothing about how anyone
+connects. It only stopped passwords being *accepted*, which is what those 876
+attempts were hoping for. The server now answers:
+
+```
+Authentications that can continue: publickey
+```
+
+**Do not use a drop-in file on this machine.** The obvious approach fails here:
 
 ```bash
+# Looks right. Does nothing on this box.
 echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/99-no-passwords.conf
-sudo sshd -t && sudo systemctl reload ssh
 ```
+
+That file was created with correct bytes and ownership, `/etc/ssh/sshd_config`
+carries the matching `Include /etc/ssh/sshd_config.d/*.conf`, and `sshd -T` —
+which reparses everything from scratch — still reported `passwordauthentication
+yes`. Includes are not being honoured, for a reason not yet established. Two
+restarts and a fresh listener made no difference.
+
+What worked was setting it directly, above the Include. In `sshd_config` the
+**first** value for a keyword wins, so line 1 beats anything later:
+
+```bash
+sudo sed -i '1i PasswordAuthentication no' /etc/ssh/sshd_config
+sudo sshd -t && echo CONFIG_OK
+sudo systemctl restart ssh.socket ssh.service
+```
+
+The redundant drop-in was left in place; it is inert either way and says the
+same thing. Delete it if the duplication bothers you.
+
+**The lesson worth keeping:** after any sshd change on this machine, confirm the
+effective config rather than trusting the file. These disagreed for half an hour.
+
+```bash
+sudo sshd -T | grep -i passwordauthentication      # what sshd actually computed
+ssh -o BatchMode=yes -o PubkeyAuthentication=no -v <user>@192.168.1.82 exit 2>&1 \
+  | grep "can continue"                            # what the wire actually offers
+```
+
+`BatchMode=yes` matters in that second command — without it SSH waits at a
+prompt and looks like it has hung.
 
 Verify from your laptop — it should now say `publickey` only:
 

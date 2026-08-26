@@ -7,7 +7,7 @@ Reviewed and updated as items are closed. Newest concerns at the top of each sec
 
 ## 🟠 Medium
 
-### 0. SSH is exposed to the internet with password auth enabled
+### 0. SSH is exposed to the internet (password auth now off)
 
 **Status:** Open as of 2026-08-26. `server.otomate.uk` resolves to the public IP
 and the router forwards a port to SSH, which is how deploys reach the machine.
@@ -18,7 +18,13 @@ generic usernames (admin, support, operator, ubnt), and sshd answers
 `fail2ban` is active and absorbing most of it, and the scanning is untargeted
 rather than aimed at this business. That is luck, not a defence.
 
-**Decision 2026-08-26:** the port forward **stays for now**. Moving admin access
+**Resolved 2026-08-26:** password authentication is disabled — the server now
+answers `publickey` only, so the brute-force traffic has nothing to guess at.
+Note that a drop-in under `/etc/ssh/sshd_config.d/` did **not** take effect on
+this machine despite a correct `Include`; the setting had to go directly into
+`sshd_config` above that line. See [REMOTE-ACCESS.md](REMOTE-ACCESS.md).
+
+**Still open — decision 2026-08-26:** the port forward **stays for now**. Moving admin access
 to Tailscale was considered and deferred; the arrangement is what makes remote
 access work today, and it is not being changed while travelling.
 
