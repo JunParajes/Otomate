@@ -20,6 +20,7 @@ Docker and Traefik.
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Known gaps and deferred work |
 | [docs/DOMAIN-SETUP.md](docs/DOMAIN-SETUP.md) | Domain, HTTPS and the dynamic IP |
 | [docs/BACKUP-RESTORE.md](docs/BACKUP-RESTORE.md) | What is backed up, and how to get it back |
+| [docs/REMOTE-ACCESS.md](docs/REMOTE-ACCESS.md) | Reaching the server from outside the shop |
 
 ## Quick start
 

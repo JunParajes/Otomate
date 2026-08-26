@@ -7,6 +7,24 @@ Reviewed and updated as items are closed. Newest concerns at the top of each sec
 
 ## 🟠 Medium
 
+### 0. SSH is exposed to the internet with password auth enabled
+
+**Status:** Open as of 2026-08-26. `server.otomate.uk` resolves to the public IP
+and the router forwards a port to SSH, which is how deploys reach the machine.
+Measured on the server: **876 failed logins from 266 distinct IPs**, against
+generic usernames (admin, support, operator, ubnt), and sshd answers
+`publickey,password` — so passwords are being accepted.
+
+`fail2ban` is active and absorbing most of it, and the scanning is untargeted
+rather than aimed at this business. That is luck, not a defence.
+
+**What to do:** [REMOTE-ACCESS.md](REMOTE-ACCESS.md) has the runbook. Turning off
+password authentication is a two-line change and closes the actual risk; moving
+admin access to Tailscale and closing the forward removes the exposure entirely.
+The CI workflow already has the Tailscale step, skipped until its secrets exist,
+so this can be done without breaking deploys partway.
+
+
 ### 1. Backups are local only — no off-machine copy
 
 **Status:** Nightly backups run as of 2026-08-23 — `pg_dump` plus a tar of the
