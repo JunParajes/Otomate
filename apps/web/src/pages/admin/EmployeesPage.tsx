@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Grid, Group, Modal, Select, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
@@ -12,7 +13,6 @@ import {
 } from '@otomate/shared'
 import { employeeApi } from '@/lib/employees'
 import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
-import EmployeeHrModal from '@/components/EmployeeHrModal'
 import { adminApi } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
@@ -21,6 +21,7 @@ import DataState from '@/components/DataState'
 
 export default function EmployeesPage() {
   const { can } = useSession()
+  const navigate = useNavigate()
   const employees = useResource(employeeApi.list)
   const branches = useResource(adminApi.listBranches)
   // Only loadable with users:read — the login link is hidden without it.
@@ -37,7 +38,6 @@ export default function EmployeesPage() {
 
   const canWrite = can('employees:write')
   const canReadHr = can('hr:read')
-  const [hrFor, setHrFor] = useState<Employee | null>(null)
   const branchOptions = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }))
   const positionOptions = EMPLOYEE_POSITIONS.map(p => ({ value: p, label: POSITION_LABELS[p] }))
 
@@ -219,7 +219,7 @@ export default function EmployeesPage() {
                   ? [{
                       label: 'HR record',
                       icon: <IconId size={18} />,
-                      onClick: () => setHrFor(acting),
+                      onClick: () => navigate(`/admin/employees/${acting.id}`),
                     }]
                   : []),
                 {
@@ -231,16 +231,6 @@ export default function EmployeesPage() {
               ] satisfies RowAction[])
             : []
         }
-      />
-
-      <EmployeeHrModal
-        employee={hrFor}
-        onClose={() => setHrFor(null)}
-        onSaved={updated => {
-          // Keep the open modal and the list row in step without a refetch.
-          setHrFor(updated)
-          void employees.reload()
-        }}
       />
 
       <Modal

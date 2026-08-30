@@ -1,29 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Alert, Badge, Button, Divider, Grid, Group, Modal, Select, Stack, Table, Text,
-  TextInput, Textarea, Tooltip,
+  ActionIcon, Alert, Badge, Button, Card, Center, Divider, Grid, Group, Loader, Select,
+  Stack, Table, Text, TextInput, Textarea, Title, Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconAlertTriangle, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconAlertTriangle, IconArrowLeft, IconPlus, IconTrash } from '@tabler/icons-react'
 import {
   CIVIL_STATUSES, CIVIL_STATUS_LABELS,
   EMPLOYMENT_TYPES, EMPLOYMENT_TYPE_LABELS,
   PAYOUT_METHODS, PAYOUT_METHOD_LABELS,
   SALARY_RATE_TYPES, SALARY_RATE_LABELS,
+  POSITION_LABELS,
   currentSalary, formatMoney, probationStatus,
   type CivilStatus, type Employee, type EmploymentType, type PayoutMethod,
   type SalaryRateType, type UpdateEmployeeHrInput,
 } from '@otomate/shared'
 import { employeeApi } from '@/lib/employees'
 import { useSession } from '@/lib/session'
-import MoneyInput from './MoneyInput'
-
-interface Props {
-  employee: Employee | null
-  onClose: () => void
-  onSaved: (updated: Employee) => void
-}
+import MoneyInput from '@/components/MoneyInput'
 
 /** Every field starts as a string so an empty box round-trips as "not set". */
 type HrForm = {
@@ -56,14 +52,41 @@ function toForm(e: Employee): HrForm {
 }
 
 /**
- * The 201 file, and pay.
+ * One employee: the 201 file, and pay.
  *
- * Separate from the Edit modal because the two answer to different permissions:
- * adding staff is an everyday branch task, while government IDs and salary are
- * not. Splitting them at the screen means the split is visible, rather than a
- * form that silently drops half of what you typed.
+ * A route rather than a modal. It started as one, which was wrong for a record
+ * this size — it needs to be linkable (from a probation alert, a payslip, the
+ * charges ledger in 5b), printable for a COE, and closable with the browser's
+ * back gesture, which a modal breaks on a tablet. The app already treats a DSIR
+ * report the same way at /dsir/:id, and an employee record carries at least as
+ * much.
+ *
+ * It is separate from the Edit form because the two answer to different
+ * permissions: adding staff is an everyday branch task, government IDs and
+ * salary are not.
  */
-export default function EmployeeHrModal({ employee, onClose, onSaved }: Props) {
+export default function EmployeeDetailPage() {
+  const { id = '' } = useParams()
+  const navigate = useNavigate()
+  const [employee, setEmployee] = useState<Employee | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      setEmployee(await employeeApi.get(id))
+      setLoadError(null)
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Could not load this employee')
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => { void load() }, [load])
+
+  const onSaved = (updated: Employee) => setEmployee(updated)
   const { can } = useSession()
   const canWriteHr = can('hr:write')
   const canSeeSalary = can('hr:salary:read')
@@ -91,7 +114,20 @@ export default function EmployeeHrModal({ employee, onClose, onSaved }: Props) {
     setAddingRate(false)
   }, [employee?.id])
 
-  if (!employee || !form) return null
+  if (loading) return <Center py="xl"><Loader /></Center>
+  if (loadError || !employee || !form) {
+    return (
+      <Stack gap="md">
+        <Group gap="sm">
+          <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/admin/employees')} aria-label="Back">
+            <IconArrowLeft size={18} />
+          </ActionIcon>
+          <Title order={2} size="h4">Employee</Title>
+        </Group>
+        <Alert color="red" title="Could not load">{loadError ?? 'That employee does not exist.'}</Alert>
+      </Stack>
+    )
+  }
 
   const set = (key: keyof HrForm) => (value: string) => setForm(f => (f ? { ...f, [key]: value } : f))
   const field = (key: keyof HrForm) => ({
@@ -122,7 +158,6 @@ export default function EmployeeHrModal({ employee, onClose, onSaved }: Props) {
       const updated = await employeeApi.updateHr(employee.id, payload)
       onSaved(updated)
       notifications.show({ color: 'green', title: 'Saved', message: `${employee.name}'s record updated` })
-      onClose()
     } catch (e) {
       notifications.show({
         color: 'red',
@@ -189,19 +224,26 @@ export default function EmployeeHrModal({ employee, onClose, onSaved }: Props) {
   const current = currentSalary(history)
 
   return (
-    <Modal
-      opened
-      onClose={onClose}
-      title={
-        <Stack gap={0}>
-          <Text fw={700}>{employee.name}</Text>
-          <Text size="xs" c="dimmed">HR record</Text>
+    <Stack gap="md">
+      <Group gap="sm" wrap="nowrap">
+        <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/admin/employees')} aria-label="Back to employees">
+          <IconArrowLeft size={18} />
+        </ActionIcon>
+        <Stack gap={2} style={{ minWidth: 0 }}>
+          <Group gap="xs" wrap="nowrap">
+            <Title order={2} size="h4">{employee.name}</Title>
+            <Badge variant="light" color={employee.isActive ? 'green' : 'gray'}>
+              {employee.isActive ? 'Active' : 'Inactive'}
+            </Badge>
+          </Group>
+          <Text size="sm" c="dimmed">
+            {[POSITION_LABELS[employee.position], employee.branch?.name ?? 'Unassigned'].join(' · ')}
+          </Text>
         </Stack>
-      }
-      size="80%"
-      centered
-    >
-      <Stack gap="md">
+      </Group>
+
+      <Card withBorder padding="lg" radius="md">
+        <Stack gap="md">
         {probation.state !== 'none' && (
           <Alert
             color={probation.state === 'overdue' ? 'red' : 'orange'}
@@ -437,13 +479,14 @@ export default function EmployeeHrModal({ employee, onClose, onSaved }: Props) {
           </>
         )}
 
-        <Group justify="flex-end" mt="sm">
-          <Button variant="default" onClick={onClose}>Close</Button>
-          {canWriteHr && (
-            <Button loading={saving} onClick={() => void save()}>Save record</Button>
-          )}
-        </Group>
-      </Stack>
-    </Modal>
+          <Group justify="flex-end" mt="sm">
+            <Button variant="default" onClick={() => navigate('/admin/employees')}>Back</Button>
+            {canWriteHr && (
+              <Button loading={saving} onClick={() => void save()}>Save record</Button>
+            )}
+          </Group>
+        </Stack>
+      </Card>
+    </Stack>
   )
 }

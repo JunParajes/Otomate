@@ -14,6 +14,7 @@ import BranchesPage from '@/pages/admin/BranchesPage'
 import ProductsPage from '@/pages/admin/ProductsPage'
 import CategoriesPage from '@/pages/admin/CategoriesPage'
 import EmployeesPage from '@/pages/admin/EmployeesPage'
+import EmployeeDetailPage from '@/pages/admin/EmployeeDetailPage'
 import DsirListPage from '@/pages/dsir/DsirListPage'
 import DsirArchivePage from '@/pages/dsir/DsirArchivePage'
 import DsirArchiveBranchPage from '@/pages/dsir/DsirArchiveBranchPage'
@@ -80,6 +81,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <Route path="/catalog/categories" element={<Shell permission="products:read"><CategoriesPage /></Shell>} />
               <Route path="/admin/users" element={<Shell permission="users:read"><UsersPage /></Shell>} />
               <Route path="/admin/employees" element={<Shell permission="employees:read"><EmployeesPage /></Shell>} />
+              <Route path="/admin/employees/:id" element={<Shell permission="employees:read"><EmployeeDetailPage /></Shell>} />
               <Route path="/admin/roles" element={<Shell permission="roles:read"><RolesPage /></Shell>} />
               <Route path="/admin/branches" element={<Shell permission="branches:read"><BranchesPage /></Shell>} />
               <Route path="*" element={<NotFoundPage />} />

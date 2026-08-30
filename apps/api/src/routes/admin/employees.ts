@@ -19,9 +19,22 @@ const withSalaries = {
   salaries: { include: { recordedBy: true } },
 } as const
 
-/** What this caller may see of an employee record. */
+/** What this caller may see of a single employee record. */
 function access(req: Request) {
   return { hr: can(req, 'hr:read'), salary: can(req, 'hr:salary:read') }
+}
+
+/**
+ * The LIST never carries pay.
+ *
+ * The 201 fields are plain columns on Employee, so including them costs nothing
+ * and lets the list show things like a probation warning. Salary is a join, and
+ * shipping every employee's pay history to render a table of names is both
+ * wasteful and more of it in flight than any one screen needs. The detail
+ * endpoint below serves the one record actually being looked at.
+ */
+function listAccess(req: Request) {
+  return { hr: can(req, 'hr:read'), salary: false }
 }
 
 /**
@@ -70,10 +83,24 @@ router.get(
   requirePermission('employees:read'),
   asyncHandler(async (req, res) => {
     const employees = await prisma.employee.findMany({
-      include: includeFor(req),
+      include: withRelations,
       orderBy: [{ isActive: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
     })
-    res.json({ data: employees.map(e => toEmployeeDto(e, access(req))), error: null })
+    res.json({ data: employees.map(e => toEmployeeDto(e, listAccess(req))), error: null })
+  })
+)
+
+/** One record, with pay history — what the detail page loads. */
+router.get(
+  '/:id',
+  requirePermission('employees:read'),
+  asyncHandler(async (req, res) => {
+    const employee = await prisma.employee.findUnique({
+      where: { id: pathParam(req, 'id') },
+      include: includeFor(req),
+    })
+    if (!employee) throw new HttpError(404, 'Employee not found', 'NOT_FOUND')
+    res.json({ data: toEmployeeDto(employee, access(req)), error: null })
   })
 )
 

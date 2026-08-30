@@ -11,6 +11,8 @@ import { unwrap } from './unwrap'
 
 export const employeeApi = {
   list: () => unwrap<Employee[]>(api.get('/api/admin/employees')),
+  // The list omits pay; the detail record carries it.
+  get: (id: string) => unwrap<Employee>(api.get(`/api/admin/employees/${id}`)),
   create: (input: CreateEmployeeInput) => unwrap<Employee>(api.post('/api/admin/employees', input)),
   update: (id: string, input: UpdateEmployeeInput) =>
     unwrap<Employee>(api.patch(`/api/admin/employees/${id}`, input)),
