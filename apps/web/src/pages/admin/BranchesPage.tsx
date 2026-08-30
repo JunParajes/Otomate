@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Group, Modal, Stack, Switch, Table, Text, TextInput } from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
@@ -11,12 +12,16 @@ import { createBranchSchema } from '@otomate/shared'
 import { adminApi, type BranchWithUsage } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
 import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
+import { branchPermitStatus } from '@otomate/shared'
+import { IconFileText } from '@tabler/icons-react'
 import { useSession } from '@/lib/session'
 import PageHeader from '@/components/PageHeader'
 import DataState from '@/components/DataState'
 
 export default function BranchesPage() {
   const { can, refresh } = useSession()
+  const navigate = useNavigate()
+  const canSeeRecords = can('branches:permits:read') || can('branches:lease:read')
   const branches = useResource(adminApi.listBranches)
   const [editing, setEditing] = useState<BranchWithUsage | null>(null)
   const [acting, setActing] = useState<BranchWithUsage | null>(null)
@@ -91,6 +96,7 @@ export default function BranchesPage() {
               <Table.Tr>
                 <Table.Th>Branch</Table.Th>
                 <Table.Th w={110}>Users</Table.Th>
+                <Table.Th w={150}>Permits</Table.Th>
                 <Table.Th w={120}>Status</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -104,6 +110,16 @@ export default function BranchesPage() {
                   <Table.Td><Text fw={500}>{branch.name}</Text></Table.Td>
                   <Table.Td>
                     <Badge variant="light" color={branch.userCount > 0 ? 'blue' : 'gray'}>{branch.userCount}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    {(() => {
+                      if (!branch.permits) return <Text size="sm" c="dimmed">—</Text>
+                      const { state, count } = branchPermitStatus(branch.permits)
+                      if (state === 'overdue') return <Badge color="red" variant="light">{count} expired</Badge>
+                      if (state === 'due') return <Badge color="orange" variant="light">{count} due soon</Badge>
+                      if (branch.permits.length === 0) return <Text size="sm" c="dimmed">none recorded</Text>
+                      return <Badge color="green" variant="light">{branch.permits.length} current</Badge>
+                    })()}
                   </Table.Td>
                   <Table.Td>
                     <Badge variant="light" color={branch.isActive ? 'green' : 'gray'}>
@@ -125,6 +141,13 @@ export default function BranchesPage() {
         actions={
           acting
             ? ([
+                ...(canSeeRecords
+                  ? [{
+                      label: 'Permits & lease',
+                      icon: <IconFileText size={18} />,
+                      onClick: () => navigate(`/admin/branches/${acting.id}`),
+                    }]
+                  : []),
                 {
                   label: 'Edit',
                   icon: <IconPencil size={18} />,

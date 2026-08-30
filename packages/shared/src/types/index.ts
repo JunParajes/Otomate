@@ -1,9 +1,31 @@
 import type { PermissionName } from '../permissions.js'
+import type { BranchPermitRecord, BranchRentRecord } from '../schemas/branch-records.js'
 
+export interface BranchLease {
+  address: string | null
+  lessorName: string | null
+  lessorContact: string | null
+  lessorAddress: string | null
+  contractStart: string | null
+  contractEnd: string | null
+  renewalNoticeDays: number | null
+  depositCents: number | null
+  advanceCents: number | null
+}
+
+/**
+ * `permits` requires branches:permits:read; `lease` and `rentHistory` require
+ * branches:lease:read. All three are OMITTED rather than nulled when the caller
+ * lacks the permission, as with the employee record.
+ */
 export interface Branch {
   id: string
   name: string
   isActive: boolean
+  permits?: BranchPermitRecord[]
+  lease?: BranchLease
+  /** Newest first. */
+  rentHistory?: BranchRentRecord[]
   createdAt: string
   updatedAt: string
 }

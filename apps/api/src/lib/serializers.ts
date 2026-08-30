@@ -6,6 +6,7 @@ import type {
   DsirLine as DsirLineDto,
   DsirSummary as DsirSummaryDto,
   DsirStatus,
+  PermitType,
   Employee as EmployeeDto,
   EmployeePosition,
   CivilStatus,
@@ -25,14 +26,77 @@ import type {
 type UserWithRelations = User & { role: Role; branch: Branch | null }
 type RoleWithPermissions = Prisma.RoleGetPayload<{ include: { permissions: true } }>
 
-export function toBranchDto(branch: Branch): BranchDto {
-  return {
+type BranchWithRecords = Branch & {
+  permits?: Prisma.BranchPermitGetPayload<{}>[]
+  rents?: Prisma.BranchRentGetPayload<{ include: { recordedBy: true } }>[]
+}
+
+/**
+ * `access` omits the permit and lease sections rather than nulling them, the
+ * same rule as costCents on products and hr/salary on employees: an
+ * unauthorised response carries no trace of what it is not allowed to show.
+ */
+export function toBranchDto(
+  branch: BranchWithRecords,
+  access: { permits?: boolean; lease?: boolean } = {}
+): BranchDto {
+  const dto: BranchDto = {
     id: branch.id,
     name: branch.name,
     isActive: branch.isActive,
     createdAt: branch.createdAt.toISOString(),
     updatedAt: branch.updatedAt.toISOString(),
   }
+
+  if (access.permits && branch.permits) {
+    // Soonest expiry first — what needs renewing is the reason to open this.
+    // Permits with no expiry recorded sort last rather than first, since a
+    // missing date is not urgent, only unknown.
+    dto.permits = [...branch.permits]
+      .sort((a, b) => {
+        if (!a.expiresOn) return 1
+        if (!b.expiresOn) return -1
+        return a.expiresOn.getTime() - b.expiresOn.getTime()
+      })
+      .map(p => ({
+        id: p.id,
+        type: p.type as PermitType,
+        label: p.label,
+        number: p.number,
+        issuedOn: dateOnly(p.issuedOn),
+        expiresOn: dateOnly(p.expiresOn),
+        authority: p.authority,
+        note: p.note,
+      }))
+  }
+
+  if (access.lease) {
+    dto.lease = {
+      address: branch.address,
+      lessorName: branch.lessorName,
+      lessorContact: branch.lessorContact,
+      lessorAddress: branch.lessorAddress,
+      contractStart: dateOnly(branch.contractStart),
+      contractEnd: dateOnly(branch.contractEnd),
+      renewalNoticeDays: branch.renewalNoticeDays,
+      depositCents: branch.depositCents,
+      advanceCents: branch.advanceCents,
+    }
+    if (branch.rents) {
+      dto.rentHistory = [...branch.rents]
+        .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))
+        .map(r => ({
+          id: r.id,
+          amountCents: r.amountCents,
+          effectiveFrom: dateOnly(r.effectiveFrom)!,
+          note: r.note,
+          recordedBy: r.recordedBy ? { id: r.recordedBy.id, name: r.recordedBy.name } : null,
+          createdAt: r.createdAt.toISOString(),
+        }))
+    }
+  }
+
+  return dto
 }
 
 /** Never returns the password hash — the only place user rows become responses. */

@@ -26,6 +26,7 @@ model User {
   employee           Employee?
   dsirReports        DsirReport[]
   salaryRecords      EmployeeSalary[]
+  rentRecords        BranchRent[]
 
   @@index([roleId])
   @@index([branchId])
@@ -52,16 +53,110 @@ model Permission {
   roles       Role[]
 }
 
+/// Which government paper a branch holds. Nearly all of these are ANNUAL and
+/// renewing them is the point of tracking them — a lapsed Mayor's Permit or
+/// Sanitary Permit can close a branch. OTHER carries its own label so a permit
+/// nobody anticipated does not require a migration.
+enum PermitType {
+  MAYORS_PERMIT
+  BARANGAY_CLEARANCE
+  BIR_REGISTRATION
+  SANITARY_PERMIT
+  FIRE_SAFETY
+  OCCUPANCY_PERMIT
+  ZONING_CLEARANCE
+  ENVIRONMENTAL
+  OTHER
+}
+
 model Branch {
-  id          String         @id @default(cuid())
-  name        String         @unique
-  isActive    Boolean        @default(true)
+  id       String  @id @default(cuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+  address  String?
+
+  // ─── The lease ───────────────────────────────────────────────────────────
+  /// The CURRENT lease. A branch that re-signs with a new lessor overwrites
+  /// these; what must not be lost is the rent actually paid over time, which
+  /// lives in BranchRent below.
+  lessorName        String?
+  lessorContact     String?
+  lessorAddress     String?
+  contractStart     DateTime? @db.Date
+  contractEnd       DateTime? @db.Date
+  /// Days of notice the contract requires before renewal or termination. The
+  /// figure that decides when contractEnd stops being a date and starts being a
+  /// deadline.
+  renewalNoticeDays Int?
+  /// Integer centavos, as everywhere. Typically two months of each in PH leases.
+  depositCents      Int?
+  advanceCents      Int?
+  /// Slot for the scanned contract. Unused until attachments are built; keeping
+  /// the column means adding them is additive rather than another migration.
+  contractFile      String?
+
+  permits     BranchPermit[]
+  rents       BranchRent[]
   users       User[]
   employees   Employee[]
   dsirReports DsirReport[]
   transfersIn DsirTransfer[]
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+}
+
+/// One permit held by one branch.
+///
+/// A table rather than columns on Branch because the set is open-ended and each
+/// one carries its own number, issuer and expiry. Columns would mean a migration
+/// per permit type and a row of mostly-null fields.
+model BranchPermit {
+  id           String     @id @default(cuid())
+  branchId     String
+  branch       Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  type         PermitType
+  /// Required when type is OTHER, ignored otherwise.
+  label        String?
+  number       String?
+  issuedOn     DateTime?  @db.Date
+  /// The whole reason this table exists. Indexed because "what expires soon"
+  /// is the query that matters.
+  expiresOn    DateTime?  @db.Date
+  /// Who issued it — "Davao City", "BFP Region XI", "BIR RDO 113".
+  authority    String?
+  note         String?
+  /// Slot for the scan; see Branch.contractFile.
+  documentFile String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([expiresOn])
+}
+
+/// The rent for a branch from a date onward.
+///
+/// Effective-dated for the same reason as EmployeeSalary: leases escalate,
+/// usually annually, and a rise must not rewrite what last year's costs were.
+/// Which figure applies is decided by date, so there is no "current" flag to
+/// drift and a scheduled increase can be entered before it takes effect.
+model BranchRent {
+  id       String @id @default(cuid())
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  amountCents   Int
+  effectiveFrom DateTime @db.Date
+  note          String?
+
+  recordedById String?
+  recordedBy   User?    @relation(fields: [recordedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  /// Re-entering a start date corrects that figure rather than rivalling it.
+  @@unique([branchId, effectiveFrom])
+  @@index([branchId, effectiveFrom])
 }
 
 /// How a product is sold. Affects how its price reads: ₱25 per piece vs per kilo.

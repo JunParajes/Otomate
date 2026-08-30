@@ -114,6 +114,30 @@ Three decisions that are hard to reverse later:
    under the Labor Code, and an employee not acted on by then becomes regular by
    operation of law. A date nobody looks at is how that happens by accident.
 
+### 5f. Branch records — DONE
+
+The same shape as the 201 file, for premises rather than people.
+
+- [x] Lease: address, lessor and contact, contract dates, notice period, deposit
+      and advance
+- [x] Rent as **effective-dated history**, same rule as pay — leases escalate
+      annually and a rise must not rewrite last year's costs
+- [x] Permits as a table, not columns: Mayor's, Barangay, BIR, Sanitary, Fire
+      Safety, Occupancy, Zoning, Environmental, and OTHER with its own label
+- [x] Expiry warnings at 60 days, and a per-branch badge on the branch list
+- [x] `branches:permits:*` split from `branches:lease:*` — a manager sees what
+      needs renewing without seeing what the branch pays
+
+Sixty days rather than the thirty used for probation: renewals mean queuing at a
+city office, several are prerequisites for each other (a lapsed Barangay
+Clearance or Fire Safety certificate blocks the Mayor's Permit), and every
+business in Davao renews in January.
+
+Not built: document scans. The columns `contractFile` and `documentFile` exist
+unused so adding uploads is additive. Deferred deliberately — backups are still
+on the same disk as the database, and scanned government documents and lease
+contracts are exactly what should not live in only one place.
+
 ### 5b. Close the money loop
 
 - [ ] Per-employee ledger of charges and shortages, by pay period

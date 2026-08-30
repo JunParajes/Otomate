@@ -18,6 +18,13 @@ export const PERMISSIONS = [
   { name: 'products:write', category: 'Products', description: 'Create, edit and deactivate products' },
   { name: 'products:cost', category: 'Products', description: 'See cost price and profit margin' },
   { name: 'categories:write', category: 'Products', description: 'Create, edit and delete product categories' },
+  // Split from branches:* the same way HR is split from employees:*. Permit
+  // expiry is operational — a manager needs to see it. Rent and lease terms are
+  // commercial and are not their business.
+  { name: 'branches:permits:read', category: 'Branches', description: 'View branch permits and expiry dates' },
+  { name: 'branches:permits:write', category: 'Branches', description: 'Record and renew branch permits' },
+  { name: 'branches:lease:read', category: 'Branches', description: 'View rent, lessor and lease terms' },
+  { name: 'branches:lease:write', category: 'Branches', description: 'Set rent and lease terms' },
   { name: 'employees:read', category: 'Employees', description: 'View employee records' },
   { name: 'employees:write', category: 'Employees', description: 'Create, edit and deactivate employees' },
   // Separate from employees:* so a branch manager can see who works for them

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { currentlyEffective, deadlineStatus, effectiveOn, todayIso } from '../lib/effective-dated.js'
 
 /** Job role on the shop floor — distinct from Role, which governs system access. */
 export const EMPLOYEE_POSITIONS = [
@@ -160,26 +161,17 @@ export interface EmployeeSalaryRecord {
   createdAt: string
 }
 
-/**
- * Which rate applied on a given date: the latest one starting on or before it.
- *
- * Returns null when the employee had no rate yet — a record created before pay
- * was entered, which is normal and must not be read as "paid nothing".
- *
- * Callers pass history in any order; this does not assume it is sorted.
- */
+/** Which rate applied on a given date — see effectiveOn. */
 export function salaryOn(
   history: EmployeeSalaryRecord[],
   onDate: string
 ): EmployeeSalaryRecord | null {
-  const eligible = history.filter(s => s.effectiveFrom <= onDate)
-  if (eligible.length === 0) return null
-  return eligible.reduce((best, s) => (s.effectiveFrom > best.effectiveFrom ? s : best))
+  return effectiveOn(history, onDate)
 }
 
 /** The rate in force today, or null if pay has never been set. */
 export function currentSalary(history: EmployeeSalaryRecord[]): EmployeeSalaryRecord | null {
-  return salaryOn(history, new Date().toISOString().slice(0, 10))
+  return currentlyEffective(history)
 }
 
 /**
