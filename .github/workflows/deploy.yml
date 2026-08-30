@@ -11,7 +11,8 @@ env:
 
 jobs:
   # Gate. Until this existed, every deploy was verified only by whoever
-  # remembered to run `tsc --noEmit` locally first.
+  # remembered to run `tsc --noEmit` locally first, and by driving the running
+  # app by hand.
   #
   # The two build steps below are NOT optional and NOT cosmetic — measured on a
   # clean checkout, `pnpm -r exec tsc --noEmit` on its own fails with 40+ errors
@@ -22,8 +23,8 @@ jobs:
   #     "have no exported member"
   # Skipping either turns this gate into a job that always fails, which gets
   # disabled within a week and protects nothing.
-  typecheck:
-    name: Typecheck
+  verify:
+    name: Typecheck & test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -50,12 +51,17 @@ jobs:
       - name: Typecheck every package
         run: pnpm -r exec tsc --noEmit
 
+      # Runs after the typecheck so a type error reports as a type error rather
+      # than as a wall of failing tests.
+      - name: Test
+        run: pnpm -r test
+
   build-and-push:
     name: Build & Push to GHCR
     runs-on: ubuntu-latest
-    # Nothing reaches GHCR, and therefore nothing reaches production, until the
-    # code typechecks.
-    needs: typecheck
+    # Nothing reaches GHCR, and therefore nothing reaches production, unless the
+    # code typechecks and the tests pass.
+    needs: verify
     permissions:
       contents: read
       packages: write

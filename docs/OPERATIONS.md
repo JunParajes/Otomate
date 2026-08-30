@@ -150,11 +150,40 @@ that nothing turns the machine back on when mains power returns.
 Requires physical access at boot. The battery is effectively a built-in UPS; this
 is the missing half.
 
-### 5. There are no automated tests
+### 5. Automated tests — STARTED 2026-08-30
 
-Every feature so far has been verified by driving the running app. That has caught
-real bugs a build could not — but it is manual and not repeatable in CI.
+84 tests over the pure functions where a wrong answer costs money, run in CI as
+part of the `verify` job. Nothing reaches production unless they pass.
 
+Covered: the DSIR derivation (`computeLineTotals`, `isImpossibleLine`,
+`looksLikeMissingInbound`), the count-expression parser, effective-dating
+(`effectiveOn`, `deadlineStatus`) and the branch status helpers.
+
+**Verified by mutation, not by watching them go green.** Each function was
+deliberately broken and the suite re-run:
+
+| Mutation | Caught |
+|---|---|
+| charges added instead of subtracted | yes |
+| transfers-out counted as available | yes |
+| `sold < 0` weakened to `sold < -1` | **no — test added** |
+| rate start date excluded (`<=` → `<`) | yes |
+| deadline window edge (`<=` → `<`) | yes |
+| unpaid-bill bug reintroduced | yes |
+| trailing junk accepted by the parser | yes |
+| `×`/`x` aliases dropped | yes |
+
+The third one is the point of doing this: nothing covered `sold === -1`, the
+likeliest real miscount, so a weakened check would have passed. A test now
+covers it. One mutation survives legitimately — removing the parser's
+divide-by-zero guard changes nothing observable, because `!Number.isFinite`
+catches the resulting Infinity anyway.
+
+**Not covered:** anything needing a database or a browser. The API's permission
+gating and the DSIR transfer/finalisation coupling (gap 0) are still verified by
+hand against a disposable stack.
+
+---
 ---
 
 ## 🟡 Low — known, documented, not urgent

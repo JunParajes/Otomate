@@ -12,12 +12,18 @@
     "dev:web": "pnpm --filter web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r exec tsc --noEmit",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "esbuild", "prisma"]
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
   }
 }

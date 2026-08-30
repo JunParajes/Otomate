@@ -63,11 +63,13 @@ revisit this "when real staff data accumulates"; that has happened.
       `build-and-push`. Note the proposed one-liner was not enough: shared must be
       built and the Prisma client generated first, or the gate fails on every run
       for reasons unrelated to the code. → [OPERATIONS.md gap 3](OPERATIONS.md)
-- [ ] **No automated tests.** Everything has been verified by driving the running
-      app, which has caught real bugs a build could not — but it is manual and
-      not repeatable. The arithmetic in `packages/shared/src/lib/dsir.ts` and
-      `count-expression.ts` is where wrong answers cost money, so start there.
-      → [OPERATIONS.md gap 5](OPERATIONS.md)
+- [x] ~~No automated tests~~ — started 2026-08-30. 84 tests over the arithmetic
+      that costs money, gated in CI, and checked by mutation rather than by
+      watching them pass. → [OPERATIONS.md gap 5](OPERATIONS.md)
+- [ ] **Tests for anything needing a database or a browser.** The API's
+      permission gating and the DSIR transfer coupling are still hand-verified
+      against a disposable stack each time. A Postgres service container in CI
+      would make the API tests repeatable.
 - [ ] **Phase 4 — audit logging.** Now that salaries, government IDs and lease
       terms are stored, "who changed this and who looked at it" stops being
       optional. → [ROADMAP.md Phase 4](ROADMAP.md)

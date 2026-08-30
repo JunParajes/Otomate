@@ -5,5 +5,9 @@
     "rootDir": "./src",
     "module": "CommonJS"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests are source, not product. Without this they compile into dist/,
+  // ship inside the published package, and get run a second time by vitest
+  // from dist — 59 tests reported as 118.
+  "exclude": ["src/**/*.test.ts"]
 }

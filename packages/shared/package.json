@@ -18,10 +18,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.esm.json && node scripts/write-type-markers.mjs",
-    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput & tsc -p tsconfig.esm.json --watch --preserveWatchOutput & wait"
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput & tsc -p tsconfig.esm.json --watch --preserveWatchOutput & wait",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "zod": "^4.4.3"
