@@ -149,14 +149,36 @@ A types/runtime major mismatch. It has already produced one confusing failure:
 inference three files away. Worked around with `pathParam()` in `apps/api/src/lib/http.ts`.
 Aligning the types to `^4` is a small, isolated change.
 
-### 7. Server `.env` values are unquoted
+### 7. Server `.env` values are unquoted — RESOLVED 2026-08-30
 
-A `$` in a password is expanded by any script that sources the file, corrupting
-`DATABASE_URL` (Prisma reports `P1013: invalid port number`, which points nowhere
-near the real cause). Docker Compose parses `.env` without expanding, which is why
-the containers work. Documented in `docs/CONVENTIONS.md`.
+All ten values in `~/otomate/.env` are now single-quoted.
 
-**What to do:** single-quote the values in `~/otomate/.env`. Compose strips the quotes.
+**The advice previously given here was wrong.** It said "single-quote the values;
+Compose strips the quotes". Compose does not merely strip them — single quotes
+suppress *interpolation*, which changes the resolved value. Measured:
+
+| `.env` line | container receives |
+|---|---|
+| `SECRET=pa$$w0rd$USER` | `pa$w0rdjun` |
+| `SECRET="pa$$w0rd$USER"` | `pa$w0rdjun` (double quotes do not protect) |
+| `SECRET='pa$$w0rd$USER'` | `pa$$w0rd$USER` |
+
+Following the old advice blindly on a password with an expandable sequence would
+have changed what Postgres received and broken the API's connection.
+
+**How it was done safely:** back up `.env`, rewrite with single quotes, then diff
+`docker compose config --format json` before and after and keep the change only
+if every resolved value is byte-identical. All 14 values across the six services
+matched, so nothing needed restarting — the running containers already held the
+correct values, and the fix only affects future reads.
+
+**Honest scope:** the trap was latent, not active. Sourcing the *old* file also
+produced the correct password — today's `$` happens to sit where neither bash nor
+Compose expands it. The next password might not, and the failure is silent. See
+[CONVENTIONS.md](CONVENTIONS.md).
+
+A rollback copy is at `~/otomate/.env.bak-20260830-140437`. Delete it once you are
+satisfied — it is a second unquoted copy of every secret.
 
 ### 8. Frontend bundle is not code-split
 

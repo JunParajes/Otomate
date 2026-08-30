@@ -103,9 +103,15 @@ revisit this "when real staff data accumulates"; that has happened.
 
 - [ ] `@types/express@^5` is paired with `express@^4.21.2`. Already caused one
       confusing failure. → [OPERATIONS.md gap 6](OPERATIONS.md)
-- [ ] Server `.env` values are unquoted — a `$` in a password corrupts
-      `DATABASE_URL` for anything that sources the file.
+- [x] ~~Server `.env` values are unquoted~~ — done 2026-08-30. All ten values
+      single-quoted, verified byte-identical through `docker compose config`
+      before and after. The advice in OPERATIONS.md was itself wrong and has been
+      corrected: Compose *does* interpolate, and double quotes do not protect.
       → [OPERATIONS.md gap 7](OPERATIONS.md)
+- [ ] **`.env` is not backed up.** Backups cover the database and product images
+      only, so a disk failure loses the tunnel token, the Cloudflare API token and
+      `JWT_SECRET`. All are regenerable, but not quickly and not from memory. It
+      holds every secret, so it must be encrypted wherever it lands.
 - [ ] Frontend bundle is not code-split. Fine today.
       → [OPERATIONS.md gap 8](OPERATIONS.md)
 

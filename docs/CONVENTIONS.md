@@ -167,25 +167,49 @@ Never commit `.env`. Always keep `.env.example` up to date.
 
 ---
 
-## .env Gotcha — Never `source` It
+## .env — single-quote every value
 
-Values in `.env` are **not** shell-quoted, so `set -a; . ./.env` makes bash perform
-parameter expansion on them. Any `$` in a password propagates into `DATABASE_URL` and
-gets expanded — `$@`, `$1`, `$USER` and friends silently collapse to something else,
-producing an invalid URL. Prisma then fails with `P1013: invalid port number`, which
-points nowhere near the real cause. This has already bitten this project once in
-production.
+An unquoted value gets interpreted, and by **two** different readers with two
+different rules.
 
-Docker Compose reads `.env` itself **without** expanding, which is why containers
-work while a sourcing script fails.
+**A shell that sources the file** performs parameter expansion. Any `$` in a
+password propagates into `DATABASE_URL` and gets expanded — `$@`, `$1`, `$USER`
+and friends silently collapse to something else, producing an invalid URL. Prisma
+then fails with `P1013: invalid port number`, which points nowhere near the real
+cause. This has already bitten this project once in production.
+
+**Docker Compose also interpolates**, which this file previously claimed it did
+not. Measured on 2026-08-30 with `docker compose run`:
+
+| `.env` line | what the container receives |
+|---|---|
+| `SECRET=pa$$w0rd$USER` | `pa$w0rdjun` — `$$`→`$`, `$USER` expanded |
+| `SECRET="pa$$w0rd$USER"` | `pa$w0rdjun` — **double quotes do not protect** |
+| `SECRET='pa$$w0rd$USER'` | `pa$$w0rd$USER` — literal |
+
+So "the containers work because Compose does not expand" was wrong. The containers
+work when the value happens to contain no expandable sequence; the same file with
+a different password would break them too, silently.
+
+**Single quotes fix both readers**, because they suppress interpolation rather
+than merely delimiting. A value containing a single quote is written `'\''` —
+close, escape, reopen.
 
 ```bash
 # WRONG — corrupts DATABASE_URL
 set -a; . ./.env; set +a
 
-# RIGHT — pull out only the plain values you need, let Compose handle the rest
-POSTGRES_USER=$(grep -E '^POSTGRES_USER=' .env | cut -d= -f2-)
+# RIGHT — pull out only the plain values you need, let Compose handle the rest.
+# The sed strips either quote style, so it works before and after quoting.
+env_value() { grep -E "^$1=" .env | head -1 | cut -d= -f2- \
+  | sed -E "s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"; }
+POSTGRES_USER=$(env_value POSTGRES_USER)
 ```
+
+Changing quoting on a live `.env` is not automatically safe: it changes what
+Compose resolves. Diff the resolved values before and after —
+`docker compose config --format json` — and only keep the change if every value
+is byte-identical.
 
 Also note: `docker compose exec -T` reads stdin, so it will **consume the rest of a
 piped script** (`ssh host 'bash -s' < script.sh`). Always redirect: `... </dev/null`.
