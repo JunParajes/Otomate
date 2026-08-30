@@ -59,9 +59,10 @@ revisit this "when real staff data accumulates"; that has happened.
 
 ## Before this grows much further
 
-- [ ] **CI has no typecheck gate.** Every deploy so far has been gated only by a
-      local `tsc --noEmit` run by hand. Add `pnpm -r exec tsc --noEmit` as a
-      `needs:` prerequisite of `build-and-push`. → [OPERATIONS.md gap 3](OPERATIONS.md)
+- [x] ~~CI has no typecheck gate~~ — done 2026-08-30. A `typecheck` job gates
+      `build-and-push`. Note the proposed one-liner was not enough: shared must be
+      built and the Prisma client generated first, or the gate fails on every run
+      for reasons unrelated to the code. → [OPERATIONS.md gap 3](OPERATIONS.md)
 - [ ] **No automated tests.** Everything has been verified by driving the running
       app, which has caught real bugs a build could not — but it is manual and
       not repeatable. The arithmetic in `packages/shared/src/lib/dsir.ts` and

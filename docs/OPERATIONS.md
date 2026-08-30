@@ -100,14 +100,31 @@ employee records. `gpg` is already installed.
 
 
 
-### 3. CI has no typecheck, lint or test gate
+### 3. CI has no typecheck gate — RESOLVED 2026-08-30
 
-`.github/workflows/deploy.yml` goes straight from `push` to building images to
-production. Nothing verifies the code first — every deploy so far has been gated
-only by a local `tsc --noEmit` run by hand.
+A `typecheck` job now gates `build-and-push`, which gates `deploy`. Nothing
+reaches GHCR, and therefore nothing reaches production, unless every package
+typechecks.
 
-**What to do:** add a job running `pnpm -r exec tsc --noEmit` as a `needs:`
-prerequisite of `build-and-push`.
+**The obvious one-liner does not work.** `pnpm -r exec tsc --noEmit` on a clean
+checkout fails with 40+ errors that have nothing to do with the code:
+
+- `packages/shared/dist` is gitignored, and api/web resolve `@otomate/shared` to
+  that dist — so every import of it is "Cannot find module"
+- `@prisma/client` is generated rather than committed, so `Branch`, `Prisma`,
+  `Role` and `User` "have no exported member"
+
+So the job builds shared and runs `prisma generate` first. Both were established
+by running the sequence in a fresh clone, not by reasoning about it. Skipping
+either would produce a gate that always fails, gets disabled within a week, and
+protects nothing.
+
+**Verified it can actually fail.** A deliberate type error was injected into
+`packages/shared`, `apps/api` and `apps/web` in turn; each produced exit 1, and
+removing it returned exit 0. A gate that cannot fail is theatre.
+
+Still open: no lint step (there is no eslint in this project) and no tests —
+see gap 5.
 
 ### 4. The server does not power itself back on
 
