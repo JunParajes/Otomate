@@ -8,23 +8,24 @@ datasource db {
 }
 
 model User {
-  id                 String       @id @default(cuid())
-  email              String       @unique
+  id                 String           @id @default(cuid())
+  email              String           @unique
   password           String
   name               String
-  isActive           Boolean      @default(true)
+  isActive           Boolean          @default(true)
   // Set when an admin creates the account or resets the password; the user is
   // forced through a password change before they can use the app.
-  mustChangePassword Boolean      @default(false)
+  mustChangePassword Boolean          @default(false)
   lastLoginAt        DateTime?
   roleId             String
   branchId           String?
-  role               Role         @relation(fields: [roleId], references: [id])
-  branch             Branch?      @relation(fields: [branchId], references: [id])
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  role               Role             @relation(fields: [roleId], references: [id])
+  branch             Branch?          @relation(fields: [branchId], references: [id])
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
   employee           Employee?
   dsirReports        DsirReport[]
+  salaryRecords      EmployeeSalary[]
 
   @@index([roleId])
   @@index([branchId])
@@ -121,6 +122,39 @@ enum EmployeePosition {
   OTHER
 }
 
+enum CivilStatus {
+  SINGLE
+  MARRIED
+  WIDOWED
+  SEPARATED
+}
+
+/// Drives the probation alert: only PROBATIONARY has a deadline that matters.
+/// Probation caps at six months under the Labor Code, and staff not acted on by
+/// then become regular by operation of law — so this is a date the system has to
+/// raise, not merely store.
+enum EmploymentType {
+  PROBATIONARY
+  REGULAR
+  CONTRACTUAL
+  PART_TIME
+}
+
+/// Bakery staff are usually paid a daily rate; office staff monthly. Stored per
+/// salary record because it can change with a promotion, and a past payslip must
+/// keep the basis it was actually computed on.
+enum SalaryRateType {
+  DAILY
+  MONTHLY
+  HOURLY
+}
+
+enum PayoutMethod {
+  CASH
+  BANK
+  EWALLET
+}
+
 /// A person who works at a branch. Most have no system login — an Employee is a
 /// staff record, a User is an account. The optional link joins the few who are both.
 ///
@@ -142,16 +176,90 @@ model Employee {
   userId       String?          @unique
   user         User?            @relation(fields: [userId], references: [id])
   isActive     Boolean          @default(true)
-  charges      DsirCharge[]
-  collections  DsirCollection[]
-  openedFor    DsirReport[]     @relation("DsirOpener")
-  closedFor    DsirReport[]     @relation("DsirCloser")
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+
+  // ─── Personal ────────────────────────────────────────────────────────────
+  birthDate         DateTime?    @db.Date
+  civilStatus       CivilStatus?
+  address           String?
+  contactNumber     String?
+  /// Next of kin. Three loose fields rather than a model: this is read by a
+  /// human in an emergency, never queried or joined.
+  emergencyName     String?
+  emergencyRelation String?
+  emergencyContact  String?
+
+  // ─── Government IDs ──────────────────────────────────────────────────────
+  /// Stored as typed, not normalised: these are transcribed from cards and IDs
+  /// and the formatting (dashes, spacing) is how they appear on the filings.
+  /// Not unique — a blank is common, and duplicates are a data-entry problem to
+  /// surface rather than a constraint to enforce at 3am.
+  sssNumber        String?
+  philhealthNumber String?
+  pagibigNumber    String?
+  tin              String?
+
+  // ─── Employment ──────────────────────────────────────────────────────────
+  dateHired        DateTime?      @db.Date
+  employmentType   EmploymentType @default(PROBATIONARY)
+  /// When probation ends. Set explicitly rather than derived from dateHired:
+  /// the actual contract date is what governs, not six months of arithmetic.
+  probationEndDate DateTime?      @db.Date
+  regularizedAt    DateTime?      @db.Date
+  separatedAt      DateTime?      @db.Date
+  separationReason String?
+
+  // ─── Payout ──────────────────────────────────────────────────────────────
+  payoutMethod  PayoutMethod @default(CASH)
+  payoutAccount String?
+
+  salaries    EmployeeSalary[]
+  charges     DsirCharge[]
+  collections DsirCollection[]
+  openedFor   DsirReport[]     @relation("DsirOpener")
+  closedFor   DsirReport[]     @relation("DsirCloser")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   @@index([branchId])
   @@index([isActive])
   @@index([lastName, firstName])
+}
+
+/// One pay rate, valid from a date until the next record supersedes it.
+///
+/// A table rather than columns on Employee because a raise must not rewrite
+/// history: payroll for January has to keep January's rate after a March
+/// increase. This is the same rule as `unitPriceCents` snapshotted onto
+/// `DsirLine` — a rate that moves retroactively silently falsifies every figure
+/// already derived from it, and here those figures are people's wages.
+///
+/// Superseding is by date, not by a flag: "the record with the greatest
+/// effectiveFrom not after the date in question". No `isCurrent` boolean to fall
+/// out of sync, and a future-dated raise can be entered before it takes effect.
+model EmployeeSalary {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  /// Integer centavos, as everywhere else money is stored in this schema.
+  basicCents     Int
+  allowanceCents Int            @default(0)
+  rateType       SalaryRateType @default(DAILY)
+
+  effectiveFrom DateTime @db.Date
+  /// Why it changed — "regularised", "annual increase", "promoted to baker".
+  note          String?
+
+  /// Who entered it. Kept for the audit trail this table exists to support.
+  recordedById String?
+  recordedBy   User?   @relation(fields: [recordedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  /// One rate per employee per start date; re-entering a date is a correction,
+  /// which should update that record rather than quietly create a rival.
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom])
 }
 
 /// DRAFT is editable; FINALIZED locks the report. Encoding runs days behind the
@@ -223,7 +331,7 @@ model DsirLine {
   /// rewritten — so "the order I added them in" was not recoverable at all.
   position Int @default(0)
 
-  begBal    Int @default(0)
+  begBal Int @default(0)
 
   /// How each figure was counted, when it was counted rather than simply typed:
   /// { "endBal": "4*5+3*4" } means the 32 came from a 4x5 layer under a 3x4 one.

@@ -6,12 +6,13 @@ import { useForm } from '@mantine/form'
 import { zod4Resolver as zodResolver } from 'mantine-form-zod-resolver'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconLink, IconPencil, IconPlus, IconSearch, IconUserCheck, IconUserOff } from '@tabler/icons-react'
+import { IconId, IconLink, IconPencil, IconPlus, IconSearch, IconUserCheck, IconUserOff } from '@tabler/icons-react'
 import {
   EMPLOYEE_POSITIONS, POSITION_LABELS, createEmployeeSchema, formatEmployeeName, type Employee,
 } from '@otomate/shared'
 import { employeeApi } from '@/lib/employees'
 import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
+import EmployeeHrModal from '@/components/EmployeeHrModal'
 import { adminApi } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
@@ -35,6 +36,8 @@ export default function EmployeesPage() {
   const [positionFilter, setPositionFilter] = useState<string | null>(null)
 
   const canWrite = can('employees:write')
+  const canReadHr = can('hr:read')
+  const [hrFor, setHrFor] = useState<Employee | null>(null)
   const branchOptions = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }))
   const positionOptions = EMPLOYEE_POSITIONS.map(p => ({ value: p, label: POSITION_LABELS[p] }))
 
@@ -212,6 +215,13 @@ export default function EmployeesPage() {
           acting
             ? ([
                 { label: 'Edit', icon: <IconPencil size={18} />, onClick: () => openEdit(acting) },
+                ...(canReadHr
+                  ? [{
+                      label: 'HR record',
+                      icon: <IconId size={18} />,
+                      onClick: () => setHrFor(acting),
+                    }]
+                  : []),
                 {
                   label: acting.isActive ? 'Deactivate' : 'Reactivate',
                   icon: acting.isActive ? <IconUserOff size={18} /> : <IconUserCheck size={18} />,
@@ -221,6 +231,16 @@ export default function EmployeesPage() {
               ] satisfies RowAction[])
             : []
         }
+      />
+
+      <EmployeeHrModal
+        employee={hrFor}
+        onClose={() => setHrFor(null)}
+        onSaved={updated => {
+          // Keep the open modal and the list row in step without a refetch.
+          setHrFor(updated)
+          void employees.reload()
+        }}
       />
 
       <Modal

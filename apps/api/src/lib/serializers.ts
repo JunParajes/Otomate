@@ -8,6 +8,10 @@ import type {
   DsirStatus,
   Employee as EmployeeDto,
   EmployeePosition,
+  CivilStatus,
+  EmploymentType,
+  PayoutMethod,
+  SalaryRateType,
   Category as CategoryDto,
   Product as ProductDto,
   ProductUnit,
@@ -121,10 +125,33 @@ export function toProductDto(product: ProductWithCategory, canSeeCost: boolean):
 
 type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
   include: { branch: true; user: true }
-}>
+}> & {
+  // Present only when the caller asked for salary and may see it.
+  salaries?: Prisma.EmployeeSalaryGetPayload<{ include: { recordedBy: true } }>[]
+}
 
-export function toEmployeeDto(employee: EmployeeWithRelations): EmployeeDto {
-  return {
+/**
+ * A DATE column as YYYY-MM-DD.
+ *
+ * `toISOString()` would be wrong here: it converts to UTC first, so a hire date
+ * stored as 2026-08-30 comes back as the 29th for anyone east of Greenwich —
+ * which is everyone using this app.
+ */
+function dateOnly(value: Date | null): string | null {
+  if (!value) return null
+  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`
+}
+
+/**
+ * `canSeeHr` and `canSeeSalary` OMIT their sections rather than nulling them, so
+ * an unauthorised response carries no trace of the values — same approach as
+ * `costCents` on the product DTO above.
+ */
+export function toEmployeeDto(
+  employee: EmployeeWithRelations,
+  access: { hr?: boolean; salary?: boolean } = {}
+): EmployeeDto {
+  const dto: EmployeeDto = {
     id: employee.id,
     employeeCode: employee.employeeCode,
     firstName: employee.firstName,
@@ -142,6 +169,49 @@ export function toEmployeeDto(employee: EmployeeWithRelations): EmployeeDto {
     createdAt: employee.createdAt.toISOString(),
     updatedAt: employee.updatedAt.toISOString(),
   }
+
+  if (access.hr) {
+    dto.hr = {
+      birthDate: dateOnly(employee.birthDate),
+      civilStatus: employee.civilStatus as CivilStatus | null,
+      address: employee.address,
+      contactNumber: employee.contactNumber,
+      emergencyName: employee.emergencyName,
+      emergencyRelation: employee.emergencyRelation,
+      emergencyContact: employee.emergencyContact,
+      sssNumber: employee.sssNumber,
+      philhealthNumber: employee.philhealthNumber,
+      pagibigNumber: employee.pagibigNumber,
+      tin: employee.tin,
+      dateHired: dateOnly(employee.dateHired),
+      employmentType: employee.employmentType as EmploymentType,
+      probationEndDate: dateOnly(employee.probationEndDate),
+      regularizedAt: dateOnly(employee.regularizedAt),
+      separatedAt: dateOnly(employee.separatedAt),
+      separationReason: employee.separationReason,
+      payoutMethod: employee.payoutMethod as PayoutMethod,
+      payoutAccount: employee.payoutAccount,
+    }
+  }
+
+  if (access.salary && employee.salaries) {
+    // Newest first: the current rate is what a reader wants, and history is
+    // context below it.
+    dto.salaryHistory = [...employee.salaries]
+      .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))
+      .map(s => ({
+        id: s.id,
+        basicCents: s.basicCents,
+        allowanceCents: s.allowanceCents,
+        rateType: s.rateType as SalaryRateType,
+        effectiveFrom: dateOnly(s.effectiveFrom)!,
+        note: s.note,
+        recordedBy: s.recordedBy ? { id: s.recordedBy.id, name: s.recordedBy.name } : null,
+        createdAt: s.createdAt.toISOString(),
+      }))
+  }
+
+  return dto
 }
 
 /** Everything the DSIR serializers need loaded. */

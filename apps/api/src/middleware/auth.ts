@@ -76,6 +76,20 @@ export function requirePermission(permission: PermissionName) {
   }
 }
 
+/**
+ * Whether this caller holds a permission, for decisions INSIDE a handler.
+ *
+ * `requirePermission` guards whole endpoints; this is for the cases where the
+ * endpoint is allowed but part of the response is not — an employee record whose
+ * salary only some readers may see. Same super-admin rule as the middleware, so
+ * the two cannot disagree.
+ */
+export function can(req: Request, permission: PermissionName): boolean {
+  const auth = req.auth
+  if (!auth) return false
+  return auth.isSuperAdmin || auth.permissions.includes(permission)
+}
+
 /** Guards the admin area as a whole. */
 export function requireSuperAdmin(req: Request, _res: Response, next: NextFunction): void {
   if (!req.auth?.isSuperAdmin) {

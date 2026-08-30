@@ -60,6 +60,160 @@ export const updateEmployeeSchema = createEmployeeSchema.partial()
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>
 
+export const CIVIL_STATUSES = ['SINGLE', 'MARRIED', 'WIDOWED', 'SEPARATED'] as const
+export type CivilStatus = (typeof CIVIL_STATUSES)[number]
+
+export const EMPLOYMENT_TYPES = ['PROBATIONARY', 'REGULAR', 'CONTRACTUAL', 'PART_TIME'] as const
+export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number]
+
+export const SALARY_RATE_TYPES = ['DAILY', 'MONTHLY', 'HOURLY'] as const
+export type SalaryRateType = (typeof SALARY_RATE_TYPES)[number]
+
+export const PAYOUT_METHODS = ['CASH', 'BANK', 'EWALLET'] as const
+export type PayoutMethod = (typeof PAYOUT_METHODS)[number]
+
+export const CIVIL_STATUS_LABELS: Record<CivilStatus, string> = {
+  SINGLE: 'Single', MARRIED: 'Married', WIDOWED: 'Widowed', SEPARATED: 'Separated',
+}
+export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
+  PROBATIONARY: 'Probationary', REGULAR: 'Regular', CONTRACTUAL: 'Contractual', PART_TIME: 'Part-time',
+}
+export const SALARY_RATE_LABELS: Record<SalaryRateType, string> = {
+  DAILY: 'per day', MONTHLY: 'per month', HOURLY: 'per hour',
+}
+export const PAYOUT_METHOD_LABELS: Record<PayoutMethod, string> = {
+  CASH: 'Cash', BANK: 'Bank transfer', EWALLET: 'E-wallet',
+}
+
+/** YYYY-MM-DD, the form the API exchanges dates in. Empty string means "not set". */
+const dateOnly = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the date picker')
+  .nullable()
+  .optional()
+
+/**
+ * Government IDs are stored as typed rather than normalised.
+ *
+ * SSS, PhilHealth, Pag-IBIG and TIN each have a conventional grouping
+ * (34-1234567-8 and so on), but they are transcribed from physical cards where
+ * the spacing varies, and the filings expect them to match the card. Validating
+ * the shape would reject legitimate cards; a length cap is enough to catch a
+ * finger on the keyboard.
+ */
+const govId = z.string().trim().max(30, 'That looks too long for an ID number').nullable().optional()
+
+/** The 201 file. Every field optional: records are built up over time, not in one sitting. */
+export const updateEmployeeHrSchema = z.object({
+  birthDate: dateOnly,
+  civilStatus: z.enum(CIVIL_STATUSES).nullable().optional(),
+  address: z.string().trim().max(300, 'Address is too long').nullable().optional(),
+  contactNumber: z.string().trim().max(40, 'Contact number is too long').nullable().optional(),
+  emergencyName: z.string().trim().max(120, 'Name is too long').nullable().optional(),
+  emergencyRelation: z.string().trim().max(60, 'Relationship is too long').nullable().optional(),
+  emergencyContact: z.string().trim().max(40, 'Contact number is too long').nullable().optional(),
+
+  sssNumber: govId,
+  philhealthNumber: govId,
+  pagibigNumber: govId,
+  tin: govId,
+
+  dateHired: dateOnly,
+  employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
+  probationEndDate: dateOnly,
+  regularizedAt: dateOnly,
+  separatedAt: dateOnly,
+  separationReason: z.string().trim().max(300, 'Reason is too long').nullable().optional(),
+
+  payoutMethod: z.enum(PAYOUT_METHODS).optional(),
+  payoutAccount: z.string().trim().max(80, 'Account is too long').nullable().optional(),
+})
+export type UpdateEmployeeHrInput = z.infer<typeof updateEmployeeHrSchema>
+
+/**
+ * One pay rate from a date onward.
+ *
+ * Amounts are in CENTAVOS, as everywhere else. Zero is allowed for allowance and
+ * refused for basic: a rate of nothing is a data-entry slip, not a wage.
+ */
+export const createSalarySchema = z.object({
+  basicCents: z.number().int('Enter a whole amount').positive('Basic pay must be more than zero'),
+  allowanceCents: z.number().int('Enter a whole amount').min(0, 'Allowance cannot be negative').optional().default(0),
+  rateType: z.enum(SALARY_RATE_TYPES).optional().default('DAILY'),
+  effectiveFrom: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick the date this rate starts'),
+  note: z.string().trim().max(200, 'Note is too long').nullable().optional(),
+})
+export type CreateSalaryInput = z.infer<typeof createSalarySchema>
+
+export interface EmployeeSalaryRecord {
+  id: string
+  basicCents: number
+  allowanceCents: number
+  rateType: SalaryRateType
+  effectiveFrom: string
+  note: string | null
+  recordedBy: { id: string; name: string } | null
+  createdAt: string
+}
+
+/**
+ * Which rate applied on a given date: the latest one starting on or before it.
+ *
+ * Returns null when the employee had no rate yet — a record created before pay
+ * was entered, which is normal and must not be read as "paid nothing".
+ *
+ * Callers pass history in any order; this does not assume it is sorted.
+ */
+export function salaryOn(
+  history: EmployeeSalaryRecord[],
+  onDate: string
+): EmployeeSalaryRecord | null {
+  const eligible = history.filter(s => s.effectiveFrom <= onDate)
+  if (eligible.length === 0) return null
+  return eligible.reduce((best, s) => (s.effectiveFrom > best.effectiveFrom ? s : best))
+}
+
+/** The rate in force today, or null if pay has never been set. */
+export function currentSalary(history: EmployeeSalaryRecord[]): EmployeeSalaryRecord | null {
+  return salaryOn(history, new Date().toISOString().slice(0, 10))
+}
+
+/**
+ * Whether a probation deadline needs attention, and how urgently.
+ *
+ * Probation caps at six months under the Labor Code: an employee not acted on by
+ * the deadline becomes regular by operation of law, whether or not anyone
+ * intended it. A date sitting unread in a field is exactly how that happens, so
+ * the record carries its own warning.
+ *
+ * Only PROBATIONARY staff are considered — a regularised or separated record has
+ * no deadline left to miss.
+ */
+export function probationStatus(
+  employee: {
+    employmentType: EmploymentType
+    probationEndDate: string | null
+    separatedAt: string | null
+    isActive: boolean
+  },
+  today: string = new Date().toISOString().slice(0, 10)
+): { state: 'none' | 'due' | 'overdue'; daysLeft: number | null } {
+  const { employmentType, probationEndDate, separatedAt, isActive } = employee
+  if (employmentType !== 'PROBATIONARY' || !probationEndDate || separatedAt || !isActive) {
+    return { state: 'none', daysLeft: null }
+  }
+  const MS_PER_DAY = 86_400_000
+  const daysLeft = Math.round((Date.parse(probationEndDate) - Date.parse(today)) / MS_PER_DAY)
+  if (daysLeft < 0) return { state: 'overdue', daysLeft }
+  // A month's notice is enough to hold the conversation and file the paperwork.
+  if (daysLeft <= 30) return { state: 'due', daysLeft }
+  return { state: 'none', daysLeft }
+}
+
 /** The four parts, as stored. */
 export interface EmployeeName {
   firstName: string

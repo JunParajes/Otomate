@@ -20,6 +20,13 @@ export const PERMISSIONS = [
   { name: 'categories:write', category: 'Products', description: 'Create, edit and delete product categories' },
   { name: 'employees:read', category: 'Employees', description: 'View employee records' },
   { name: 'employees:write', category: 'Employees', description: 'Create, edit and deactivate employees' },
+  // Separate from employees:* so a branch manager can see who works for them
+  // without seeing government IDs or pay. Salary is split again because it is
+  // the more sensitive of the two socially, and far fewer people need it.
+  { name: 'hr:read', category: 'HR', description: 'View HR records — government IDs, hire and employment dates' },
+  { name: 'hr:write', category: 'HR', description: 'Edit HR records' },
+  { name: 'hr:salary:read', category: 'HR', description: 'View pay rates and salary history' },
+  { name: 'hr:salary:write', category: 'HR', description: 'Set pay rates' },
   { name: 'dsir:read', category: 'DSIR', description: 'View daily sales and inventory reports' },
   { name: 'dsir:write', category: 'DSIR', description: 'Create and edit daily reports' },
   { name: 'dsir:finalize', category: 'DSIR', description: 'Finalise a report, locking it from further edits' },

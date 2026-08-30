@@ -70,14 +70,113 @@
 
 ---
 
-## Phase 5+ — Future Features
+## Phase 5 — HR
+
+Employee records beyond a name and a branch, and — the part that is specific to
+this business — turning what the DSIR already knows into what payroll needs.
+
+### Why this belongs here rather than in an off-the-shelf HR package
+
+Otomate already captures two streams of money owed by staff, and
+[DOMAIN.md](DOMAIN.md) says both end at payroll:
+
+| Stream | Origin | DOMAIN.md |
+|---|---|---|
+| **Charges** | goods taken or damaged by staff | *"none — recovered via payroll"*, at full selling price |
+| **Shortages** | cash variance on a finalised DSIR | *"deducted from employees' pay"* |
+
+The capture side is done — charges carry the employee, shortages are derived per
+report. Nothing consumes either. The old process failed exactly here: *"Charges
+have no name attached… the join is manual and memory-dependent. Any charge that
+falls through is money the business meant to recover and simply doesn't."*
+
+### 5a. The 201 file — IN PROGRESS
+
+- [ ] Personal: birth date, civil status, address, contact, emergency contact
+- [ ] Government IDs: SSS, PhilHealth, Pag-IBIG, TIN
+- [ ] Employment: date hired, employment type, probation end, regularisation,
+      separation date and reason
+- [ ] Pay: basic and allowance, as **effective-dated history** (below)
+- [ ] Payout method and account
+- [ ] Permission split so pay is not visible to everyone with `employees:read`
+
+Three decisions that are hard to reverse later:
+
+1. **Salary is a history table, not a column.** A raise in March must not rewrite
+   January's payslip. This is the same rule as `unitPriceCents` snapshotted onto
+   `DsirLine`, for the same reason — a rate that moves retroactively silently
+   falsifies every past figure derived from it.
+2. **Pay and government IDs get their own permissions.** A branch manager should
+   be able to see who works for them without seeing salaries. Hence
+   `hr:read` / `hr:write` for the 201 file and `hr:salary:read` /
+   `hr:salary:write` for pay.
+3. **Probation end is an alert, not a stored date.** Probation caps at six months
+   under the Labor Code, and an employee not acted on by then becomes regular by
+   operation of law. A date nobody looks at is how that happens by accident.
+
+### 5b. Close the money loop
+
+- [ ] Per-employee ledger of charges and shortages, by pay period
+- [ ] Review step before deduction — approve, waive, or spread over periods, with
+      a reason and an audit trail
+- [ ] Running balance for a charge being paid off gradually
+
+DOMAIN.md: *"a shortage can come from theft or from a counting mistake and the
+sheet cannot tell them apart… Better data means fewer wrong deductions — good for
+staff."* The review step is where that fairness actually happens.
+
+### 5c. Attendance
+
+- [ ] Days present, absences, leaves, marked per branch by a manager
+
+Not biometrics, and not a DTR device — branches are still on paper DSIR forms.
+Note the DSIR already names `openedBy`/`closedBy`, which is a weak attendance
+signal available for free.
+
+### 5d. Payroll runs
+
+- [ ] Payslip: gross → deductions → net, printable
+- [ ] 13th month pay (mandatory, due 24 December, basic salary earned ÷ 12)
+- [ ] **Contribution tables as effective-dated data, never constants in code**
+
+SSS, PhilHealth and Pag-IBIG rates change by government circular. Hardcoding them
+means a deploy per change and silently wrong deductions until somebody notices.
+Whatever rates go in must be checked against the current circular at the time —
+not carried over from memory or from this document.
+
+### 5e. Documents
+
+- [ ] Certificate of Employment
+- [ ] Payslip PDF
+- [ ] Leave balances (Service Incentive Leave: 5 days after one year)
+- [ ] BIR 2316 at year end
+
+### Deliberately out of scope for now
+
+- **Full BIR withholding computation.** High stakes, frequent changes, penalties
+  land on the business. Record what was withheld; do not compute it until the
+  rest is stable and someone can check it against a real payslip.
+- **Biometric / DTR hardware.** Same reason tablets are not in branches yet.
+
+### What this pulls in
+
+- **Phase 4 audit logging stops being optional.** Once salaries are stored, "who
+  changed this figure, and who looked at it" is the whole point.
+- **Off-machine backups become due** — gap 2 in [OPERATIONS.md](OPERATIONS.md)
+  says to revisit "when real staff data accumulates", and this is that. Under the
+  Data Privacy Act these are personal records, so the dump should be encrypted
+  before it leaves the server.
+
+---
+
+## Phase 6+ — Future Features
 > To be defined as the product evolves.
 
 - [ ] Branch performance dashboard / reports
 - [ ] Inventory tracking
 - [ ] Order management
 - [ ] Mobile-responsive UI improvements
-- [ ] Domain + HTTPS (Traefik + Let's Encrypt)
+- [x] Domain + HTTPS — done via Cloudflare Tunnel rather than Let's Encrypt
 - [ ] Portainer for server management UI
 
 ---

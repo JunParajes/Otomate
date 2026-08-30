@@ -118,11 +118,46 @@ export interface Product {
 }
 
 // ─── Employees ────────────────────────────────────────────────────────────
-import type { EmployeePosition } from '../schemas/employee.js'
+import type {
+  CivilStatus, EmployeePosition, EmployeeSalaryRecord, EmploymentType, PayoutMethod,
+} from '../schemas/employee.js'
+
+/**
+ * The 201 file. Dates are YYYY-MM-DD, not timestamps — a hire date has no time
+ * of day, and sending one invites a timezone to shift it across midnight.
+ */
+export interface EmployeeHr {
+  birthDate: string | null
+  civilStatus: CivilStatus | null
+  address: string | null
+  contactNumber: string | null
+  emergencyName: string | null
+  emergencyRelation: string | null
+  emergencyContact: string | null
+
+  sssNumber: string | null
+  philhealthNumber: string | null
+  pagibigNumber: string | null
+  tin: string | null
+
+  dateHired: string | null
+  employmentType: EmploymentType
+  probationEndDate: string | null
+  regularizedAt: string | null
+  separatedAt: string | null
+  separationReason: string | null
+
+  payoutMethod: PayoutMethod
+  payoutAccount: string | null
+}
 
 /**
  * A person who works at a branch. Most have no login — an Employee is a staff
  * record, a User is an account. `linkedUser` is set only for the few who are both.
+ *
+ * `hr` and `salary` are OMITTED — not nulled — for callers without the matching
+ * permission, so an unauthorised response carries no trace of the values rather
+ * than a shape suggesting they exist. The UI keys off their presence.
  */
 export interface Employee {
   id: string
@@ -137,6 +172,10 @@ export interface Employee {
   branch: { id: string; name: string } | null
   linkedUser: { id: string; email: string } | null
   isActive: boolean
+  /** Requires `hr:read`. */
+  hr?: EmployeeHr
+  /** Requires `hr:salary:read`. Newest first. */
+  salaryHistory?: EmployeeSalaryRecord[]
   createdAt: string
   updatedAt: string
 }
