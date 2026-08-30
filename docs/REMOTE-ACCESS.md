@@ -15,8 +15,13 @@ current within five minutes of the address changing, which is what makes it
 survive the blackouts that move it.
 
 ```
-ssh <user>@server.otomate.uk -p <forwarded port>
+ssh <user>@server.otomate.uk -p 2222
 ```
+
+**The port is 2222.** Worth stating plainly: it was previously written only as
+`<forwarded port>`, and an example elsewhere in this file used 2323, which is not
+the port and cost an hour of misdiagnosing a working SSH server as a broken
+router rule. If it ever changes, change it here.
 
 This works from anywhere, and it is how GitHub Actions deploys. Nothing needs
 setting up to use it.
@@ -179,7 +184,7 @@ Router admin → port forwarding → remove the rule sending external SSH to
 192.168.1.82. Then confirm from off-network:
 
 ```bash
-nc -vz -w 5 server.otomate.uk 2323      # expect: refused / timed out
+nc -vz -w 5 server.otomate.uk 2222      # expect: refused / timed out
 ssh <user>@jserver                       # expect: still works
 ```
 
