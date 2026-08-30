@@ -90,15 +90,15 @@ report. Nothing consumes either. The old process failed exactly here: *"Charges
 have no name attached… the join is manual and memory-dependent. Any charge that
 falls through is money the business meant to recover and simply doesn't."*
 
-### 5a. The 201 file — IN PROGRESS
+### 5a. The 201 file — DONE
 
-- [ ] Personal: birth date, civil status, address, contact, emergency contact
-- [ ] Government IDs: SSS, PhilHealth, Pag-IBIG, TIN
-- [ ] Employment: date hired, employment type, probation end, regularisation,
+- [x] Personal: birth date, civil status, address, contact, emergency contact
+- [x] Government IDs: SSS, PhilHealth, Pag-IBIG, TIN
+- [x] Employment: date hired, employment type, probation end, regularisation,
       separation date and reason
-- [ ] Pay: basic and allowance, as **effective-dated history** (below)
-- [ ] Payout method and account
-- [ ] Permission split so pay is not visible to everyone with `employees:read`
+- [x] Pay: basic and allowance, as **effective-dated history** (below)
+- [x] Payout method and account
+- [x] Permission split so pay is not visible to everyone with `employees:read`
 
 Three decisions that are hard to reverse later:
 
@@ -114,29 +114,9 @@ Three decisions that are hard to reverse later:
    under the Labor Code, and an employee not acted on by then becomes regular by
    operation of law. A date nobody looks at is how that happens by accident.
 
-### 5f. Branch records — DONE
-
-The same shape as the 201 file, for premises rather than people.
-
-- [x] Lease: address, lessor and contact, contract dates, notice period, deposit
-      and advance
-- [x] Rent as **effective-dated history**, same rule as pay — leases escalate
-      annually and a rise must not rewrite last year's costs
-- [x] Permits as a table, not columns: Mayor's, Barangay, BIR, Sanitary, Fire
-      Safety, Occupancy, Zoning, Environmental, and OTHER with its own label
-- [x] Expiry warnings at 60 days, and a per-branch badge on the branch list
-- [x] `branches:permits:*` split from `branches:lease:*` — a manager sees what
-      needs renewing without seeing what the branch pays
-
-Sixty days rather than the thirty used for probation: renewals mean queuing at a
-city office, several are prerequisites for each other (a lapsed Barangay
-Clearance or Fire Safety certificate blocks the Mayor's Permit), and every
-business in Davao renews in January.
-
-Not built: document scans. The columns `contractFile` and `documentFile` exist
-unused so adding uploads is additive. Deferred deliberately — backups are still
-on the same disk as the database, and scanned government documents and lease
-contracts are exactly what should not live in only one place.
+Lives at `/admin/employees/:id`. It shipped as a modal and was converted to a
+route — a record this size needs to be linkable, printable and closable with the
+back gesture, and 5b–5e all hang off it.
 
 ### 5b. Close the money loop
 
@@ -174,6 +154,30 @@ not carried over from memory or from this document.
 - [ ] Payslip PDF
 - [ ] Leave balances (Service Incentive Leave: 5 days after one year)
 - [ ] BIR 2316 at year end
+
+### 5f. Branch records — DONE
+
+The same shape as the 201 file, for premises rather than people.
+
+- [x] Lease: address, lessor and contact, contract dates, notice period, deposit
+      and advance
+- [x] Rent as **effective-dated history**, same rule as pay — leases escalate
+      annually and a rise must not rewrite last year's costs
+- [x] Permits as a table, not columns: Mayor's, Barangay, BIR, Sanitary, Fire
+      Safety, Occupancy, Zoning, Environmental, and OTHER with its own label
+- [x] Expiry warnings at 60 days, and a per-branch badge on the branch list
+- [x] `branches:permits:*` split from `branches:lease:*` — a manager sees what
+      needs renewing without seeing what the branch pays
+
+Sixty days rather than the thirty used for probation: renewals mean queuing at a
+city office, several are prerequisites for each other (a lapsed Barangay
+Clearance or Fire Safety certificate blocks the Mayor's Permit), and every
+business in Davao renews in January.
+
+Not built: document scans. The columns `contractFile` and `documentFile` exist
+unused so adding uploads is additive. Deferred deliberately — backups are still
+on the same disk as the database, and scanned government documents and lease
+contracts are exactly what should not live in only one place.
 
 ### Deliberately out of scope for now
 
