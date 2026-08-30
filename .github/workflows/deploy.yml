@@ -92,6 +92,20 @@ jobs:
             docker compose -f docker-compose.prod.yml run --rm api \
               sh -c "npx prisma migrate deploy"
 
+            # Sync the permission catalog. Migrations create TABLES; permissions
+            # are ROWS, seeded from packages/shared. Without this a new
+            # permission never reaches production — the feature ships, the
+            # permission cannot be granted to any role, and only super_admin
+            # (which bypasses the check) can use it. That happened with the hr:*
+            # permissions on 2026-08-30 and had to be fixed by hand.
+            #
+            # Safe on every deploy: permissions are upserted, the admin account
+            # is left alone when it already exists ("Password unchanged"), and
+            # the branch upsert is a no-op. It deletes only permissions that no
+            # longer exist in shared, which is the intended mirror behaviour.
+            docker compose -f docker-compose.prod.yml run --rm api \
+              sh -c "npx prisma db seed"
+
             # Infrastructure first. These change rarely and are recreated the
             # normal way; api and web are handled below. Listing them explicitly
             # is safe — --remove-orphans only removes containers whose service is
