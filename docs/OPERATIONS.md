@@ -12,6 +12,28 @@ renumbered everything below it.)
 
 ## 🟠 Medium
 
+### 0b. The deploy seed used to overwrite a role change — FIXED 2026-08-30
+
+Worth keeping as a warning about the shape of the mistake, not the mistake.
+
+`prisma db seed` was added to every deploy on 2026-08-30 so new permissions would
+reach production. The seed also contained a one-time bootstrap step that promoted
+`admin@otomate.local` back to `super_admin` whenever it held any other role —
+harmless when run by hand, wrong on every deploy.
+
+The account had been deliberately set to `human_resource` through the admin UI.
+The next deploy silently put it back, with nothing in the interface to explain
+why. It would have kept happening.
+
+Now the promotion only fires when there is no other **active** super admin, which
+is the invariant it existed to protect. A deliberate demotion is respected.
+
+**The general lesson:** a script written to bootstrap once has different
+obligations once it runs on a schedule. Anything it forces will fight the people
+using the app, and it wins silently. Before putting a bootstrap script in a
+deploy loop, read every write it performs and ask which of them a user could
+legitimately have changed.
+
 ### 0. A finalised report's figures are not actually frozen
 
 **Status:** Open as of 2026-08-26. Found while adding draft deletion; the delete

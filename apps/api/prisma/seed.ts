@@ -72,9 +72,33 @@ async function main() {
     })
     console.log(`Created ${ADMIN_EMAIL} as ${SUPER_ADMIN_ROLE} (password from SEED_ADMIN_PASSWORD, or 'change-me-immediately').`)
   } else if (existing.role.name !== SUPER_ADMIN_ROLE) {
-    // Promote the pre-existing owner account. Password is never touched.
-    await prisma.user.update({ where: { id: existing.id }, data: { roleId: superAdmin.id } })
-    console.log(`Promoted ${ADMIN_EMAIL} from '${existing.role.name}' to '${SUPER_ADMIN_ROLE}'. Password unchanged.`)
+    // This account's role is only forced back when doing so is the difference
+    // between having a super admin and having none.
+    //
+    // The promotion used to be unconditional, which was fine while the seed ran
+    // by hand. Since 2026-08-30 it runs on EVERY deploy (to sync the permission
+    // catalog), and unconditional promotion silently undid a deliberate change
+    // made in the admin UI — admin@otomate.local was set to human_resource and
+    // was back to super_admin after the next deploy, with nothing to show why.
+    //
+    // The guard this exists for is "never leave the system with no super admin".
+    // Another active super admin satisfies that, so the demotion is respected.
+    const otherSuperAdmins = await prisma.user.count({
+      where: { role: { name: SUPER_ADMIN_ROLE }, id: { not: existing.id }, isActive: true },
+    })
+
+    if (otherSuperAdmins > 0) {
+      console.log(
+        `${ADMIN_EMAIL} is '${existing.role.name}', left alone — ` +
+          `${otherSuperAdmins} other active ${SUPER_ADMIN_ROLE}(s) exist.`
+      )
+    } else {
+      await prisma.user.update({ where: { id: existing.id }, data: { roleId: superAdmin.id } })
+      console.log(
+        `Promoted ${ADMIN_EMAIL} from '${existing.role.name}' to ${SUPER_ADMIN_ROLE}: ` +
+          `it was the only account that could hold that role. Password unchanged.`
+      )
+    }
   } else {
     console.log(`${ADMIN_EMAIL} is already ${SUPER_ADMIN_ROLE}. Password unchanged.`)
   }
