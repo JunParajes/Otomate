@@ -45,8 +45,9 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 ## Current Phase
-**Phase 1 — Boilerplate** (in progress)
-See [docs/ROADMAP.md](docs/ROADMAP.md) for full phase breakdown.
+**Phase 5 — HR** (in progress). Phases 1–3 are done; Phase 4 (auditing) is not started.
+**[docs/TODO.md](docs/TODO.md) is the single list of what is actually outstanding** — start there.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase breakdown and the reasoning behind each.
 Known gaps and deferred operational work are tracked in [docs/OPERATIONS.md](docs/OPERATIONS.md) — check it before assuming something is set up.
 **[docs/DOMAIN.md](docs/DOMAIN.md) describes how the bakery actually operates** (the DSIR stock-reconciliation process). Read it before touching anything to do with stock, sales or prices — several rules there look like quirks but are deliberate anti-theft controls.
 
@@ -58,7 +59,9 @@ Known gaps and deferred operational work are tracked in [docs/OPERATIONS.md](doc
 - **`packages/shared` is dual-built (CJS + ESM)** — the API requires CJS, Vite needs ESM
 - **Traefik v3** — routes `/api/*` → Express, `/*` → React/Nginx
 - **GHCR** — images at `ghcr.io/junparajes/otomate-api` and `ghcr.io/junparajes/otomate-web`
-- **IP-only** — no domain/TLS yet; add Traefik Let's Encrypt labels when domain is ready
+- **Cloudflare Tunnel, not port forwarding** — https://otomate.uk is served through an
+  outbound tunnel, so no inbound port is open for the app and TLS terminates at
+  Cloudflare. Let's Encrypt labels on Traefik are therefore *not* needed.
 
 ## Things to Avoid
 - Never commit `.env` — use `.env.example` as a template
@@ -96,5 +99,6 @@ docker compose down -v           # stop + remove volumes
 ## GitHub & Deployment
 - Repo: https://github.com/JunParajes/Otomate
 - Push to `main` → GitHub Actions builds images → pushes to GHCR → SSHes into server → pulls + restarts
-- Server: `<SERVER_USER>@<SERVER_LAN_IP>` (Ubuntu 26.04) — actual values in your local notes/password manager
+- Server: `<SERVER_USER>@server.otomate.uk -p 2222` (Ubuntu 26.04) — **the SSH port is 2222**,
+  not 22. Other values are in your local notes/password manager. See [docs/REMOTE-ACCESS.md](docs/REMOTE-ACCESS.md).
 - Required GitHub secrets: `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_PORT`, `SERVER_SSH_KEY`

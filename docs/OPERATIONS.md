@@ -3,6 +3,11 @@
 Things that are **not** done, why they matter, and what to do about them.
 Reviewed and updated as items are closed. Newest concerns at the top of each section.
 
+This file holds the *reasoning*. [TODO.md](TODO.md) is the actionable list and
+links back to these entries **by number** — so if you insert or renumber a gap
+here, fix the references there too. (Gap 0 was inserted on 2026-08-30, which
+renumbered everything below it.)
+
 ---
 
 ## 🟠 Medium

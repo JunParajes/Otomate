@@ -22,7 +22,9 @@
 - [x] Traefik v3 (routes /api|/health → api, / → frontend)
 - [x] GitHub Actions CI/CD (build → GHCR → SSH deploy → migrate → restart)
 - [x] First production deploy to server (reachable over LAN and internet)
-- [ ] Port 80 forwarded for public HTTP access (user config on router)
+- [x] Public access — via an outbound **Cloudflare Tunnel**, not a port forward.
+      Port 80 forwarding was removed on purpose: the tunnel needs no inbound port,
+      so there is nothing on 80/443 to scan. See [DOMAIN-SETUP.md](DOMAIN-SETUP.md).
 - [x] Proper Prisma migrations — `0_init` baseline committed and applied to production on 2026-08-20; `prisma migrate deploy` now reports "No pending migrations to apply"
 
 ---
@@ -214,5 +216,5 @@ contracts are exactly what should not live in only one place.
 | Environment | URL | Notes |
 |-------------|-----|-------|
 | Local dev | http://localhost:5173 | Docker Compose, hot reload |
-| Production | http://&lt;SERVER_IP&gt; | Ubuntu server, Traefik — actual IP kept private |
-| Production (future) | https://&lt;yourdomain&gt; | When domain + Let's Encrypt is added |
+| Production | https://otomate.uk | Cloudflare Tunnel → Traefik → api/web. No inbound port. |
+| Server admin | `ssh <user>@server.otomate.uk -p 2222` | DDNS-tracked public IP; see [REMOTE-ACCESS.md](REMOTE-ACCESS.md) |
