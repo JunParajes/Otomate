@@ -95,14 +95,15 @@ model Branch {
   /// the column means adding them is additive rather than another migration.
   contractFile      String?
 
-  permits     BranchPermit[]
-  rents       BranchRent[]
-  users       User[]
-  employees   Employee[]
-  dsirReports DsirReport[]
-  transfersIn DsirTransfer[]
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  permits         BranchPermit[]
+  rents           BranchRent[]
+  utilityAccounts BranchUtilityAccount[]
+  users           User[]
+  employees       Employee[]
+  dsirReports     DsirReport[]
+  transfersIn     DsirTransfer[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 }
 
 /// One permit held by one branch.
@@ -133,6 +134,77 @@ model BranchPermit {
 
   @@index([branchId])
   @@index([expiresOn])
+}
+
+enum UtilityType {
+  ELECTRIC
+  WATER
+  INTERNET
+  OTHER
+}
+
+/// A utility account held by a branch — one per meter, essentially.
+///
+/// Separate from the bills so the account and meter numbers are stored once
+/// rather than retyped onto twelve bills a year, and so a branch with two
+/// electric meters is representable.
+model BranchUtilityAccount {
+  id            String      @id @default(cuid())
+  branchId      String
+  branch        Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  type          UtilityType
+  /// Required when type is OTHER; the display name otherwise comes from the type.
+  label         String?
+  /// "Davao Light", "Davao City Water District".
+  provider      String?
+  accountNumber String?
+  meterNumber   String?
+  isActive      Boolean     @default(true)
+
+  bills BranchUtilityBill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+}
+
+/// One bill for one period.
+///
+/// A ledger, not an effective-dated figure like rent: each bill is a discrete
+/// event with its own period, amount and due date, and last month's bill is not
+/// superseded by this month's — both are facts.
+///
+/// `consumption` is optional and is the reason to bother recording more than the
+/// amount: a bakery's electricity is chillers and ovens, and a month that jumps
+/// without a tariff change is a failing compressor or a door left open. Water
+/// behaves the same way for leaks. The unit follows the type — kWh for electric,
+/// cubic metres for water — so it is not stored per row.
+model BranchUtilityBill {
+  id        String               @id @default(cuid())
+  accountId String
+  account   BranchUtilityAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  periodStart DateTime  @db.Date
+  periodEnd   DateTime  @db.Date
+  amountCents Int
+  dueDate     DateTime? @db.Date
+  /// Null means unpaid. The due date plus this is what raises a disconnection
+  /// warning, so "paid" is a date rather than a boolean — when it was settled
+  /// matters as much as whether.
+  paidOn      DateTime? @db.Date
+  consumption Int?
+  /// OR number, or the reference from an online payment.
+  referenceNo String?
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One bill per account per period; re-entering a period corrects it.
+  @@unique([accountId, periodStart])
+  @@index([accountId, periodStart])
+  @@index([dueDate])
 }
 
 /// The rent for a branch from a date onward.

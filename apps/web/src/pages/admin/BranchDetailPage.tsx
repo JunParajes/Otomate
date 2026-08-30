@@ -16,6 +16,7 @@ import {
 import { adminApi } from '@/lib/admin'
 import { useSession } from '@/lib/session'
 import MoneyInput from '@/components/MoneyInput'
+import BranchUtilities from '@/components/BranchUtilities'
 
 /** A blank permit form — also what "Add permit" opens with. */
 const EMPTY_PERMIT = {
@@ -70,6 +71,8 @@ export default function BranchDetailPage() {
 
   const canSeePermits = can('branches:permits:read')
   const canWritePermits = can('branches:permits:write')
+  const canSeeUtilities = can('branches:utilities:read')
+  const canWriteUtilities = can('branches:utilities:write')
   const canSeeLease = can('branches:lease:read')
   const canWriteLease = can('branches:lease:write')
 
@@ -352,6 +355,10 @@ export default function BranchDetailPage() {
         </Card>
       )}
 
+      {canSeeUtilities && (
+        <BranchUtilities branch={branch} canWrite={canWriteUtilities} onChange={apply} />
+      )}
+
       {canSeeLease && lease && (
         <Card withBorder padding="lg" radius="md">
           <Title order={3} size="h5" mb="sm">Lease</Title>
@@ -491,7 +498,7 @@ export default function BranchDetailPage() {
         </Card>
       )}
 
-      {!canSeePermits && !canSeeLease && (
+      {!canSeePermits && !canSeeUtilities && !canSeeLease && (
         <Alert color="gray">You do not have permission to see permit or lease records for this branch.</Alert>
       )}
 

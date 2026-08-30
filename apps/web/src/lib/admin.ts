@@ -10,6 +10,8 @@ import type {
   UpdateBranchLeaseInput,
   CreatePermitInput,
   CreateBranchRentInput,
+  CreateUtilityAccountInput,
+  CreateUtilityBillInput,
   UpdateRoleInput,
   UpdateUserInput,
   User,
@@ -63,6 +65,19 @@ export const adminApi = {
     unwrap<Branch>(api.post(`/api/admin/branches/${id}/rent`, input)),
   removeRent: (id: string, rentId: string) =>
     unwrap<Branch>(api.delete(`/api/admin/branches/${id}/rent/${rentId}`)),
+
+  addUtility: (id: string, input: CreateUtilityAccountInput) =>
+    unwrap<Branch>(api.post(`/api/admin/branches/${id}/utilities`, input)),
+  updateUtility: (id: string, accountId: string, input: CreateUtilityAccountInput) =>
+    unwrap<Branch>(api.patch(`/api/admin/branches/${id}/utilities/${accountId}`, input)),
+  removeUtility: (id: string, accountId: string) =>
+    unwrap<Branch>(api.delete(`/api/admin/branches/${id}/utilities/${accountId}`)),
+  addBill: (id: string, accountId: string, input: CreateUtilityBillInput) =>
+    unwrap<Branch>(api.post(`/api/admin/branches/${id}/utilities/${accountId}/bills`, input)),
+  setBillPaid: (id: string, accountId: string, billId: string, paidOn: string | null) =>
+    unwrap<Branch>(api.patch(`/api/admin/branches/${id}/utilities/${accountId}/bills/${billId}/paid`, { paidOn })),
+  removeBill: (id: string, accountId: string, billId: string) =>
+    unwrap<Branch>(api.delete(`/api/admin/branches/${id}/utilities/${accountId}/bills/${billId}`)),
 
   changeOwnPassword: (currentPassword: string, newPassword: string) =>
     unwrap<{ success: boolean }>(

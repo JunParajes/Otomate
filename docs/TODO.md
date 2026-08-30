@@ -76,8 +76,9 @@ revisit this "when real staff data accumulates"; that has happened.
 ### Phase 5 — HR
 - [x] **5a — the 201 file.** Live. Personal details, government IDs, employment
       dates, effective-dated pay, at `/admin/employees/:id`.
-- [x] **5f — branch records.** Live. Lease, effective-dated rent, and permits with
-      expiry warnings, at `/admin/branches/:id`.
+- [x] **5f — branch records.** Live. Lease, effective-dated rent, permits with
+      expiry warnings, and utility accounts with bills, unpaid warnings and
+      year-on-year consumption, at `/admin/branches/:id`.
 - [ ] **5b — the charges and shortages ledger.** The one that makes this worth
       building rather than buying: DSIR charges and cash shortages already name
       the employee and already end at payroll, and nothing yet consumes them.

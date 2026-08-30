@@ -23,6 +23,10 @@ export const PERMISSIONS = [
   // commercial and are not their business.
   { name: 'branches:permits:read', category: 'Branches', description: 'View branch permits and expiry dates' },
   { name: 'branches:permits:write', category: 'Branches', description: 'Record and renew branch permits' },
+  // Separate from lease: a manager can act on a spike in electricity or an
+  // unpaid bill, and none of that requires knowing the rent.
+  { name: 'branches:utilities:read', category: 'Branches', description: 'View utility accounts and bills' },
+  { name: 'branches:utilities:write', category: 'Branches', description: 'Record utility accounts and bills' },
   { name: 'branches:lease:read', category: 'Branches', description: 'View rent, lessor and lease terms' },
   { name: 'branches:lease:write', category: 'Branches', description: 'Set rent and lease terms' },
   { name: 'employees:read', category: 'Employees', description: 'View employee records' },

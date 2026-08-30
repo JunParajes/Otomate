@@ -1,5 +1,5 @@
 import type { PermissionName } from '../permissions.js'
-import type { BranchPermitRecord, BranchRentRecord } from '../schemas/branch-records.js'
+import type { BranchPermitRecord, BranchRentRecord, UtilityAccountRecord } from '../schemas/branch-records.js'
 
 export interface BranchLease {
   address: string | null
@@ -23,6 +23,8 @@ export interface Branch {
   name: string
   isActive: boolean
   permits?: BranchPermitRecord[]
+  /** Requires `branches:utilities:read`. */
+  utilities?: UtilityAccountRecord[]
   lease?: BranchLease
   /** Newest first. */
   rentHistory?: BranchRentRecord[]

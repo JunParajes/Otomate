@@ -170,6 +170,12 @@ The same shape as the 201 file, for premises rather than people.
 - [x] Expiry warnings at 60 days, and a per-branch badge on the branch list
 - [x] `branches:permits:*` split from `branches:lease:*` — a manager sees what
       needs renewing without seeing what the branch pays
+- [x] Utility accounts and bills: electricity, water, internet. A ledger, not an
+      effective-dated figure — each bill is its own event with a period, amount
+      and due date. Unpaid and overdue warnings, and meter readings compared with
+      the same month a year earlier
+- [x] `branches:utilities:*` as a third pair — a spike in electricity or an
+      unpaid bill is a manager's problem; the rent is not
 
 Sixty days rather than the thirty used for probation: renewals mean queuing at a
 city office, several are prerequisites for each other (a lapsed Barangay

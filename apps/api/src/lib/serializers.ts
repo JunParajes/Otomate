@@ -7,6 +7,7 @@ import type {
   DsirSummary as DsirSummaryDto,
   DsirStatus,
   PermitType,
+  UtilityType,
   Employee as EmployeeDto,
   EmployeePosition,
   CivilStatus,
@@ -29,6 +30,7 @@ type RoleWithPermissions = Prisma.RoleGetPayload<{ include: { permissions: true 
 type BranchWithRecords = Branch & {
   permits?: Prisma.BranchPermitGetPayload<{}>[]
   rents?: Prisma.BranchRentGetPayload<{ include: { recordedBy: true } }>[]
+  utilityAccounts?: Prisma.BranchUtilityAccountGetPayload<{ include: { bills: true } }>[]
 }
 
 /**
@@ -38,7 +40,7 @@ type BranchWithRecords = Branch & {
  */
 export function toBranchDto(
   branch: BranchWithRecords,
-  access: { permits?: boolean; lease?: boolean } = {}
+  access: { permits?: boolean; utilities?: boolean; lease?: boolean } = {}
 ): BranchDto {
   const dto: BranchDto = {
     id: branch.id,
@@ -67,6 +69,36 @@ export function toBranchDto(
         expiresOn: dateOnly(p.expiresOn),
         authority: p.authority,
         note: p.note,
+      }))
+  }
+
+  if (access.utilities && branch.utilityAccounts) {
+    dto.utilities = [...branch.utilityAccounts]
+      // Active accounts first, then by type, so a closed meter does not sit
+      // above the one being paid every month.
+      .sort((a, b) => (a.isActive === b.isActive ? a.type.localeCompare(b.type) : a.isActive ? -1 : 1))
+      .map(a => ({
+        id: a.id,
+        type: a.type as UtilityType,
+        label: a.label,
+        provider: a.provider,
+        accountNumber: a.accountNumber,
+        meterNumber: a.meterNumber,
+        isActive: a.isActive,
+        // Newest period first: this month's bill is the one being looked for.
+        bills: [...a.bills]
+          .sort((x, y) => y.periodStart.getTime() - x.periodStart.getTime())
+          .map(b => ({
+            id: b.id,
+            periodStart: dateOnly(b.periodStart)!,
+            periodEnd: dateOnly(b.periodEnd)!,
+            amountCents: b.amountCents,
+            dueDate: dateOnly(b.dueDate),
+            paidOn: dateOnly(b.paidOn),
+            consumption: b.consumption,
+            referenceNo: b.referenceNo,
+            note: b.note,
+          })),
       }))
   }
 

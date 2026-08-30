@@ -2,6 +2,7 @@ import { Router, type Request } from 'express'
 import {
   createBranchSchema, updateBranchSchema, updateBranchLeaseSchema,
   createPermitSchema, updatePermitSchema, createBranchRentSchema,
+  createUtilityAccountSchema, createUtilityBillSchema,
 } from '@otomate/shared'
 import { prisma } from '../../prisma/client'
 import { can, requirePermission } from '../../middleware/auth'
@@ -15,7 +16,11 @@ const router = Router()
 
 /** What this caller may see of a branch record. */
 function access(req: Request) {
-  return { permits: can(req, 'branches:permits:read'), lease: can(req, 'branches:lease:read') }
+  return {
+    permits: can(req, 'branches:permits:read'),
+    utilities: can(req, 'branches:utilities:read'),
+    lease: can(req, 'branches:lease:read'),
+  }
 }
 
 /**
@@ -27,7 +32,9 @@ function access(req: Request) {
  * fetched with the record that is actually being looked at.
  */
 function listAccess(req: Request) {
-  return { permits: can(req, 'branches:permits:read'), lease: false }
+  // Bills are a growing ledger — a year of them per branch is not something to
+  // ship in order to render a table of names.
+  return { permits: can(req, 'branches:permits:read'), utilities: false, lease: false }
 }
 
 /** '' and undefined both mean "not set". */
@@ -56,6 +63,7 @@ async function reload(req: Request, id: string) {
     include: {
       permits: true,
       rents: { include: { recordedBy: true } },
+      utilityAccounts: { include: { bills: true } },
     },
   })
   return toBranchDto(branch, access(req))
@@ -307,6 +315,167 @@ router.delete(
     }
     await prisma.branchRent.delete({ where: { id: rentId } })
     res.json({ data: await reload(req, existing.branchId), error: null })
+  })
+)
+
+/** A utility account — one per meter. */
+router.post(
+  '/:id/utilities',
+  requirePermission('branches:utilities:write'),
+  asyncHandler(async (req, res) => {
+    const parsed = createUtilityAccountSchema.safeParse(req.body)
+    if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error), 'VALIDATION_ERROR')
+    const branch = await branchOr404(pathParam(req, 'id'))
+    const d = parsed.data
+
+    await prisma.branchUtilityAccount.create({
+      data: {
+        branchId: branch.id,
+        type: d.type,
+        label: d.type === 'OTHER' ? (cleanText(d.label) ?? null) : null,
+        provider: cleanText(d.provider) ?? null,
+        accountNumber: cleanText(d.accountNumber) ?? null,
+        meterNumber: cleanText(d.meterNumber) ?? null,
+        isActive: d.isActive,
+      },
+    })
+    res.status(201).json({ data: await reload(req, branch.id), error: null })
+  })
+)
+
+router.patch(
+  '/:id/utilities/:accountId',
+  requirePermission('branches:utilities:write'),
+  asyncHandler(async (req, res) => {
+    const parsed = createUtilityAccountSchema.safeParse(req.body)
+    if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error), 'VALIDATION_ERROR')
+    const accountId = pathParam(req, 'accountId')
+    const existing = await prisma.branchUtilityAccount.findUnique({ where: { id: accountId } })
+    if (!existing || existing.branchId !== pathParam(req, 'id')) {
+      throw new HttpError(404, 'Utility account not found', 'NOT_FOUND')
+    }
+    const d = parsed.data
+
+    await prisma.branchUtilityAccount.update({
+      where: { id: accountId },
+      data: {
+        type: d.type,
+        label: d.type === 'OTHER' ? (cleanText(d.label) ?? null) : null,
+        provider: cleanText(d.provider) ?? null,
+        accountNumber: cleanText(d.accountNumber) ?? null,
+        meterNumber: cleanText(d.meterNumber) ?? null,
+        isActive: d.isActive,
+      },
+    })
+    res.json({ data: await reload(req, existing.branchId), error: null })
+  })
+)
+
+/**
+ * Closing an account deletes its bills with it, so this refuses while any exist.
+ * Deactivating keeps the history and is almost always what was meant — a meter
+ * that is no longer billed still has a year of costs worth reporting on.
+ */
+router.delete(
+  '/:id/utilities/:accountId',
+  requirePermission('branches:utilities:write'),
+  asyncHandler(async (req, res) => {
+    const accountId = pathParam(req, 'accountId')
+    const existing = await prisma.branchUtilityAccount.findUnique({
+      where: { id: accountId },
+      include: { _count: { select: { bills: true } } },
+    })
+    if (!existing || existing.branchId !== pathParam(req, 'id')) {
+      throw new HttpError(404, 'Utility account not found', 'NOT_FOUND')
+    }
+    if (existing._count.bills > 0) {
+      throw new HttpError(
+        409,
+        `${existing._count.bills} bill(s) are recorded against this account. Mark it inactive instead — deleting it would take the billing history with it.`,
+        'ACCOUNT_HAS_BILLS'
+      )
+    }
+    await prisma.branchUtilityAccount.delete({ where: { id: accountId } })
+    res.json({ data: await reload(req, existing.branchId), error: null })
+  })
+)
+
+/**
+ * Records a bill. Upsert on (account, periodStart): re-entering a period
+ * corrects that bill rather than duplicating it — which is what happens when a
+ * corrected statement arrives.
+ */
+router.post(
+  '/:id/utilities/:accountId/bills',
+  requirePermission('branches:utilities:write'),
+  asyncHandler(async (req, res) => {
+    const parsed = createUtilityBillSchema.safeParse(req.body)
+    if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error), 'VALIDATION_ERROR')
+    const accountId = pathParam(req, 'accountId')
+    const account = await prisma.branchUtilityAccount.findUnique({ where: { id: accountId } })
+    if (!account || account.branchId !== pathParam(req, 'id')) {
+      throw new HttpError(404, 'Utility account not found', 'NOT_FOUND')
+    }
+    const d = parsed.data
+    const periodStart = new Date(`${d.periodStart}T00:00:00.000Z`)
+    const fields = {
+      periodEnd: new Date(`${d.periodEnd}T00:00:00.000Z`),
+      amountCents: d.amountCents,
+      dueDate: cleanDate(d.dueDate) ?? null,
+      paidOn: cleanDate(d.paidOn) ?? null,
+      consumption: d.consumption ?? null,
+      referenceNo: cleanText(d.referenceNo) ?? null,
+      note: cleanText(d.note) ?? null,
+    }
+
+    await prisma.branchUtilityBill.upsert({
+      where: { accountId_periodStart: { accountId, periodStart } },
+      create: { accountId, periodStart, ...fields },
+      update: fields,
+    })
+    res.status(201).json({ data: await reload(req, account.branchId), error: null })
+  })
+)
+
+/** Marks a bill settled, or un-settles one marked by mistake. */
+router.patch(
+  '/:id/utilities/:accountId/bills/:billId/paid',
+  requirePermission('branches:utilities:write'),
+  asyncHandler(async (req, res) => {
+    const paidOn = typeof req.body?.paidOn === 'string' ? req.body.paidOn : null
+    if (paidOn !== null && !/^\d{4}-\d{2}-\d{2}$/.test(paidOn)) {
+      throw new HttpError(400, 'Pick the date it was paid', 'VALIDATION_ERROR')
+    }
+    const billId = pathParam(req, 'billId')
+    const bill = await prisma.branchUtilityBill.findUnique({
+      where: { id: billId },
+      include: { account: true },
+    })
+    if (!bill || bill.account.branchId !== pathParam(req, 'id')) {
+      throw new HttpError(404, 'Bill not found', 'NOT_FOUND')
+    }
+    await prisma.branchUtilityBill.update({
+      where: { id: billId },
+      data: { paidOn: paidOn ? new Date(`${paidOn}T00:00:00.000Z`) : null },
+    })
+    res.json({ data: await reload(req, bill.account.branchId), error: null })
+  })
+)
+
+router.delete(
+  '/:id/utilities/:accountId/bills/:billId',
+  requirePermission('branches:utilities:write'),
+  asyncHandler(async (req, res) => {
+    const billId = pathParam(req, 'billId')
+    const bill = await prisma.branchUtilityBill.findUnique({
+      where: { id: billId },
+      include: { account: true },
+    })
+    if (!bill || bill.account.branchId !== pathParam(req, 'id')) {
+      throw new HttpError(404, 'Bill not found', 'NOT_FOUND')
+    }
+    await prisma.branchUtilityBill.delete({ where: { id: billId } })
+    res.json({ data: await reload(req, bill.account.branchId), error: null })
   })
 )
 
