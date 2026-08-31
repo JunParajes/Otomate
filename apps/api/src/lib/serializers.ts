@@ -222,6 +222,7 @@ export function toProductDto(product: ProductWithCategory, canSeeCost: boolean):
 type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
   include: { branch: true; user: true }
 }> & {
+  contacts?: Prisma.EmployeeContactGetPayload<{}>[]
   // Present only when the caller asked for salary and may see it.
   salaries?: Prisma.EmployeeSalaryGetPayload<{ include: { recordedBy: true } }>[]
 }
@@ -271,7 +272,9 @@ export function toEmployeeDto(
       birthDate: dateOnly(employee.birthDate),
       civilStatus: employee.civilStatus as CivilStatus | null,
       address: employee.address,
-      contactNumber: employee.contactNumber,
+      contacts: [...(employee.contacts ?? [])]
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map(c => ({ id: c.id, number: c.number, label: c.label })),
       emergencyName: employee.emergencyName,
       emergencyRelation: employee.emergencyRelation,
       emergencyContact: employee.emergencyContact,

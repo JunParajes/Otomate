@@ -105,12 +105,37 @@ const dateOnly = z
  */
 const govId = z.string().trim().max(30, 'That looks too long for an ID number').nullable().optional()
 
+/**
+ * One phone number. `label` is the network or where it reaches them — free text
+ * rather than an enum, because networks come and go and people label a number
+ * however they think of it.
+ */
+export const contactSchema = z.object({
+  number: z.string().trim().min(1, 'Enter the number').max(40, 'That number is too long'),
+  label: z.string().trim().max(30, 'Label is too long').nullable().optional(),
+})
+export type ContactInput = z.infer<typeof contactSchema>
+
+/** Suggestions only — the field accepts anything. */
+export const CONTACT_LABEL_SUGGESTIONS = ['Globe', 'Smart', 'DITO', 'TNT', 'Sun', 'Home'] as const
+
+export interface EmployeeContactRecord {
+  id: string
+  number: string
+  label: string | null
+}
+
 /** The 201 file. Every field optional: records are built up over time, not in one sitting. */
 export const updateEmployeeHrSchema = z.object({
   birthDate: dateOnly,
   civilStatus: z.enum(CIVIL_STATUSES).nullable().optional(),
   address: z.string().trim().max(300, 'Address is too long').nullable().optional(),
-  contactNumber: z.string().trim().max(40, 'Contact number is too long').nullable().optional(),
+  /**
+   * Replaces the whole set when present. Omitted entirely, the existing numbers
+   * are left alone — so a caller updating only an address cannot silently wipe
+   * them.
+   */
+  contacts: z.array(contactSchema).max(5, 'That is a lot of phone numbers').optional(),
   emergencyName: z.string().trim().max(120, 'Name is too long').nullable().optional(),
   emergencyRelation: z.string().trim().max(60, 'Relationship is too long').nullable().optional(),
   emergencyContact: z.string().trim().max(40, 'Contact number is too long').nullable().optional(),

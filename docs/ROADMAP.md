@@ -94,7 +94,10 @@ falls through is money the business meant to recover and simply doesn't."*
 
 ### 5a. The 201 file — DONE
 
-- [x] Personal: birth date, civil status, address, contact, emergency contact
+- [x] Personal: birth date, civil status, address, emergency contact
+- [x] Contact numbers as a **list**, each with its network — dual SIM is normal,
+      and which network a number is on decides who can reach someone when one
+      has no signal
 - [x] Government IDs: SSS, PhilHealth, Pag-IBIG, TIN
 - [x] Employment: date hired, employment type, probation end, regularisation,
       separation date and reason

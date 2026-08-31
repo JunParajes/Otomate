@@ -131,6 +131,92 @@ describe('employee records — what each permission reveals', () => {
   })
 })
 
+describe('contact numbers', () => {
+  it('stores several, in the order given', async () => {
+    const { employee } = await seedEmployee()
+    const { token } = await makeUser({ email: 'c1@t.local', permissions: ALL_PERMISSIONS })
+
+    await as(token).patch(`/api/admin/employees/${employee.id}/hr`, {
+      contacts: [
+        { number: '0917 555 1234', label: 'Globe' },
+        { number: '0999 111 2222', label: 'Smart' },
+      ],
+    }).expect(200)
+
+    const res = await as(token).get(`/api/admin/employees/${employee.id}`).expect(200)
+    expect(res.body.data.hr.contacts.map((c: { number: string }) => c.number)).toEqual([
+      '0917 555 1234', '0999 111 2222',
+    ])
+    expect(res.body.data.hr.contacts[0].label).toBe('Globe')
+  })
+
+  it('replaces the whole set, so a removed number is really gone', async () => {
+    const { employee } = await seedEmployee()
+    const { token } = await makeUser({ email: 'c2@t.local', permissions: ALL_PERMISSIONS })
+    const patch = (contacts: unknown) =>
+      as(token).patch(`/api/admin/employees/${employee.id}/hr`, { contacts })
+
+    await patch([{ number: 'A' }, { number: 'B' }]).expect(200)
+    await patch([{ number: 'B' }]).expect(200)
+
+    const res = await as(token).get(`/api/admin/employees/${employee.id}`).expect(200)
+    expect(res.body.data.hr.contacts).toHaveLength(1)
+    expect(res.body.data.hr.contacts[0].number).toBe('B')
+  })
+
+  it('leaves them alone when the field is omitted entirely', async () => {
+    // The dangerous case: someone updating only an address must not silently
+    // wipe every phone number on the record.
+    const { employee } = await seedEmployee()
+    const { token } = await makeUser({ email: 'c3@t.local', permissions: ALL_PERMISSIONS })
+
+    await as(token).patch(`/api/admin/employees/${employee.id}/hr`, {
+      contacts: [{ number: '0917 555 1234', label: 'Globe' }],
+    }).expect(200)
+    await as(token).patch(`/api/admin/employees/${employee.id}/hr`, {
+      address: 'somewhere else',
+    }).expect(200)
+
+    const res = await as(token).get(`/api/admin/employees/${employee.id}`).expect(200)
+    expect(res.body.data.hr.contacts).toHaveLength(1)
+  })
+
+  it('clears them when given an empty list', async () => {
+    // Distinct from omitting: an explicit [] means "this person has none".
+    const { employee } = await seedEmployee()
+    const { token } = await makeUser({ email: 'c4@t.local', permissions: ALL_PERMISSIONS })
+
+    await as(token).patch(`/api/admin/employees/${employee.id}/hr`, {
+      contacts: [{ number: '0917 555 1234' }],
+    }).expect(200)
+    await as(token).patch(`/api/admin/employees/${employee.id}/hr`, { contacts: [] }).expect(200)
+
+    const res = await as(token).get(`/api/admin/employees/${employee.id}`).expect(200)
+    expect(res.body.data.hr.contacts).toEqual([])
+  })
+
+  it('refuses a blank number', async () => {
+    const { employee } = await seedEmployee()
+    const { token } = await makeUser({ email: 'c5@t.local', permissions: ALL_PERMISSIONS })
+
+    await as(token).patch(`/api/admin/employees/${employee.id}/hr`, {
+      contacts: [{ number: '   ' }],
+    }).expect(400)
+  })
+
+  it('is not visible without hr:read', async () => {
+    const { employee } = await seedEmployee()
+    const { token: owner } = await makeUser({ email: 'c6@t.local', permissions: ALL_PERMISSIONS })
+    await as(owner).patch(`/api/admin/employees/${employee.id}/hr`, {
+      contacts: [{ number: '0917 555 9999', label: 'Globe' }],
+    }).expect(200)
+
+    const { token } = await makeUser({ email: 'c7@t.local', permissions: ['employees:read'] })
+    const res = await as(token).get('/api/admin/employees').expect(200)
+    expect(JSON.stringify(res.body)).not.toContain('0917 555 9999')
+  })
+})
+
 describe('branch records — permits, utilities and lease are separate keys', () => {
   async function seedBranch() {
     const branch = await prisma.branch.create({

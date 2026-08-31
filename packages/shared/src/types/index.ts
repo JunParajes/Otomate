@@ -143,7 +143,7 @@ export interface Product {
 
 // ─── Employees ────────────────────────────────────────────────────────────
 import type {
-  CivilStatus, EmployeePosition, EmployeeSalaryRecord, EmploymentType, PayoutMethod,
+  CivilStatus, EmployeeContactRecord, EmployeePosition, EmployeeSalaryRecord, EmploymentType, PayoutMethod,
 } from '../schemas/employee.js'
 
 /**
@@ -154,7 +154,8 @@ export interface EmployeeHr {
   birthDate: string | null
   civilStatus: CivilStatus | null
   address: string | null
-  contactNumber: string | null
+  /** In the order to try them. Empty when none are recorded. */
+  contacts: EmployeeContactRecord[]
   emergencyName: string | null
   emergencyRelation: string | null
   emergencyContact: string | null

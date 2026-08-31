@@ -12,10 +12,11 @@ import { toEmployeeDto } from '../../lib/serializers'
 import { rethrowUniqueViolation } from './guards'
 
 const router = Router()
-const withRelations = { branch: true, user: true } as const
+const withRelations = { branch: true, user: true, contacts: true } as const
 const withSalaries = {
   branch: true,
   user: true,
+  contacts: true,
   salaries: { include: { recordedBy: true } },
 } as const
 
@@ -215,7 +216,19 @@ router.patch(
         ...(d.birthDate !== undefined && { birthDate: cleanDate(d.birthDate) }),
         ...(d.civilStatus !== undefined && { civilStatus: d.civilStatus }),
         ...(d.address !== undefined && { address: cleanOptional(d.address) ?? null }),
-        ...(d.contactNumber !== undefined && { contactNumber: cleanOptional(d.contactNumber) ?? null }),
+        // Replacing the whole set is right for a form that shows every row at
+        // once: a row deleted on screen has to disappear here too, and a diff
+        // would need ids the form does not have for new rows.
+        ...(d.contacts !== undefined && {
+          contacts: {
+            deleteMany: {},
+            create: d.contacts.map((c, i) => ({
+              number: c.number,
+              label: cleanOptional(c.label) ?? null,
+              sortOrder: i,
+            })),
+          },
+        }),
         ...(d.emergencyName !== undefined && { emergencyName: cleanOptional(d.emergencyName) ?? null }),
         ...(d.emergencyRelation !== undefined && { emergencyRelation: cleanOptional(d.emergencyRelation) ?? null }),
         ...(d.emergencyContact !== undefined && { emergencyContact: cleanOptional(d.emergencyContact) ?? null }),

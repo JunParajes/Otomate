@@ -348,7 +348,6 @@ model Employee {
   birthDate         DateTime?    @db.Date
   civilStatus       CivilStatus?
   address           String?
-  contactNumber     String?
   /// Next of kin. Three loose fields rather than a model: this is read by a
   /// human in an emergency, never queried or joined.
   emergencyName     String?
@@ -379,17 +378,46 @@ model Employee {
   payoutMethod  PayoutMethod @default(CASH)
   payoutAccount String?
 
+  contacts    EmployeeContact[]
   salaries    EmployeeSalary[]
   charges     DsirCharge[]
   collections DsirCollection[]
-  openedFor   DsirReport[]     @relation("DsirOpener")
-  closedFor   DsirReport[]     @relation("DsirCloser")
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  openedFor   DsirReport[]      @relation("DsirOpener")
+  closedFor   DsirReport[]      @relation("DsirCloser")
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@index([branchId])
   @@index([isActive])
   @@index([lastName, firstName])
+}
+
+/// A phone number for an employee.
+///
+/// A table rather than a second column because the count varies: dual-SIM is
+/// normal, and which network a number is on decides who can actually reach them
+/// when one has no signal. Two columns would need a third the first time someone
+/// carries three, and neither could say which network.
+///
+/// Distinct from the emergency contact above, which stays three loose fields —
+/// that is exactly one person with a fixed shape, read by a human in a hurry.
+model EmployeeContact {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  number    String
+  /// "Globe", "Smart", "DITO", "Home". Free text rather than an enum: networks
+  /// come and go, and people label a number however they think of it.
+  label     String?
+  /// The order to try them in. Without it the order is whatever Postgres
+  /// returns, which is undefined and shifts as rows are rewritten.
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, sortOrder])
 }
 
 /// One pay rate, valid from a date until the next record supersedes it.

@@ -12,6 +12,7 @@ import {
   EMPLOYMENT_TYPES, EMPLOYMENT_TYPE_LABELS,
   PAYOUT_METHODS, PAYOUT_METHOD_LABELS,
   SALARY_RATE_TYPES, SALARY_RATE_LABELS,
+  CONTACT_LABEL_SUGGESTIONS,
   POSITION_LABELS,
   currentSalary, formatMoney, probationStatus,
   type CivilStatus, type Employee, type EmploymentType, type PayoutMethod,
@@ -21,9 +22,14 @@ import { employeeApi } from '@/lib/employees'
 import { useSession } from '@/lib/session'
 import MoneyInput from '@/components/MoneyInput'
 
-/** Every field starts as a string so an empty box round-trips as "not set". */
+/**
+ * Every field starts as a string so an empty box round-trips as "not set".
+ *
+ * `contacts` is excluded: it is a list, held in its own state, and mapping it to
+ * a string here would be a lie the compiler would happily accept.
+ */
 type HrForm = {
-  [K in keyof UpdateEmployeeHrInput]-?: string
+  [K in Exclude<keyof UpdateEmployeeHrInput, 'contacts'>]-?: string
 }
 
 function toForm(e: Employee): HrForm {
@@ -32,7 +38,6 @@ function toForm(e: Employee): HrForm {
     birthDate: hr?.birthDate ?? '',
     civilStatus: hr?.civilStatus ?? '',
     address: hr?.address ?? '',
-    contactNumber: hr?.contactNumber ?? '',
     emergencyName: hr?.emergencyName ?? '',
     emergencyRelation: hr?.emergencyRelation ?? '',
     emergencyContact: hr?.emergencyContact ?? '',
@@ -93,6 +98,12 @@ export default function EmployeeDetailPage() {
   const canWriteSalary = can('hr:salary:write')
 
   const [form, setForm] = useState<HrForm | null>(null)
+  /**
+   * Phone numbers, held apart from the flat 201 form because they are a list.
+   * A blank row is how you add one — no "add" button to find, which matters on
+   * a tablet.
+   */
+  const [contacts, setContacts] = useState<{ number: string; label: string }[]>([])
   const [saving, setSaving] = useState(false)
 
   // New-rate fields, kept apart from the 201 form: they post to a different
@@ -106,6 +117,9 @@ export default function EmployeeDetailPage() {
 
   useEffect(() => {
     setForm(employee ? toForm(employee) : null)
+    setContacts(
+      (employee?.hr?.contacts ?? []).map(c => ({ number: c.number, label: c.label ?? '' }))
+    )
     setBasicCents(null)
     setAllowanceCents(null)
     setRateType('DAILY')
@@ -154,6 +168,10 @@ export default function EmployeeDetailPage() {
       // These two are enums with a default and are never null.
       payload.employmentType = form.employmentType as EmploymentType
       payload.payoutMethod = form.payoutMethod as PayoutMethod
+      // Blank rows are how the UI offers "add another"; they are not data.
+      payload.contacts = contacts
+        .filter(c => c.number.trim() !== '')
+        .map(c => ({ number: c.number.trim(), label: c.label.trim() || null }))
 
       const updated = await employeeApi.updateHr(employee.id, payload)
       onSaved(updated)
@@ -323,7 +341,58 @@ export default function EmployeeDetailPage() {
             />
           </Grid.Col>
           <Grid.Col span={{ base: 12, sm: 6 }}>
-            <TextInput label="Contact number" {...field('contactNumber')} />
+            <Stack gap={6}>
+              <Text size="sm" fw={500}>
+                Contact numbers
+                <Text component="span" size="xs" c="dimmed"> — dual SIM is common; note the network</Text>
+              </Text>
+              {[...contacts, { number: '', label: '' }].map((c, i) => (
+                <Group key={i} gap="xs" wrap="nowrap" align="flex-start">
+                  <TextInput
+                    aria-label={i < contacts.length ? `Contact number ${i + 1}` : 'Add a contact number'}
+                    placeholder="0917 555 1234"
+                    style={{ flex: 2 }}
+                    value={c.number}
+                    disabled={!canWriteHr}
+                    onChange={e => {
+                      const next = [...contacts]
+                      const value = e.currentTarget.value
+                      // Typing in the trailing blank row turns it into a real one.
+                      if (i === contacts.length) next.push({ number: value, label: '' })
+                      else next[i] = { ...next[i]!, number: value }
+                      setContacts(next)
+                    }}
+                  />
+                  <TextInput
+                    aria-label={`Network for contact ${i + 1}`}
+                    placeholder="Globe / Smart"
+                    list="contact-labels"
+                    style={{ flex: 1 }}
+                    value={c.label}
+                    disabled={!canWriteHr || i === contacts.length}
+                    onChange={e => {
+                      const next = [...contacts]
+                      next[i] = { ...next[i]!, label: e.currentTarget.value }
+                      setContacts(next)
+                    }}
+                  />
+                  {canWriteHr && i < contacts.length && (
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      mt={4}
+                      aria-label={`Remove contact number ${i + 1}`}
+                      onClick={() => setContacts(contacts.filter((_, j) => j !== i))}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  )}
+                </Group>
+              ))}
+              <datalist id="contact-labels">
+                {CONTACT_LABEL_SUGGESTIONS.map(n => <option key={n} value={n} />)}
+              </datalist>
+            </Stack>
           </Grid.Col>
           <Grid.Col span={12}>
             <Textarea label="Address" autosize minRows={2} {...field('address')} />
