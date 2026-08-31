@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ActionIcon, Alert, Badge, Button, Card, Center, Divider, Grid, Group, Loader,
@@ -6,7 +6,7 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconAlertTriangle, IconArrowLeft, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconAlertTriangle, IconArrowLeft, IconCheck, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import {
   PERMIT_TYPES, PERMIT_TYPE_LABELS,
   branchPermitStatus, currentRent, formatMoney, leaseStatus, permitName, permitStatus,
@@ -16,6 +16,7 @@ import {
 import { adminApi } from '@/lib/admin'
 import { useSession } from '@/lib/session'
 import MoneyInput from '@/components/MoneyInput'
+import StickyActionBar, { pageWithActionBar } from '@/components/StickyActionBar'
 import BranchUtilities from '@/components/BranchUtilities'
 
 /** A blank permit form — also what "Add permit" opens with. */
@@ -81,6 +82,15 @@ export default function BranchDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [lease, setLease] = useState<LeaseForm | null>(null)
   const [savingLease, setSavingLease] = useState(false)
+  /**
+   * The lease form as it was loaded or last saved. Only the lease is deferred —
+   * permits, rent and utility bills each save the moment you confirm them, so
+   * the bar speaks for the lease alone.
+   */
+  const [savedLease, setSavedLease] = useState<string | null>(null)
+  const [leaseSavedAt, setLeaseSavedAt] = useState<Date | null>(null)
+  /** Read by the beforeunload guard, which is declared before `leaseDirty`. */
+  const dirtyRef = useRef(false)
 
   // Permit editor, doubling as add and renew.
   const [permitForm, setPermitForm] = useState<PermitForm | null>(null)
@@ -94,7 +104,9 @@ export default function BranchDetailPage() {
 
   const apply = useCallback((b: Branch) => {
     setBranch(b)
-    setLease(toLeaseForm(b))
+    const next = toLeaseForm(b)
+    setLease(next)
+    setSavedLease(JSON.stringify(next))
   }, [])
 
   const load = useCallback(async () => {
@@ -110,6 +122,15 @@ export default function BranchDetailPage() {
   }, [id, apply])
 
   useEffect(() => { void load() }, [load])
+
+  // Lease terms are transcribed from a contract; closing the tab should not
+  // throw a half-entered one away. Same guard as the employee record.
+  useEffect(() => {
+    if (!dirtyRef.current) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  })
 
   const fail = (title: string) => (e: unknown) =>
     notifications.show({
@@ -166,6 +187,7 @@ export default function BranchDetailPage() {
         advanceCents: lease.advanceCents === '' ? null : Number(lease.advanceCents),
       }
       apply(await adminApi.updateLease(branch.id, payload))
+      setLeaseSavedAt(new Date())
       notifications.show({ color: 'green', title: 'Saved', message: 'Lease details updated' })
     } catch (e) {
       fail('Could not save the lease')(e)
@@ -251,8 +273,11 @@ export default function BranchDetailPage() {
     }
   }
 
+  const leaseDirty = savedLease !== null && lease !== null && JSON.stringify(lease) !== savedLease
+  dirtyRef.current = leaseDirty
+
   return (
-    <Stack gap="md">
+    <Stack gap="md" className={canWriteLease ? pageWithActionBar : undefined}>
       <Group gap="sm" wrap="nowrap">
         <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/admin/branches')} aria-label="Back to branches">
           <IconArrowLeft size={18} />
@@ -407,12 +432,6 @@ export default function BranchDetailPage() {
               />
             </Grid.Col>
           </Grid>
-
-          {canWriteLease && (
-            <Group justify="flex-end" mt="md">
-              <Button loading={savingLease} onClick={() => void saveLease()}>Save lease</Button>
-            </Group>
-          )}
 
           <Divider label="Rent" labelPosition="left" my="md" />
 
@@ -575,6 +594,32 @@ export default function BranchDetailPage() {
           </Stack>
         )}
       </Modal>
+
+      {canWriteLease && (
+        <StickyActionBar
+          status={
+            leaseDirty ? (
+              <Text size="sm" c="orange">Unsaved lease changes</Text>
+            ) : leaseSavedAt ? (
+              <Group gap={4} wrap="nowrap">
+                <IconCheck size={14} color="var(--mantine-color-green-6)" />
+                <Text size="sm" c="dimmed">
+                  Saved {leaseSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </Group>
+            ) : (
+              // Permits, rent and bills save as you confirm them; only the lease
+              // form waits for this button.
+              <Text size="sm" c="dimmed">Permits and bills save as you add them</Text>
+            )
+          }
+        >
+          <Button variant="default" onClick={() => navigate('/admin/branches')}>Back</Button>
+          <Button loading={savingLease} disabled={!leaseDirty} onClick={() => void saveLease()}>
+            Save lease
+          </Button>
+        </StickyActionBar>
+      )}
     </Stack>
   )
 }
