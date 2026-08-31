@@ -28,6 +28,7 @@ import ColumnMenu, { type QtyColumn } from '@/components/ColumnMenu'
 import ProductRowEditor from '@/components/ProductRowEditor'
 import MoneyCountInput from '@/components/MoneyCountInput'
 import { KeypadProvider } from '@/components/keypad/KeypadContext'
+import StickyActionBar from '@/components/StickyActionBar'
 import classes from './DsirEntryPage.module.css'
 
 type Line = DsirReport['lines'][number]
@@ -1137,34 +1138,33 @@ export default function DsirEntryPage() {
       {/* Always reachable. The report runs to ~50 rows, and having Save only at
           the top meant scrolling the whole way back to keep work. */}
       {canWrite && (
-        <Paper className={classes.actionBar} withBorder shadow="sm" p="sm" radius={0}>
-          <Group justify="space-between" wrap="nowrap" gap="sm">
-            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-              {saving ? (
-                <Text size="sm" c="dimmed">Saving…</Text>
-              ) : dirty ? (
-                <Text size="sm" c="orange">Unsaved changes</Text>
-              ) : savedAt ? (
-                <Group gap={4} wrap="nowrap">
-                  <IconCheck size={14} color="var(--mantine-color-green-6)" />
-                  <Text size="sm" c="dimmed">
-                    Saved {savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </Group>
-              ) : (
-                <Text size="sm" c="dimmed">All changes save automatically</Text>
-              )}
-            </Group>
-            <Group gap="xs" wrap="nowrap">
-              <Button variant="default" onClick={() => void save()} loading={saving}>Save now</Button>
-              {can('dsir:finalize') && (
-                <Button leftSection={<IconLock size={16} />} onClick={confirmFinalize} loading={saving}>
-                  Finalise
-                </Button>
-              )}
-            </Group>
-          </Group>
-        </Paper>
+        <StickyActionBar
+          status={
+            <>
+            {saving ? (
+              <Text size="sm" c="dimmed">Saving…</Text>
+            ) : dirty ? (
+              <Text size="sm" c="orange">Unsaved changes</Text>
+            ) : savedAt ? (
+              <Group gap={4} wrap="nowrap">
+                <IconCheck size={14} color="var(--mantine-color-green-6)" />
+                <Text size="sm" c="dimmed">
+                  Saved {savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </Group>
+            ) : (
+              <Text size="sm" c="dimmed">All changes save automatically</Text>
+            )}
+            </>
+          }
+        >
+            <Button variant="default" onClick={() => void save()} loading={saving}>Save now</Button>
+            {can('dsir:finalize') && (
+              <Button leftSection={<IconLock size={16} />} onClick={confirmFinalize} loading={saving}>
+                Finalise
+              </Button>
+            )}
+        </StickyActionBar>
       )}
       </Stack>
     </KeypadProvider>

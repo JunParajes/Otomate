@@ -51,3 +51,31 @@ test('removing a row renumbers the rest instead of leaving a hole', async ({ pag
   await expect(page.getByLabel('Contact number 1', { exact: true })).toHaveValue('0999 111 2222')
   await expect(page.getByLabel(/^Contact number \d+$/)).toHaveCount(1)
 })
+
+/**
+ * The save bar is pinned rather than sitting at the end of the form.
+ *
+ * The 201 file is around twenty fields, so a Save button in document flow is
+ * below the fold for the whole of data entry — you cannot see whether you have
+ * unsaved work, and a stray tap loses it. This is layout behaviour under scroll,
+ * which is only observable in a browser.
+ */
+test('the save bar stays pinned while scrolling, and reports unsaved work', async ({ page }) => {
+  await openRecord(page)
+  const save = page.getByRole('button', { name: 'Save record' })
+
+  const before = await save.boundingBox()
+  await page.mouse.wheel(0, 4000)
+  await page.waitForTimeout(400)
+  const after = await save.boundingBox()
+
+  await expect(save).toBeVisible()
+  expect(Math.abs(before!.y - after!.y)).toBeLessThan(2)
+
+  // Nothing typed yet, so there is nothing to save.
+  await expect(save).toBeDisabled()
+
+  await page.getByLabel('SSS', { exact: true }).fill('34-9999999-9')
+  await expect(page.getByText('Unsaved changes')).toBeVisible()
+  await expect(save).toBeEnabled()
+})

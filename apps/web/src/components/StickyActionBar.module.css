@@ -1,0 +1,25 @@
+/* Pinned to the bottom of the viewport so Save is reachable without scrolling
+   back up. On a long form — the 201 file is around twenty fields — the button
+   would otherwise sit below the fold for the whole of data entry, which is how
+   people lose work they thought they had saved. */
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  background: var(--mantine-color-body);
+}
+
+@media (min-width: 48em) {
+  .bar {
+    /* Clears the navbar, whose width changes when the rail collapses. */
+    left: var(--app-shell-navbar-width, 0);
+  }
+}
+
+/* Height of the bar plus breathing room, so the last field is never trapped
+   underneath it. Applied to the page root by whoever uses the bar. */
+.page {
+  padding-bottom: 76px;
+}

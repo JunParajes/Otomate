@@ -1,24 +1,9 @@
 /* Pinned to the bottom of the viewport, spanning the content area beside the
    navbar. Below the keypad's z-index so the two never fight; the keypad is
    offset upward to sit clear of it. */
-.actionBar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 200;
-  background: var(--mantine-color-body);
-}
-
-@media (min-width: 48em) {
-  .actionBar {
-    /* Clears the navbar, whose width changes when the rail collapses. */
-    left: var(--app-shell-navbar-width, 0);
-  }
-}
-
-/* Height of the bar plus breathing room, so the last row and the totals card
-   are never trapped underneath it. */
+/* Height of the pinned action bar plus breathing room, so the last row and the
+   totals card are never trapped underneath it. The bar itself now lives in
+   components/StickyActionBar. */
 .page {
   padding-bottom: 76px;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ActionIcon, Alert, Badge, Button, Card, Center, Divider, Grid, Group, Loader, Select,
@@ -6,7 +6,7 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconAlertTriangle, IconArrowLeft, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconAlertTriangle, IconArrowLeft, IconCheck, IconPlus, IconTrash } from '@tabler/icons-react'
 import {
   CIVIL_STATUSES, CIVIL_STATUS_LABELS,
   EMPLOYMENT_TYPES, EMPLOYMENT_TYPE_LABELS,
@@ -21,6 +21,7 @@ import {
 import { employeeApi } from '@/lib/employees'
 import { useSession } from '@/lib/session'
 import MoneyInput from '@/components/MoneyInput'
+import StickyActionBar, { pageWithActionBar } from '@/components/StickyActionBar'
 
 /**
  * Every field starts as a string so an empty box round-trips as "not set".
@@ -30,6 +31,11 @@ import MoneyInput from '@/components/MoneyInput'
  */
 type HrForm = {
   [K in Exclude<keyof UpdateEmployeeHrInput, 'contacts'>]-?: string
+}
+
+/** A stable string for "is this the same as what was saved". */
+function snapshot(form: HrForm, contacts: { number: string; label: string }[]): string {
+  return JSON.stringify([form, contacts.filter(c => c.number.trim() !== '')])
 }
 
 function toForm(e: Employee): HrForm {
@@ -91,6 +97,17 @@ export default function EmployeeDetailPage() {
 
   useEffect(() => { void load() }, [load])
 
+  // Warn before losing a half-typed record. Same guard as the DSIR page, and for
+  // the same reason: this is twenty-odd fields transcribed from paper, and
+  // closing the tab should not throw them away silently. Covers reload and tab
+  // close only — in-app navigation is why the bar shows "Unsaved changes".
+  useEffect(() => {
+    if (!dirtyRef.current) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  })
+
   const onSaved = (updated: Employee) => setEmployee(updated)
   const { can } = useSession()
   const canWriteHr = can('hr:write')
@@ -104,6 +121,16 @@ export default function EmployeeDetailPage() {
    * a tablet.
    */
   const [contacts, setContacts] = useState<{ number: string; label: string }[]>([])
+  /**
+   * What the record looked like when it loaded or was last saved. Compared
+   * against the live form to decide whether anything is actually unsaved —
+   * tracking a boolean on every keystroke would call a field typed and retyped
+   * back to its original value "changed".
+   */
+  const [saved, setSaved] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  /** Read by the beforeunload guard, which is declared before `dirty` exists. */
+  const dirtyRef = useRef(false)
   const [saving, setSaving] = useState(false)
 
   // New-rate fields, kept apart from the 201 form: they post to a different
@@ -117,9 +144,9 @@ export default function EmployeeDetailPage() {
 
   useEffect(() => {
     setForm(employee ? toForm(employee) : null)
-    setContacts(
-      (employee?.hr?.contacts ?? []).map(c => ({ number: c.number, label: c.label ?? '' }))
-    )
+    const nextContacts = (employee?.hr?.contacts ?? []).map(c => ({ number: c.number, label: c.label ?? '' }))
+    setContacts(nextContacts)
+    setSaved(employee ? snapshot(toForm(employee), nextContacts) : null)
     setBasicCents(null)
     setAllowanceCents(null)
     setRateType('DAILY')
@@ -175,6 +202,8 @@ export default function EmployeeDetailPage() {
 
       const updated = await employeeApi.updateHr(employee.id, payload)
       onSaved(updated)
+      setSaved(snapshot(form, contacts))
+      setSavedAt(new Date())
       notifications.show({ color: 'green', title: 'Saved', message: `${employee.name}'s record updated` })
     } catch (e) {
       notifications.show({
@@ -241,8 +270,11 @@ export default function EmployeeDetailPage() {
   const history = employee.salaryHistory ?? []
   const current = currentSalary(history)
 
+  const dirty = saved !== null && saved !== snapshot(form, contacts)
+  dirtyRef.current = dirty
+
   return (
-    <Stack gap="md">
+    <Stack gap="md" className={canWriteHr ? pageWithActionBar : undefined}>
       <Group gap="sm" wrap="nowrap">
         <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/admin/employees')} aria-label="Back to employees">
           <IconArrowLeft size={18} />
@@ -548,14 +580,32 @@ export default function EmployeeDetailPage() {
           </>
         )}
 
-          <Group justify="flex-end" mt="sm">
-            <Button variant="default" onClick={() => navigate('/admin/employees')}>Back</Button>
-            {canWriteHr && (
-              <Button loading={saving} onClick={() => void save()}>Save record</Button>
-            )}
-          </Group>
         </Stack>
       </Card>
+
+      {canWriteHr && (
+        <StickyActionBar
+          status={
+            dirty ? (
+              <Text size="sm" c="orange">Unsaved changes</Text>
+            ) : savedAt ? (
+              <Group gap={4} wrap="nowrap">
+                <IconCheck size={14} color="var(--mantine-color-green-6)" />
+                <Text size="sm" c="dimmed">
+                  Saved {savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </Group>
+            ) : (
+              <Text size="sm" c="dimmed">No changes yet</Text>
+            )
+          }
+        >
+          <Button variant="default" onClick={() => navigate('/admin/employees')}>Back</Button>
+          <Button loading={saving} disabled={!dirty} onClick={() => void save()}>
+            Save record
+          </Button>
+        </StickyActionBar>
+      )}
     </Stack>
   )
 }
