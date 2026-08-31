@@ -310,42 +310,53 @@ satisfied — it is a second unquoted copy of every secret.
 
 ### 8. Frontend bundle is not code-split — RESOLVED 2026-09-01
 
-Was one 961.6 KB file. Now 32 chunks: vendor code split from app code, and every
-route lazy-loaded.
+Was one 961.6 KB file. Now 32 chunks: vendor split from app code, every route
+lazy-loaded.
 
-Measured in a browser, service worker disabled so it reflects a first visit:
+**Measured on production**, first visit, service worker disabled, using the
+browser's Resource Timing rather than a hand-rolled counter:
 
 | | Before | After |
 |---|---|---|
-| Login page download | 961.6 KB, 1 file | **524.3 KB, 5 files** |
-| Largest chunk | 961.6 KB | 339.7 KB (Mantine) |
-| Total on disk | 961.6 KB | 949.7 KB, 32 chunks |
+| Decoded | 961.6 KB, 1 file | 744.2 KB, 5 files — **23% less** |
+| Over the wire | ~288 KB (build's gzip figure) | **267.8 KB** |
+| Largest chunk | 961.6 KB | 331.7 KB decoded / 117.1 KB wire |
 
-Two wins, one of them the bigger:
+**Read the wire row honestly: first paint improved a few percent, not by half.**
+An earlier note here claimed 524.3 KB and a 45% cut. That came from a local
+harness that silently dropped responses whose body it could not read, and it was
+wrong. The eager vendor chunks — React 69.7, other vendor 69.5, Mantine 117.1 KB
+on the wire — are needed by any page and still dominate.
 
-**First paint halves.** Signing in used to download the DSIR grid, the image
-uploader and every admin screen before showing a password box.
+**The real win is deploy invalidation, and it is large.** This is a PWA with a
+precache and several deploys a day. As one file, every deploy had every tablet
+re-fetch 288 KB, including a copy of React unchanged in months. Now an ordinary
+app edit changes the entry chunk (~11 KB wire) plus whichever page chunks were
+touched; `vendor-react` and `vendor-mantine` stay cached until genuinely
+upgraded. That is roughly a 95% cut in per-deploy re-download for the common case,
+and it is the reason this was worth doing.
 
-**A deploy stops invalidating everything.** This is a PWA with a precache and
-several deploys a day. As one file, each deploy meant every tablet re-fetching
-the lot, including a copy of React unchanged in months. Split, an app edit
-invalidates ~162 KB of app chunks — and only the pages actually visited —
-while `vendor-react` and `vendor-mantine` stay cached until genuinely upgraded.
+Service worker verified on production with 32 chunks: activated in ~5s, 48
+precache entries, app usable after reload.
 
-**The trap, found while doing it:** `@mantine/dropzone/styles.css` was imported
-in `main.tsx`. That is a stylesheet, but importing it creates a dependency edge
-from the entry chunk to the package, which dragged `react-dropzone` and
-`file-selector` — 60 KB of image-upload code — onto the login page. Moved to
-`ImageDropzone.tsx`, the only component that uses it. The same ordering trap
-applies in `manualChunks`: the `@mantine/dropzone` rule must come before the
-generic `@mantine` one, or it lands in the eager vendor chunk.
+**The trap, found while doing it:** `@mantine/dropzone/styles.css` was imported in
+`main.tsx`. It is a stylesheet, but importing it creates a dependency edge from
+the entry chunk to the package, dragging `react-dropzone` and `file-selector` —
+60 KB — onto the login page. Moved to `ImageDropzone.tsx`. Same ordering trap in
+`manualChunks`: the `@mantine/dropzone` rule must precede the generic `@mantine`
+one.
 
-Held in place by `apps/web/e2e/bundle.spec.ts`, which asserts the login page
-downloads neither the uploader nor the DSIR grid. One stray import undoes this
-silently, with nothing to show but a slower first paint.
+Held in place by `apps/web/e2e/bundle.spec.ts`. One stray import from an eager
+module undoes this silently.
 
-Not done: `@tabler/icons-react` needed nothing — it tree-shakes to 19.8 KB.
+Not done: `@tabler/icons-react` needed nothing — 19.8 KB, already tree-shaken.
 
+**Lesson worth keeping:** measure the artifact the way the browser sees it. Both
+mistakes here — the dropzone edge and the bogus 524 KB — survived because the
+chunk *names* looked right. Resource Timing on the deployed site is the check
+that settles it.
+
+---
 ---
 ---
 
