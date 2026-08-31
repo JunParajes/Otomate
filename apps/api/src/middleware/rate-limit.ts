@@ -101,3 +101,20 @@ export const apiLimiter = rateLimit({
   keyGenerator: clientKey,
   message: envelope('Too many requests. Slow down and try again shortly.'),
 })
+
+/**
+ * Clears both limiters' counters.
+ *
+ * For tests only. The stores are in-memory and per-process, so a suite that
+ * exercises failed sign-ins would otherwise exhaust the 10-per-15-minutes
+ * allowance and start getting 429s that look like auth failures.
+ *
+ * Deliberately not wired to any route or environment variable — nothing can
+ * reach it over the network.
+ */
+export function resetRateLimitsForTests(): void {
+  authLimiter.resetKey?.('')
+  apiLimiter.resetKey?.('')
+  ;(authLimiter as unknown as { store?: { resetAll?: () => void } }).store?.resetAll?.()
+  ;(apiLimiter as unknown as { store?: { resetAll?: () => void } }).store?.resetAll?.()
+}

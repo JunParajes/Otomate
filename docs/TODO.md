@@ -66,10 +66,13 @@ revisit this "when real staff data accumulates"; that has happened.
 - [x] ~~No automated tests~~ — started 2026-08-30. 84 tests over the arithmetic
       that costs money, gated in CI, and checked by mutation rather than by
       watching them pass. → [OPERATIONS.md gap 5](OPERATIONS.md)
-- [ ] **Tests for anything needing a database or a browser.** The API's
-      permission gating and the DSIR transfer coupling are still hand-verified
-      against a disposable stack each time. A Postgres service container in CI
-      would make the API tests repeatable.
+- [x] ~~Tests for anything needing a database~~ — done 2026-08-31. 35 integration
+      tests against a real Postgres, with a service container in CI: permission
+      gating, the DSIR guards, date round-trips and the seed's promotion guard.
+      119 tests in total. → [OPERATIONS.md gap 5](OPERATIONS.md)
+- [ ] **Browser tests.** The UI is still driven by hand. Lower value than the API
+      layer was — the arithmetic and the gating are covered now, and what is left
+      is mostly layout.
 - [ ] **Phase 4 — audit logging.** Now that salaries, government IDs and lease
       terms are stored, "who changed this and who looked at it" stops being
       optional. → [ROADMAP.md Phase 4](ROADMAP.md)

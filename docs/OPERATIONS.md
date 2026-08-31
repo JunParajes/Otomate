@@ -172,7 +172,7 @@ that nothing turns the machine back on when mains power returns.
 Requires physical access at boot. The battery is effectively a built-in UPS; this
 is the missing half.
 
-### 5. Automated tests — STARTED 2026-08-30
+### 5. Automated tests — STARTED 2026-08-30, extended 2026-08-31
 
 84 tests over the pure functions where a wrong answer costs money, run in CI as
 part of the `verify` job. Nothing reaches production unless they pass.
@@ -201,9 +201,39 @@ covers it. One mutation survives legitimately — removing the parser's
 divide-by-zero guard changes nothing observable, because `!Number.isFinite`
 catches the resulting Infinity anyway.
 
-**Not covered:** anything needing a database or a browser. The API's permission
-gating and the DSIR transfer/finalisation coupling (gap 0) are still verified by
-hand against a disposable stack.
+**Extended 2026-08-31 to integration tests against a real Postgres** — 119 tests
+in total, with a service container in CI. What they cover is exactly what a mock
+would answer confidently and wrongly, because it is a property of the database
+and the query rather than of the code shape:
+
+- which fields each permission does and does not return, for employees and for
+  branches (permits, utilities and lease are three separate keys)
+- the DSIR delete guards, including `RECEIVER_FINALIZED` and the reopen escape
+  hatch
+- gap 0 itself, pinned as a **characterisation test** asserting the current wrong
+  behaviour. When gap 0 is fixed that test should fail; that is the signal
+- that DATE columns survive a round trip
+- the seed's role-promotion guard, so the 2026-08-30 regression cannot return
+
+`apps/api/src/index.ts` was split: `app.ts` assembles the Express app, `index.ts`
+runs it. The app could not previously be imported without opening a port and
+installing signal handlers.
+
+Two things the mutation pass found:
+
+- **The date tests could not fail.** A DATE comes back as UTC midnight; read with
+  `getDate()` instead of `getUTCDate()` it is the previous day only for anyone
+  *behind* UTC. The dev machines here are UTC+8 and GitHub's runners are UTC, so
+  both agreed and the bug was invisible. The API suite now pins
+  `TZ=America/Los_Angeles`, which is what makes those tests able to fail at all.
+- **A survivor that is fine:** removing the serializer's salary check leaks
+  nothing, because `includeFor` never fetches the rows without the permission.
+  Two layers, and both must fail.
+
+The suite refuses to run unless `DATABASE_URL` looks disposable — it truncates
+every table — and redacts the password when it refuses.
+
+**Still not covered:** the browser. The UI is still driven by hand.
 
 ---
 ---

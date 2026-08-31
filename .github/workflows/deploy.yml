@@ -26,6 +26,31 @@ jobs:
   verify:
     name: Typecheck & test
     runs-on: ubuntu-latest
+
+    # The API tests run against a real Postgres, not a mock. What they check —
+    # which fields a permission returns, whether a guard refuses a delete,
+    # whether a DATE survives a round trip — are properties of the database and
+    # the query, and a mock would answer all three confidently and wrongly.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: otomate
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: otomate_test
+        ports: ['5432:5432']
+        # Without this the first migration can race the server's startup.
+        options: >-
+          --health-cmd "pg_isready -U otomate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://otomate:test@localhost:5432/otomate_test
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-32chars
+      NODE_ENV: test
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,6 +78,9 @@ jobs:
 
       # Runs after the typecheck so a type error reports as a type error rather
       # than as a wall of failing tests.
+      #
+      # The API suite applies migrations to the service container itself and
+      # truncates between tests, so it needs no separate setup step.
       - name: Test
         run: pnpm -r test
 
