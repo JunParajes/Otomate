@@ -41,3 +41,6 @@ Thumbs.db
 
 # Docker
 docker-volumes/
+apps/web/e2e/.fixtures.json
+apps/web/test-results/
+apps/web/playwright-report/

@@ -70,9 +70,10 @@ revisit this "when real staff data accumulates"; that has happened.
       tests against a real Postgres, with a service container in CI: permission
       gating, the DSIR guards, date round-trips and the seed's promotion guard.
       119 tests in total. → [OPERATIONS.md gap 5](OPERATIONS.md)
-- [ ] **Browser tests.** The UI is still driven by hand. Lower value than the API
-      layer was — the arithmetic and the gating are covered now, and what is left
-      is mostly layout.
+- [x] ~~Browser tests~~ — done 2026-08-31. 9 Playwright tests in their own CI
+      job, targeting behaviour that only exists in a browser: expression entry,
+      the session refresh after a rename, and the UI half of permission gating.
+      128 tests in total. → [OPERATIONS.md gap 5](OPERATIONS.md)
 - [ ] **Phase 4 — audit logging.** Now that salaries, government IDs and lease
       terms are stored, "who changed this and who looked at it" stops being
       optional. → [ROADMAP.md Phase 4](ROADMAP.md)

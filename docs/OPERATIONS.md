@@ -233,7 +233,37 @@ Two things the mutation pass found:
 The suite refuses to run unless `DATABASE_URL` looks disposable — it truncates
 every table — and redacts the password when it refuses.
 
-**Still not covered:** the browser. The UI is still driven by hand.
+**Extended 2026-08-31 to the browser** — 9 Playwright tests, 128 in total, in
+their own CI job so a slow browser run does not sit in front of the fast
+feedback. Deliberately small, and every one maps to something that has actually
+broken here:
+
+- an expression commits its result, `×` is understood rather than stripped to
+  make 45, and a half-typed `4*` restores the previous value instead of keeping
+  the fragment that happened to parse
+- the account menu follows a rename without a reload (the bug fixed in 604d83a —
+  nothing is wrong server-side in that state, so no API test can see it)
+- the UI hides what the server would refuse, *and* shows it to a role that holds
+  the permission — the mirror matters, or "not visible" could just mean the
+  feature was deleted
+
+The report they run against is seeded **through the API**, not by driving the
+create-report and add-product dialogs. Those flows are covered by the API tests,
+and reaching the inputs through four dialogs makes a test fail for reasons that
+have nothing to do with what it checks.
+
+Two things worth knowing for anyone changing them:
+
+- `locator.blur()` does not commit a value here. React's `onBlur` listens for
+  `focusout`, which `element.blur()` does not bubble. Use `press('Tab')` — also
+  closer to what a person does.
+- `vite preview` serves a bundle that already exists, and `VITE_API_URL` is baked
+  in at BUILD time. Setting it on the preview server alone leaves the app calling
+  whatever host it was compiled against, and every request fails with no clue
+  why. The config builds and previews in one command.
+
+Verified by mutation: removing the session refresh reintroduces 604d83a and fails
+the account-menu test; making the count boxes strip operators again fails three.
 
 ---
 ---

@@ -1,0 +1,17 @@
+{
+  // The browser specs run in Node, not the browser, so they need Node's types —
+  // which the app's own tsconfig deliberately does not have. Kept separate so
+  // including them cannot leak `process` and `node:fs` into the app's types.
+  //
+  // Checked by the `browser` CI job, so a rename in the app breaks the specs at
+  // typecheck time rather than mysteriously at runtime: Playwright itself
+  // type-checks nothing.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}

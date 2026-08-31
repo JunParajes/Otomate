@@ -84,12 +84,81 @@ jobs:
       - name: Test
         run: pnpm -r test
 
+  # Browser tests, in their own job so a slow browser run does not sit in front
+  # of the fast feedback from `verify`. Both gate the build.
+  #
+  # Uses the runner's pre-installed Chrome (`channel: 'chrome'`) rather than
+  # downloading Playwright's Chromium — same browser the tests use locally, and
+  # no 300MB download per run.
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: otomate
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: otomate_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U otomate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://otomate:test@localhost:5432/otomate_e2e
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-32chars
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared
+        run: pnpm --filter shared build
+
+      - name: Generate Prisma client
+        run: pnpm --filter api exec prisma generate
+
+      # The specs run in Node and are not covered by the app's own tsconfig,
+      # so a rename in the app would otherwise break them only at runtime.
+      - name: Typecheck the browser specs
+        run: pnpm --filter web typecheck:e2e
+
+      # Playwright starts the API and builds+serves the web app itself; see
+      # apps/web/playwright.config.ts.
+      - name: Browser tests
+        run: pnpm --filter web test:e2e
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: apps/web/test-results/
+          retention-days: 7
+
   build-and-push:
     name: Build & Push to GHCR
     runs-on: ubuntu-latest
     # Nothing reaches GHCR, and therefore nothing reaches production, unless the
     # code typechecks and the tests pass.
-    needs: verify
+    needs: [verify, browser]
     permissions:
       contents: read
       packages: write
