@@ -308,11 +308,45 @@ Compose expands it. The next password might not, and the failure is silent. See
 A rollback copy is at `~/otomate/.env.bak-20260830-140437`. Delete it once you are
 satisfied — it is a second unquoted copy of every secret.
 
-### 8. Frontend bundle is not code-split
+### 8. Frontend bundle is not code-split — RESOLVED 2026-09-01
 
-~740 KB (~225 KB gzipped) in one chunk. Fine today; worth `manualChunks` or route-level
-`lazy()` once there are more pages.
+Was one 961.6 KB file. Now 32 chunks: vendor code split from app code, and every
+route lazy-loaded.
 
+Measured in a browser, service worker disabled so it reflects a first visit:
+
+| | Before | After |
+|---|---|---|
+| Login page download | 961.6 KB, 1 file | **524.3 KB, 5 files** |
+| Largest chunk | 961.6 KB | 339.7 KB (Mantine) |
+| Total on disk | 961.6 KB | 949.7 KB, 32 chunks |
+
+Two wins, one of them the bigger:
+
+**First paint halves.** Signing in used to download the DSIR grid, the image
+uploader and every admin screen before showing a password box.
+
+**A deploy stops invalidating everything.** This is a PWA with a precache and
+several deploys a day. As one file, each deploy meant every tablet re-fetching
+the lot, including a copy of React unchanged in months. Split, an app edit
+invalidates ~162 KB of app chunks — and only the pages actually visited —
+while `vendor-react` and `vendor-mantine` stay cached until genuinely upgraded.
+
+**The trap, found while doing it:** `@mantine/dropzone/styles.css` was imported
+in `main.tsx`. That is a stylesheet, but importing it creates a dependency edge
+from the entry chunk to the package, which dragged `react-dropzone` and
+`file-selector` — 60 KB of image-upload code — onto the login page. Moved to
+`ImageDropzone.tsx`, the only component that uses it. The same ordering trap
+applies in `manualChunks`: the `@mantine/dropzone` rule must come before the
+generic `@mantine` one, or it lands in the eager vendor chunk.
+
+Held in place by `apps/web/e2e/bundle.spec.ts`, which asserts the login page
+downloads neither the uploader nor the DSIR grid. One stray import undoes this
+silently, with nothing to show but a slower first paint.
+
+Not done: `@tabler/icons-react` needed nothing — it tree-shakes to 19.8 KB.
+
+---
 ---
 
 ## Closed

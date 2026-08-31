@@ -119,8 +119,9 @@ revisit this "when real staff data accumulates"; that has happened.
       only, so a disk failure loses the tunnel token, the Cloudflare API token and
       `JWT_SECRET`. All are regenerable, but not quickly and not from memory. It
       holds every secret, so it must be encrypted wherever it lands.
-- [ ] Frontend bundle is not code-split. Fine today.
-      → [OPERATIONS.md gap 8](OPERATIONS.md)
+- [x] ~~Frontend bundle is not code-split~~ — done 2026-09-01. Login page down
+      from 961.6 KB to 524.3 KB, and a deploy no longer invalidates React and
+      Mantine on every tablet. → [OPERATIONS.md gap 8](OPERATIONS.md)
 
 ## Decided, not doing
 

@@ -4,6 +4,46 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { resolve } from 'path'
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        /**
+         * Vendor code is split from app code so a deploy does not invalidate
+         * everything.
+         *
+         * The app is a PWA with a precache. As one 960 KB file, every deploy —
+         * and there are several a day — meant every tablet re-downloading the
+         * whole thing, including a copy of React that had not changed in months.
+         * Separated, a typical deploy only invalidates the app chunks; Mantine
+         * and React stay cached until they are actually upgraded.
+         *
+         * Grouped rather than one chunk per package: 40 tiny requests is worse
+         * than four sensible ones, and these four update on different schedules.
+         */
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          const parts = id.split('node_modules/')
+          const after = parts[parts.length - 1]
+          const pkg = after.startsWith('@') ? after.split('/').slice(0, 2).join('/') : after.split('/')[0]
+
+          if (pkg === 'react' || pkg === 'react-dom' || pkg === 'scheduler') return 'vendor-react'
+
+          // BEFORE the generic @mantine rule. @mantine/dropzone matches that
+          // rule too, and putting it in the eager vendor chunk drags
+          // react-dropzone and file-selector in with it — 60 KB of image-upload
+          // code downloaded to render a login box. Only ImageDropzone imports
+          // this, and only the product catalogue renders that.
+          if (
+            pkg === '@mantine/dropzone' || pkg === 'react-dropzone' ||
+            pkg === 'file-selector' || pkg === 'attr-accept'
+          ) return 'vendor-upload'
+
+          if (pkg.startsWith('@mantine') || pkg.startsWith('@floating-ui')) return 'vendor-mantine'
+          return 'vendor'
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({

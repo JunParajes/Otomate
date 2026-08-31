@@ -1,6 +1,10 @@
 import { ActionIcon, Box, Group, Image, Paper, Stack, Text, Tooltip } from '@mantine/core'
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone'
 import { IconPhoto, IconTrash, IconUpload, IconX } from '@tabler/icons-react'
+// Lives here, not in main.tsx. Imported at the root it creates a dependency
+// edge from the entry chunk to @mantine/dropzone, which drags react-dropzone
+// and file-selector — 60 KB of upload code — into the login page.
+import '@mantine/dropzone/styles.css'
 
 const MAX_BYTES = 8 * 1024 * 1024
 

@@ -1,25 +1,39 @@
-import React from 'react'
+import React, { Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { MantineProvider, useComputedColorScheme } from '@mantine/core'
+import { Center, Loader, MantineProvider, useComputedColorScheme } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
 import { ModalsProvider } from '@mantine/modals'
 import LoginPage from '@/pages/LoginPage'
-import DashboardPage from '@/pages/DashboardPage'
-import NotFoundPage from '@/pages/NotFoundPage'
-import ChangePasswordPage from '@/pages/ChangePasswordPage'
-import UsersPage from '@/pages/admin/UsersPage'
-import RolesPage from '@/pages/admin/RolesPage'
-import BranchesPage from '@/pages/admin/BranchesPage'
-import BranchDetailPage from '@/pages/admin/BranchDetailPage'
-import ProductsPage from '@/pages/admin/ProductsPage'
-import CategoriesPage from '@/pages/admin/CategoriesPage'
-import EmployeesPage from '@/pages/admin/EmployeesPage'
-import EmployeeDetailPage from '@/pages/admin/EmployeeDetailPage'
-import DsirListPage from '@/pages/dsir/DsirListPage'
-import DsirArchivePage from '@/pages/dsir/DsirArchivePage'
-import DsirArchiveBranchPage from '@/pages/dsir/DsirArchiveBranchPage'
-import DsirEntryPage from '@/pages/dsir/DsirEntryPage'
+
+/**
+ * Pages load on demand.
+ *
+ * Everything used to arrive in one 960 KB file, so signing in downloaded the
+ * DSIR grid, the image uploader and every admin screen before showing a
+ * password box. Splitting per route means a page's code — and its
+ * dependencies, like the 60 KB dropzone only the product catalogue uses —
+ * arrives when that page is opened.
+ *
+ * LoginPage is deliberately NOT lazy: it is the first thing an unauthenticated
+ * visit needs, and deferring it would add a round trip before the first paint.
+ */
+const DashboardPage = React.lazy(() => import('@/pages/DashboardPage'))
+const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'))
+const ChangePasswordPage = React.lazy(() => import('@/pages/ChangePasswordPage'))
+const UsersPage = React.lazy(() => import('@/pages/admin/UsersPage'))
+const RolesPage = React.lazy(() => import('@/pages/admin/RolesPage'))
+const BranchesPage = React.lazy(() => import('@/pages/admin/BranchesPage'))
+const BranchDetailPage = React.lazy(() => import('@/pages/admin/BranchDetailPage'))
+const ProductsPage = React.lazy(() => import('@/pages/admin/ProductsPage'))
+const CategoriesPage = React.lazy(() => import('@/pages/admin/CategoriesPage'))
+const EmployeesPage = React.lazy(() => import('@/pages/admin/EmployeesPage'))
+const EmployeeDetailPage = React.lazy(() => import('@/pages/admin/EmployeeDetailPage'))
+const DsirListPage = React.lazy(() => import('@/pages/dsir/DsirListPage'))
+const DsirArchivePage = React.lazy(() => import('@/pages/dsir/DsirArchivePage'))
+const DsirArchiveBranchPage = React.lazy(() => import('@/pages/dsir/DsirArchiveBranchPage'))
+const DsirEntryPage = React.lazy(() => import('@/pages/dsir/DsirEntryPage'))
+
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppLayout from '@/components/AppLayout'
 import { SessionProvider } from '@/lib/session'
@@ -28,7 +42,6 @@ import { syncThemeColor } from '@/lib/theme-color'
 
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
-import '@mantine/dropzone/styles.css'
 
 /**
  * Repaints the browser chrome whenever the resolved scheme changes. Lives at the
@@ -52,6 +65,18 @@ function Shell({ children, permission }: { children: React.ReactNode; permission
   )
 }
 
+/**
+ * Shown while a route's chunk downloads. Deliberately bare: on a fast connection
+ * it flashes for a few frames, and anything more elaborate reads as a glitch.
+ */
+function RouteFallback() {
+  return (
+    <Center h="60vh">
+      <Loader />
+    </Center>
+  )
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="auto">
@@ -61,9 +86,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <ModalsProvider>
         <BrowserRouter>
           <SessionProvider>
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/login" element={<LoginPage />} />
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/login" element={<LoginPage />} />
               <Route
                 path="/change-password"
                 element={
@@ -72,22 +98,23 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                   </ProtectedRoute>
                 }
               />
-              <Route path="/dashboard" element={<Shell><DashboardPage /></Shell>} />
-              <Route path="/dsir" element={<Shell permission="dsir:read"><DsirListPage /></Shell>} />
+                <Route path="/dashboard" element={<Shell><DashboardPage /></Shell>} />
+                <Route path="/dsir" element={<Shell permission="dsir:read"><DsirListPage /></Shell>} />
               {/* Before /dsir/:id — otherwise ":id" matches "archive". */}
-              <Route path="/dsir/archive" element={<Shell permission="dsir:read"><DsirArchivePage /></Shell>} />
-              <Route path="/dsir/archive/:branchId" element={<Shell permission="dsir:read"><DsirArchiveBranchPage /></Shell>} />
-              <Route path="/dsir/:id" element={<Shell permission="dsir:read"><DsirEntryPage /></Shell>} />
-              <Route path="/catalog/products" element={<Shell permission="products:read"><ProductsPage /></Shell>} />
-              <Route path="/catalog/categories" element={<Shell permission="products:read"><CategoriesPage /></Shell>} />
-              <Route path="/admin/users" element={<Shell permission="users:read"><UsersPage /></Shell>} />
-              <Route path="/admin/employees" element={<Shell permission="employees:read"><EmployeesPage /></Shell>} />
-              <Route path="/admin/employees/:id" element={<Shell permission="employees:read"><EmployeeDetailPage /></Shell>} />
-              <Route path="/admin/roles" element={<Shell permission="roles:read"><RolesPage /></Shell>} />
-              <Route path="/admin/branches" element={<Shell permission="branches:read"><BranchesPage /></Shell>} />
-              <Route path="/admin/branches/:id" element={<Shell permission="branches:read"><BranchDetailPage /></Shell>} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
+                <Route path="/dsir/archive" element={<Shell permission="dsir:read"><DsirArchivePage /></Shell>} />
+                <Route path="/dsir/archive/:branchId" element={<Shell permission="dsir:read"><DsirArchiveBranchPage /></Shell>} />
+                <Route path="/dsir/:id" element={<Shell permission="dsir:read"><DsirEntryPage /></Shell>} />
+                <Route path="/catalog/products" element={<Shell permission="products:read"><ProductsPage /></Shell>} />
+                <Route path="/catalog/categories" element={<Shell permission="products:read"><CategoriesPage /></Shell>} />
+                <Route path="/admin/users" element={<Shell permission="users:read"><UsersPage /></Shell>} />
+                <Route path="/admin/employees" element={<Shell permission="employees:read"><EmployeesPage /></Shell>} />
+                <Route path="/admin/employees/:id" element={<Shell permission="employees:read"><EmployeeDetailPage /></Shell>} />
+                <Route path="/admin/roles" element={<Shell permission="roles:read"><RolesPage /></Shell>} />
+                <Route path="/admin/branches" element={<Shell permission="branches:read"><BranchesPage /></Shell>} />
+                <Route path="/admin/branches/:id" element={<Shell permission="branches:read"><BranchDetailPage /></Shell>} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </Suspense>
           </SessionProvider>
         </BrowserRouter>
       </ModalsProvider>
