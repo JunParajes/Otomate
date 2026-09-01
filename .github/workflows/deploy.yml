@@ -226,6 +226,17 @@ jobs:
           port: ${{ secrets.SERVER_SSH_PORT || 22 }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          # The action defaults to 10 minutes, which is not enough. The server is
+          # a laptop on a home connection in Davao, and any change to
+          # pnpm-lock.yaml invalidates the API image's largest layer — so that
+          # deploy has to pull it in full rather than reuse a cached copy. On
+          # 2026-09-01 that took over 20 minutes and the step was killed
+          # mid-pull, failing a deploy whose images and migration were both fine.
+          #
+          # A slow pull should make a deploy slow, not failed. The rollout that
+          # follows is still guarded: it waits for the replacement container to
+          # report healthy and aborts if it never does.
+          command_timeout: 40m
           script: |
             cd ~/otomate
 

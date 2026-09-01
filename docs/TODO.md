@@ -104,6 +104,14 @@ revisit this "when real staff data accumulates"; that has happened.
 - [ ] Order management
 - [ ] Portainer for server management
 
+- [ ] **An API test fails about 1 run in 8, and I could not reproduce it.**
+      Seen twice on 2026-09-01, both times on the first `pnpm -r test` run
+      immediately after the test database had been created or migrated in the
+      same command — which points at a startup race rather than a logic bug. Six
+      consecutive runs afterwards were clean, and CI has never shown it. Vitest
+      does not name the test in the summary line, so the next step is
+      `--reporter=verbose` in CI to capture which one when it next happens.
+
 ## Small
 
 - [x] ~~`@types/express@^5` paired with `express@^4`~~ — done 2026-09-01. Types

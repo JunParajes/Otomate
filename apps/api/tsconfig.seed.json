@@ -1,0 +1,17 @@
+{
+  // The seed compiled as a standalone script.
+  //
+  // It runs on every deploy (to mirror the permission catalog), so production
+  // needs to execute it — but not to compile it. Compiling here means the image
+  // carries neither ts-node-dev nor a tsconfig, and a seed that fails exits with
+  // an error instead of hanging: ts-node-dev is a watcher, so an error left it
+  // waiting forever, which under the deploy's timeout is a 40-minute stall
+  // rather than a failure anyone can read.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist-seed",
+    "rootDir": "./prisma",
+    "noEmit": false
+  },
+  "include": ["prisma/seed.ts"]
+}
