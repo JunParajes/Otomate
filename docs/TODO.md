@@ -108,8 +108,9 @@ revisit this "when real staff data accumulates"; that has happened.
 
 ## Small
 
-- [ ] `@types/express@^5` is paired with `express@^4.21.2`. Already caused one
-      confusing failure. → [OPERATIONS.md gap 6](OPERATIONS.md)
+- [x] ~~`@types/express@^5` paired with `express@^4`~~ — done 2026-09-01. Types
+      aligned to ^4, with a pnpm override because `@types/multer` forced v5 back
+      into the tree. → [OPERATIONS.md gap 6](OPERATIONS.md)
 - [x] ~~Server `.env` values are unquoted~~ — done 2026-08-30. All ten values
       single-quoted, verified byte-identical through `docker compose config`
       before and after. The advice in OPERATIONS.md was itself wrong and has been

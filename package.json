@@ -24,6 +24,9 @@
       "@prisma/engines",
       "esbuild",
       "prisma"
-    ]
+    ],
+    "overrides": {
+      "@types/express": "^4.17.21"
+    }
   }
 }

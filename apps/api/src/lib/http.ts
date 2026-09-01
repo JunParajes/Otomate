@@ -2,9 +2,16 @@ import type { Request } from 'express'
 import { HttpError } from '../middleware/error-handler'
 
 /**
- * @types/express@5 types path params as `string | string[]` (wildcards can
- * repeat). Narrow once, here, rather than casting at every call site — and
- * reject an empty/missing param as a 400 instead of letting it reach Prisma.
+ * A path param, or a 400.
+ *
+ * This began as a workaround for @types/express@5 typing params as
+ * `string | string[]` while express@4 ran underneath. The types are aligned now
+ * and `req.params.id` is plainly `string` — but that type is a lie: a param the
+ * route never declared is `undefined` at runtime, and TypeScript will not say
+ * so. Handing that to Prisma produces an error pointing at the query rather than
+ * at the missing id.
+ *
+ * So this stays, for the runtime check rather than the cast.
  */
 export function pathParam(req: Request, key: string): string {
   const value = req.params[key]

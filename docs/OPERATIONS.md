@@ -270,12 +270,34 @@ the account-menu test; making the count boxes strip operators again fails three.
 
 ## 🟡 Low — known, documented, not urgent
 
-### 6. `@types/express@^5` is paired with `express@^4.21.2`
+### 6. `@types/express` mismatched the runtime — RESOLVED 2026-09-01
 
-A types/runtime major mismatch. It has already produced one confusing failure:
-`req.params.id` typed as `string | string[]`, which silently broke Prisma's type
-inference three files away. Worked around with `pathParam()` in `apps/api/src/lib/http.ts`.
-Aligning the types to `^4` is a small, isolated change.
+`@types/express@5.0.6` described Express 5 while `express@4.22.2` ran underneath.
+It had already produced one confusing failure: `req.params.id` typed as
+`string | string[]`, which broke Prisma's type inference three files away.
+
+Aligned the types down to `^4` rather than upgrading the runtime — Express 5 has
+breaking runtime changes, and the types were the half that was wrong.
+
+**One package still forced v5 into the tree.** `@types/multer@2.2.0` hard-depends
+on `@types/express@5`, and multer 2.x ships no types of its own, so it cannot
+simply be dropped. Both major versions ended up installed, and the type errors
+that produced named `express-serve-static-core@4.19.9` and `@5.1.3` in the same
+sentence — which reads like a bug in the code rather than two copies of a
+dependency. Resolved with a pnpm override:
+
+```json
+"pnpm": { "overrides": { "@types/express": "^4.17.21" } }
+```
+
+Verified a clean `pnpm install --frozen-lockfile` in a fresh clone reports
+**one** version.
+
+**`pathParam()` stays**, and its comment has been corrected. It was written to
+narrow `string | string[]`; that reason is gone, since params now type as
+`string`. But that type is a lie — a param the route never declared is
+`undefined` at runtime — so the function keeps earning its place as a runtime
+check, just not as a cast.
 
 ### 7. Server `.env` values are unquoted — RESOLVED 2026-08-30
 
