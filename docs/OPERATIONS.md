@@ -350,6 +350,35 @@ Compose expands it. The next password might not, and the failure is silent. See
 A rollback copy is at `~/otomate/.env.bak-20260830-140437`. Delete it once you are
 satisfied — it is a second unquoted copy of every secret.
 
+### 9. The API image is 933 MB, and Prisma is nearly all of it
+
+**Status:** open as of 2026-09-01, and probably fine — recorded so the next person
+does not repeat the measurement.
+
+The Dockerfile was made multi-stage that day so build tools stop shipping. vitest,
+esbuild, supertest and ts-node-dev are gone. The saving was much smaller than
+first reported:
+
+| | Before | After |
+|---|---|---|
+| Image (amd64) | 987 MB | 933 MB — 5.5% |
+| `node_modules` | 338 MB | 300 MB — 11% |
+
+**The first report claimed 35%, and was wrong.** It compared a locally built
+**arm64** image against the deployed **amd64** one. Different architectures ship
+different native binaries; the comparison was meaningless. Measure the image the
+server actually runs.
+
+What is left is almost entirely Prisma: `@prisma/client` 95 MB, the CLI 67 MB,
+`@prisma/engines` 36 MB, plus `effect` 34 MB and `typescript` 23 MB that Prisma
+drags in as a dependency and a peer. That is ~255 MB of the 300 MB, and it stays
+because the deploy runs `prisma migrate deploy` inside this container.
+
+**Only worth revisiting if deploys start timing out again.** The real fix for that
+was `command_timeout: 40m` on the deploy step, not the image size. Moving
+migrations to a separate one-off image would let the API runtime drop the Prisma
+CLI, at the cost of a more complicated deploy.
+
 ### 8. Frontend bundle is not code-split — RESOLVED 2026-09-01
 
 Was one 961.6 KB file. Now 32 chunks: vendor split from app code, every route
