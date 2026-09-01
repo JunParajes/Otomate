@@ -328,9 +328,21 @@ export const dsirInclude = {
 type DsirWithRelations = Prisma.DsirReportGetPayload<{ include: typeof dsirInclude }>
 
 /** Transfers sent TO this branch, on this date, by other branches. */
-export type InboundTransfer = Prisma.DsirTransferGetPayload<{
-  include: { product: true; report: { include: { branch: true } } }
-}>
+/**
+ * Stock received from another branch, as this serializer needs it.
+ *
+ * Structural rather than a Prisma payload, because it has two sources: live rows
+ * off the sending report while a report is a draft, and frozen rows off
+ * DsirInboundSnapshot once it is finalised. Declaring the six fields actually
+ * used lets both satisfy it without either pretending to be the other.
+ */
+export interface InboundTransfer {
+  id: string
+  productId: string
+  product: { name: string }
+  quantity: number
+  report: { branchId: string; branch: { name: string } }
+}
 
 /**
  * Computes every derived figure from the SHARED formula, so the encoder's screen

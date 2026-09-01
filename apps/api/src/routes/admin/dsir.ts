@@ -6,7 +6,7 @@ import { requirePermission } from '../../middleware/auth'
 import { asyncHandler } from '../../middleware/async-handler'
 import { HttpError } from '../../middleware/error-handler'
 import { firstIssue, pathParam } from '../../lib/http'
-import { dsirInclude, toDsirDto, toDsirSummary } from '../../lib/serializers'
+import { dsirInclude, toDsirDto, toDsirSummary, type InboundTransfer } from '../../lib/serializers'
 
 const router = Router()
 
@@ -74,11 +74,71 @@ async function loadOr404(id: string) {
  * branch's report simply picks the transfer up once that report is entered —
  * forms arrive in batches and the encoding order is arbitrary.
  */
-async function loadInbound(branchId: string, reportDate: Date) {
+/**
+ * What a branch received on a date, read live from the senders' reports.
+ *
+ * Correct for a DRAFT: the sender may still be typing, and both sides should see
+ * the same current picture. Wrong for a finalised report, which is what
+ * `inboundFor` below exists to handle.
+ */
+async function loadLiveInbound(branchId: string, reportDate: Date) {
   return prisma.dsirTransfer.findMany({
     where: { toBranchId: branchId, report: { reportDate } },
     include: { product: true, report: { include: { branch: true } } },
   })
+}
+
+/**
+ * What a report received — frozen if it is finalised, live if it is not.
+ *
+ * A finalised report reads its snapshot, so editing a sender can no longer move
+ * a closed report's sales. A draft reads live, because it is still being worked
+ * on and should see current reality.
+ *
+ * The fallback to live for a FINALIZED report with no snapshot exists for the
+ * window between deploying this and the migration's backfill running, and for a
+ * report finalised by an older build. It is the previous behaviour, which is
+ * wrong but is what those reports have always shown — better than silently
+ * reading zero and rewriting their sales to something nobody has seen.
+ */
+async function inboundFor(report: { id: string; branchId: string; reportDate: Date; status: string }) {
+  if (report.status !== 'FINALIZED') return loadLiveInbound(report.branchId, report.reportDate)
+
+  const frozen = await prisma.dsirInboundSnapshot.findMany({
+    where: { reportId: report.id },
+    include: { product: true, fromBranch: true },
+  })
+  if (frozen.length === 0) return loadLiveInbound(report.branchId, report.reportDate)
+
+  // Shaped like the live rows so the serializer cannot tell them apart.
+  return frozen.map(f => ({
+    id: f.id,
+    productId: f.productId,
+    product: { name: f.product.name },
+    quantity: f.quantity,
+    report: { branchId: f.fromBranchId, branch: { name: f.fromBranch.name } },
+  }))
+}
+
+/**
+ * Copies the current inbound rows onto the report being finalised.
+ *
+ * Replaces rather than adds: finalise, reopen, edit, finalise again must end
+ * with what is true at the second finalisation, not both sets.
+ */
+async function freezeInbound(report: { id: string; branchId: string; reportDate: Date }): Promise<void> {
+  const live = await loadLiveInbound(report.branchId, report.reportDate)
+  await prisma.$transaction([
+    prisma.dsirInboundSnapshot.deleteMany({ where: { reportId: report.id } }),
+    prisma.dsirInboundSnapshot.createMany({
+      data: live.map(t => ({
+        reportId: report.id,
+        productId: t.productId,
+        fromBranchId: t.report.branch.id,
+        quantity: t.quantity,
+      })),
+    }),
+  ])
 }
 
 function assertEditable(report: { status: string }): void {
@@ -213,13 +273,38 @@ router.get(
       },
       include: { product: true, report: { include: { branch: true } } },
     })
-    const inboundByReport = new Map<string, typeof inboundRows>()
+    // Finalised rows must use their frozen figures here too, or the list and the
+    // report itself disagree about the same day's sales — and the list is where
+    // a variance is noticed.
+    const snapshots = await prisma.dsirInboundSnapshot.findMany({
+      where: { reportId: { in: reports.filter(r => r.status === 'FINALIZED').map(r => r.id) } },
+      include: { product: true, fromBranch: true },
+    })
+    const frozenByReport = new Map<string, InboundTransfer[]>()
+    for (const f of snapshots) {
+      const rows = frozenByReport.get(f.reportId) ?? []
+      rows.push({
+        id: f.id,
+        productId: f.productId,
+        product: { name: f.product.name },
+        quantity: f.quantity,
+        report: { branchId: f.fromBranchId, branch: { name: f.fromBranch.name } },
+      })
+      frozenByReport.set(f.reportId, rows)
+    }
+
+    const inboundByReport = new Map<string, InboundTransfer[]>()
     for (const r of reports) {
+      const frozen = frozenByReport.get(r.id)
       inboundByReport.set(
         r.id,
-        inboundRows.filter(
-          t => t.toBranchId === r.branchId && t.report.reportDate.getTime() === r.reportDate.getTime()
-        )
+        // Same fallback as inboundFor: a finalised report with no snapshot keeps
+        // reading live, which is what it has always shown.
+        frozen && frozen.length > 0
+          ? frozen
+          : inboundRows.filter(
+              t => t.toBranchId === r.branchId && t.report.reportDate.getTime() === r.reportDate.getTime()
+            )
       )
     }
     res.json({ data: reports.map(r => toDsirSummary(r, inboundByReport.get(r.id) ?? [])), error: null })
@@ -304,7 +389,7 @@ router.get(
     const changed = await refreshCarriedOpenings(loaded)
     const report = changed ? await loadOr404(loaded.id) : loaded
 
-    const inbound = await loadInbound(report.branchId, report.reportDate)
+    const inbound = await inboundFor(report)
     const carried = await carriedOpening(report.branchId, report.reportDate)
     res.json({ data: toDsirDto(report, inbound, carried), error: null })
   })
@@ -343,7 +428,7 @@ router.post(
       include: dsirInclude,
     })
     res.status(201).json({
-      data: toDsirDto(report, await loadInbound(branch.id, reportDate), await carriedOpening(branch.id, reportDate)),
+      data: toDsirDto(report, await inboundFor(report), await carriedOpening(branch.id, reportDate)),
       error: null,
     })
   })
@@ -469,7 +554,7 @@ router.put(
     ])
 
     const saved = await loadOr404(report.id)
-    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
+    res.json({ data: toDsirDto(saved, await inboundFor(saved), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
   })
 )
 
@@ -487,12 +572,15 @@ router.post(
     // Freeze against the latest carry: from here the openings stop tracking the
     // previous day, so they must be current at the moment they stop moving.
     await refreshCarriedOpenings(report)
+    // Freeze what was received, for the same reason the openings are frozen:
+    // from here the figures stop tracking other reports.
+    await freezeInbound(report)
     await prisma.dsirReport.update({
       where: { id: report.id },
       data: { status: 'FINALIZED', finalizedAt: new Date() },
     })
     const saved = await loadOr404(report.id)
-    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
+    res.json({ data: toDsirDto(saved, await inboundFor(saved), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
   })
 )
 
@@ -504,12 +592,18 @@ router.post(
     if (report.status !== 'FINALIZED') {
       throw new HttpError(409, 'This report is not finalised', 'NOT_FINALIZED')
     }
+    // Hygiene, not correctness: `inboundFor` already reads live for a DRAFT, and
+    // `freezeInbound` replaces these rows at the next finalisation, so removing
+    // them changes no figure — a mutation test confirmed nothing fails without
+    // it. Kept because leaving rows that describe a state the report is no longer
+    // in is exactly the kind of stale data this whole change exists to stop.
+    await prisma.dsirInboundSnapshot.deleteMany({ where: { reportId: report.id } })
     await prisma.dsirReport.update({
       where: { id: report.id },
       data: { status: 'DRAFT', finalizedAt: null },
     })
     const saved = await loadOr404(report.id)
-    res.json({ data: toDsirDto(saved, await loadInbound(saved.branchId, saved.reportDate), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
+    res.json({ data: toDsirDto(saved, await inboundFor(saved), await carriedOpening(saved.branchId, saved.reportDate)), error: null })
   })
 )
 
@@ -523,17 +617,22 @@ router.delete(
       throw new HttpError(409, 'Finalised reports cannot be deleted. Reopen it first.', 'REPORT_FINALIZED')
     }
 
-    // A finalised report must not change, and deleting this could change one.
+    // Keeps a closed report's record readable, rather than its figures correct.
     //
-    // Stock sent to another branch is read live off THIS report by the receiving
-    // branch (loadInbound), never copied into it. So deleting a draft that sends
-    // 20 units removes 20 from the receiver's available stock, raising its
-    // derived sold and its sales — and if that report is already closed, its
-    // variance moves after the fact. Variance is what gets deducted from a
-    // cashier's wages (docs/DOMAIN.md), so this is not a display detail.
+    // This guard predates the inbound snapshot. Its original reason — that
+    // deleting the sender would move the receiver's sales — no longer holds: a
+    // finalised report reads frozen quantities and does not move. The figures
+    // are safe without this.
     //
-    // Reopening the receiver first makes the change visible to whoever owns it,
-    // which is the point.
+    // It stays for a different reason. A finalised report says "received 20
+    // Pandesal from Branch A", and that claim should be checkable. Deleting
+    // Branch A's report for that date leaves the receiver asserting a movement
+    // with no counterpart anywhere in the system — the closed report still adds
+    // up, but nobody can ever verify it again.
+    //
+    // Reopening the receiver first is still the way through, and it now does
+    // something meaningful: it un-freezes the receiver, so whoever owns that
+    // report sees the change rather than inheriting it silently.
     const closedReceivers = report.transfers.length
       ? await prisma.dsirReport.findMany({
           where: {
@@ -550,7 +649,8 @@ router.delete(
       throw new HttpError(
         409,
         `This draft sends stock to ${names}, whose report for ${toDateString(report.reportDate)} is already finalised. ` +
-          `Deleting it would change that report's sales. Reopen ${closedReceivers.length === 1 ? 'it' : 'them'} first, ` +
+          `That report records stock received from this one, so deleting it would leave a claim ` +
+          `nobody can check. Reopen ${closedReceivers.length === 1 ? 'it' : 'them'} first, ` +
           `or remove the transfers from this draft.`,
         'RECEIVER_FINALIZED'
       )

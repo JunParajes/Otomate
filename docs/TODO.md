@@ -49,13 +49,11 @@ revisit this "when real staff data accumulates"; that has happened.
 
 ## Correctness
 
-- [ ] **A finalised report's figures are not actually frozen.** Stock sent between
-      branches is stored once on the *sending* report and read live by the
-      receiver, so editing or reopening a sender moves a closed report's sales.
-      Measured: ₱240 → ₱180 on a FINALIZED report. The delete path is guarded;
-      the coupling is not. Fix is to snapshot inbound transfers at finalisation,
-      the way `unitPriceCents` already is on `DsirLine` — schema change plus
-      migration. → [OPERATIONS.md gap 0](OPERATIONS.md)
+- [x] ~~A finalised report's figures are not actually frozen~~ — done 2026-09-01.
+      Inbound transfers are snapshotted at finalisation, existing reports
+      backfilled, and the characterisation test replaced with five asserting the
+      correct behaviour. → [OPERATIONS.md gap 0](OPERATIONS.md)
+
 
 ## Before this grows much further
 

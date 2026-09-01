@@ -34,39 +34,59 @@ using the app, and it wins silently. Before putting a bootstrap script in a
 deploy loop, read every write it performs and ask which of them a user could
 legitimately have changed.
 
-### 0. A finalised report's figures are not actually frozen
+### 0. A finalised report's figures are not frozen — RESOLVED 2026-09-01
 
-**Status:** Open as of 2026-08-26. Found while adding draft deletion; the delete
-path is now guarded, the underlying coupling is not.
+Stock received from another branch is now snapshotted onto the receiving report
+when it is finalised, in `DsirInboundSnapshot`.
 
-Stock sent between branches is stored **once**, on the sending report, and read
-live by the receiver (`loadInbound` in `apps/api/src/routes/admin/dsir.ts`). It
-is never copied into the receiving report. So the receiver's *available* stock —
-and therefore its derived **sold** and **sales** — is recomputed from the
-sender's current data on every read, including after it has been finalised.
-
-Measured, before the guard existed:
+**What was wrong.** Inbound stock was stored once on the SENDING report and read
+live by the receiver. Right for a draft — asking both branches to type the same
+movement is how they come to disagree — but it meant a finalised report was not
+final. Measured, on a report already closed:
 
 ```
-Branch B: opening 0, produced 100, received 20, ending 40  → sold 80, sales ₱240
-Branch B finalised.
-Branch A's DRAFT (which sent the 20) deleted.
-Branch B, still FINALIZED, now reads:                        sold 60, sales ₱180
+Branch B finalised at 80 sold / ₱240.00
+Branch A's transfer to B edited from 20 units down to 5
+Branch B, still FINALIZED, then read 65 sold / ₱195.00
 ```
 
-₱60 moved on a closed report. Variance is what gets deducted from a cashier's
-wages (see [DOMAIN.md](DOMAIN.md)), so this is not cosmetic.
+₱45 moved on a closed report, and variance is deducted from a cashier's wages
+(see [DOMAIN.md](DOMAIN.md)).
 
-**What is guarded:** `DELETE /api/admin/dsir/:id` refuses when the draft's
-transfers point at a branch whose report for that date is already finalised
-(`RECEIVER_FINALIZED`), telling the operator to reopen it first.
+**The rule now:**
 
-**What is not:** editing or reopening the sending report still moves the
-receiver's numbers, because nothing snapshots the inbound quantity. The real fix
-is to freeze inbound transfers into the receiving report at finalisation, the
-way `unitPriceCents` is already snapshotted onto `DsirLine` and for exactly the
-same reason. That is a schema change plus a migration, so it has not been done
-here.
+| Report state | Inbound read from |
+|---|---|
+| Draft | live, off the senders' reports |
+| Finalised | its own snapshot |
+| Reopened | live again — it is being revised |
+| Re-finalised | a fresh snapshot, at what is true then |
+
+Frozen at finalisation alongside the carried openings, for the same reason and in
+the same place. Same rule as `unitPriceCents` on `DsirLine`.
+
+**Existing reports were backfilled** by the migration, freezing each finalised
+report at what it read that day. That does not recover a report that had already
+drifted — that history is gone, and inventing a "correct" figure would be worse
+than keeping the one the business has been working from. It stops the drift.
+
+**The delete guard's reason changed.** `RECEIVER_FINALIZED` was added to stop a
+delete moving a closed report's sales. That can no longer happen. It stays for a
+different reason, now stated in the code: a finalised report saying "received 20
+Pandesal from Branch A" should be checkable, and deleting Branch A's report for
+that date leaves a claim with no counterpart anywhere.
+
+**Verified by mutation**, not by watching tests pass:
+
+| Mutation | Caught |
+|---|---|
+| always read live (the original bug) | yes |
+| never freeze on finalise | yes |
+| reopen leaves the snapshot behind | **no — and correctly so** |
+
+The third survives because `inboundFor` ignores snapshots for drafts and
+`freezeInbound` replaces them at the next finalisation. That deletion is hygiene,
+not correctness, and the comment now says so rather than claiming otherwise.
 
 ### 1. SSH is exposed to the internet (password auth now off)
 

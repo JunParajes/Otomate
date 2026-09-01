@@ -94,7 +94,9 @@ describe('deleting a draft', () => {
   })
 
   it('refuses when the draft sends stock to a branch whose report is finalised', async () => {
-    // Deleting would remove those units from a CLOSED report and move its sales.
+    // Not because the figures would move — the receiver is frozen now — but
+    // because it would leave a closed report claiming stock from a report that
+    // no longer exists.
     const { token, a, b, product } = await scenario()
     const bReport = await reportForB(token, b.id, product.id, '2026-08-20')
     const aDraft = await draftForA(token, a.id, b.id, product.id, '2026-08-20')
@@ -139,37 +141,93 @@ describe('deleting a draft', () => {
   })
 })
 
-describe('KNOWN DEFECT — a finalised report is not fully frozen (OPERATIONS.md gap 0)', () => {
+describe('a finalised report is frozen (OPERATIONS.md gap 0)', () => {
   /**
-   * This test asserts the CURRENT, WRONG behaviour on purpose.
-   *
-   * Inbound transfers are read live off the sending report rather than
-   * snapshotted, so editing a sender still moves a closed report's sales. The
-   * delete path is guarded; this path is not.
-   *
-   * When gap 0 is fixed, this test SHOULD fail — that is the signal the fix
-   * worked. Replace it then with the assertion that the figures held.
+   * This block used to hold a characterisation test asserting the WRONG
+   * behaviour — an edit to a sending report moved a closed report's sales from
+   * ₱240.00 to ₱195.00 — pinned so that a fix would announce itself by failing.
+   * This is that fix, and these are the assertions that replaced it.
    */
-  it('still lets an edit to the sender change a closed report (pin, expected to fail on fix)', async () => {
+  const cutTransferTo5 = (token: string, aDraft: string, bId: string, productId: string, qty = 5) =>
+    as(token).put(`/api/admin/dsir/${aDraft}`, {
+      usesCharges: false, usesPullOuts: false, usesTransfers: true, usesOverEnd: false,
+      lines: [{ productId, begBal: 0, produced: 50, overEnd: 0, pulledOut: 0, endBal: 10 }],
+      charges: [], transfers: [{ productId, toBranchId: bId, quantity: qty }], collections: [],
+    })
+
+  it('holds its sales when the sender is edited afterwards', async () => {
     const { token, a, b, product } = await scenario()
     const bReport = await reportForB(token, b.id, product.id, '2026-08-20')
     const aDraft = await draftForA(token, a.id, b.id, product.id, '2026-08-20')
     await as(token).post(`/api/admin/dsir/${bReport}/finalize`).expect(200)
 
-    const before = (await as(token).get(`/api/admin/dsir/${bReport}`).expect(200)).body.data
-    // 0 + 100 produced + 20 received - 40 left = 80 sold at ₱3.00
-    expect(before.salesCents).toBe(24000)
+    // 0 opening + 100 produced + 20 received - 40 left = 80 sold at ₱3.00
+    expect((await as(token).get(`/api/admin/dsir/${bReport}`)).body.data.salesCents).toBe(24000)
 
-    // Cut the transfer from 20 to 5, without touching B at all.
-    await as(token).put(`/api/admin/dsir/${aDraft}`, {
-      usesCharges: false, usesPullOuts: false, usesTransfers: true, usesOverEnd: false,
-      lines: [{ productId: product.id, begBal: 0, produced: 50, overEnd: 0, pulledOut: 0, endBal: 10 }],
-      charges: [], transfers: [{ productId: product.id, toBranchId: b.id, quantity: 5 }], collections: [],
-    }).expect(200)
+    await cutTransferTo5(token, aDraft, b.id, product.id).expect(200)
 
     const after = (await as(token).get(`/api/admin/dsir/${bReport}`).expect(200)).body.data
     expect(after.status).toBe('FINALIZED')
-    expect(after.salesCents).toBe(19500) // 65 sold — ₱45.00 moved on a closed report
+    expect(after.salesCents).toBe(24000)
+    expect(
+      after.inboundTransfers.reduce((n: number, t: { quantity: number }) => n + t.quantity, 0)
+    ).toBe(20)
+  })
+
+  it('holds its sales in the LIST too, not just on the report', async () => {
+    // The list is where a variance gets noticed, so the two must agree.
+    const { token, a, b, product } = await scenario()
+    const bReport = await reportForB(token, b.id, product.id, '2026-08-20')
+    const aDraft = await draftForA(token, a.id, b.id, product.id, '2026-08-20')
+    await as(token).post(`/api/admin/dsir/${bReport}/finalize`).expect(200)
+    await cutTransferTo5(token, aDraft, b.id, product.id).expect(200)
+
+    const row = (await as(token).get('/api/admin/dsir').expect(200)).body.data
+      .find((r: { id: string }) => r.id === bReport)
+    expect(row.salesCents).toBe(24000)
+  })
+
+  it('still tracks the sender while it is a DRAFT', async () => {
+    // Freezing must not start early: two open reports should agree, which is the
+    // whole reason a transfer is entered once by the sender.
+    const { token, a, b, product } = await scenario()
+    const bReport = await reportForB(token, b.id, product.id, '2026-08-20')
+    const aDraft = await draftForA(token, a.id, b.id, product.id, '2026-08-20')
+
+    expect((await as(token).get(`/api/admin/dsir/${bReport}`)).body.data.salesCents).toBe(24000)
+    await cutTransferTo5(token, aDraft, b.id, product.id).expect(200)
+    // 0 + 100 + 5 - 40 = 65 sold
+    expect((await as(token).get(`/api/admin/dsir/${bReport}`)).body.data.salesCents).toBe(19500)
+  })
+
+  it('tracks again when reopened, and re-freezes at the new truth', async () => {
+    const { token, a, b, product } = await scenario()
+    const bReport = await reportForB(token, b.id, product.id, '2026-08-20')
+    const aDraft = await draftForA(token, a.id, b.id, product.id, '2026-08-20')
+    await as(token).post(`/api/admin/dsir/${bReport}/finalize`).expect(200)
+    await cutTransferTo5(token, aDraft, b.id, product.id).expect(200)
+    expect((await as(token).get(`/api/admin/dsir/${bReport}`)).body.data.salesCents).toBe(24000)
+
+    await as(token).post(`/api/admin/dsir/${bReport}/reopen`).expect(200)
+    expect((await as(token).get(`/api/admin/dsir/${bReport}`)).body.data.salesCents).toBe(19500)
+
+    await as(token).post(`/api/admin/dsir/${bReport}/finalize`).expect(200)
+    await cutTransferTo5(token, aDraft, b.id, product.id, 1).expect(200)
+    // Frozen at 5, not back at the original 20.
+    expect((await as(token).get(`/api/admin/dsir/${bReport}`)).body.data.salesCents).toBe(19500)
+  })
+
+  it('keeps the source branch on each frozen row, so the record still reads', async () => {
+    const { token, a, b, product } = await scenario()
+    const bReport = await reportForB(token, b.id, product.id, '2026-08-20')
+    await draftForA(token, a.id, b.id, product.id, '2026-08-20')
+    await as(token).post(`/api/admin/dsir/${bReport}/finalize`).expect(200)
+
+    const rows = (await as(token).get(`/api/admin/dsir/${bReport}`)).body.data.inboundTransfers
+    expect(rows).toHaveLength(1)
+    expect(rows[0].fromBranchName).toBe('Branch A')
+    expect(rows[0].productName).toBe('Pandesal')
+    expect(rows[0].quantity).toBe(20)
   })
 })
 

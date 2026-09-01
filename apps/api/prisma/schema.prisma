@@ -95,15 +95,16 @@ model Branch {
   /// the column means adding them is additive rather than another migration.
   contractFile      String?
 
-  permits         BranchPermit[]
-  rents           BranchRent[]
-  utilityAccounts BranchUtilityAccount[]
-  users           User[]
-  employees       Employee[]
-  dsirReports     DsirReport[]
-  transfersIn     DsirTransfer[]
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  permits              BranchPermit[]
+  rents                BranchRent[]
+  utilityAccounts      BranchUtilityAccount[]
+  users                User[]
+  employees            Employee[]
+  dsirReports          DsirReport[]
+  transfersIn          DsirTransfer[]
+  inboundSnapshotsFrom DsirInboundSnapshot[]  @relation("DsirInboundFrom")
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 }
 
 /// One permit held by one branch.
@@ -252,27 +253,28 @@ model Category {
 }
 
 model Product {
-  id            String         @id @default(cuid())
+  id               String                @id @default(cuid())
   /// Optional short code (BRD-001). Unique when present; Postgres allows many NULLs.
-  sku           String?        @unique
-  name          String
-  description   String?
-  categoryId    String
-  category      Category       @relation(fields: [categoryId], references: [id])
+  sku              String?               @unique
+  name             String
+  description      String?
+  categoryId       String
+  category         Category              @relation(fields: [categoryId], references: [id])
   /// Money is INTEGER CENTAVOS, never a float. ₱25.50 == 2550.
-  priceCents    Int
+  priceCents       Int
   /// What it costs us. Gated behind the products:cost permission.
-  costCents     Int?
-  unit          ProductUnit    @default(PIECE)
+  costCents        Int?
+  unit             ProductUnit           @default(PIECE)
   /// Filename on the products volume, e.g. "a1b2c3.webp". Not a full path.
-  imageFile     String?
-  isActive      Boolean        @default(true)
-  sortOrder     Int            @default(0)
-  dsirLines     DsirLine[]
-  dsirCharges   DsirCharge[]
-  dsirTransfers DsirTransfer[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  imageFile        String?
+  isActive         Boolean               @default(true)
+  sortOrder        Int                   @default(0)
+  dsirLines        DsirLine[]
+  dsirCharges      DsirCharge[]
+  dsirTransfers    DsirTransfer[]
+  inboundSnapshots DsirInboundSnapshot[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@index([categoryId])
   @@index([isActive])
@@ -495,10 +497,11 @@ model DsirReport {
   finalizedAt DateTime?
   notes       String?
 
-  lines       DsirLine[]
-  charges     DsirCharge[]
-  transfers   DsirTransfer[]
-  collections DsirCollection[]
+  lines           DsirLine[]
+  charges         DsirCharge[]
+  transfers       DsirTransfer[]
+  inboundSnapshot DsirInboundSnapshot[]
+  collections     DsirCollection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -564,6 +567,41 @@ model DsirLine {
 /// An employee mistake — dropped or burned stock — charged to them at full
 /// selling price and recovered via payroll. Modelled per-record rather than as a
 /// per-product number, because two people can damage the same product in a day.
+/// Stock this branch RECEIVED, frozen at the moment the report was finalised.
+///
+/// A transfer is entered once, by the sender, and the receiver reads it — which
+/// is right, because asking both branches to type the same movement is how they
+/// come to disagree. But reading it LIVE means a finalised report is not
+/// actually finalised: editing the sender's draft moves the receiver's available
+/// stock, and therefore its derived sales and its variance. Variance is deducted
+/// from a cashier's wages (docs/DOMAIN.md), so a closed report changing months
+/// later is a real problem, not a display quirk.
+///
+/// Written at finalisation and deleted on reopen — a reopened report is being
+/// revised, and should see current reality until it is closed again. Same rule
+/// as `unitPriceCents` on DsirLine, for the same reason.
+///
+/// Product and branch stay as foreign keys: what has to be frozen is the
+/// QUANTITY, since that is what the arithmetic uses. A branch being renamed does
+/// not change what was received.
+model DsirInboundSnapshot {
+  id       String     @id @default(cuid())
+  reportId String
+  report   DsirReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  fromBranchId String
+  fromBranch   Branch @relation("DsirInboundFrom", fields: [fromBranchId], references: [id])
+
+  quantity Int
+
+  createdAt DateTime @default(now())
+
+  @@index([reportId])
+}
+
 model DsirCharge {
   id         String     @id @default(cuid())
   reportId   String
