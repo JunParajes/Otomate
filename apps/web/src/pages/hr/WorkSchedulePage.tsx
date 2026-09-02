@@ -46,6 +46,7 @@ export default function WorkSchedulePage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(new Map())
   const [editing, setEditing] = useState<{ row: WorkScheduleRow; day: string } | null>(null)
+  const [viewing, setViewing] = useState<WorkScheduleRow | null>(null)
   const [saving, setSaving] = useState(false)
   const branches = useResource(adminApi.listBranches)
   const dirtyRef = useRef(false)
@@ -216,8 +217,6 @@ export default function WorkSchedulePage() {
           <Table.Thead>
             <Table.Tr>
               <Table.Th className={classes.nameCol}>Employee</Table.Th>
-              <Table.Th w={130}>Home</Table.Th>
-              <Table.Th w={110}>Hired</Table.Th>
               {schedule.days.map(d => {
                 const date = new Date(`${d}T00:00:00.000Z`)
                 return (
@@ -233,25 +232,37 @@ export default function WorkSchedulePage() {
             {groups.map(([branchName, rows]) => (
               <>
                 <Table.Tr key={`h-${branchName}`}>
-                  <Table.Td colSpan={3 + schedule.days.length} className={classes.groupRow}>
+                  <Table.Td colSpan={1 + schedule.days.length} className={classes.groupRow}>
                     <Text size="xs" fw={700} tt="uppercase">{branchName}</Text>
                   </Table.Td>
                 </Table.Tr>
                 {rows.map(row => (
                   <Table.Tr key={row.employeeId}>
                     <Table.Td className={classes.nameCol}>
-                      <Group gap={6} wrap="nowrap">
-                        <Text size="sm" fw={500}>{row.name}</Text>
-                        {row.underOneMonth && (
-                          <Tooltip label="Under one month — no holiday pay or offsetting yet" withArrow>
-                            <Badge size="xs" variant="light" color="orange">new</Badge>
-                          </Tooltip>
-                        )}
-                      </Group>
-                      <Text size="xs" c="dimmed">{row.position}</Text>
+                      {/*
+                        The name opens the person's details rather than the grid
+                        carrying columns for them. Address and contact numbers
+                        are needed occasionally — when deciding who can cover an
+                        early shift — and permanently on screen they are eighty
+                        rows of noise in the way of the week.
+                      */}
+                      <button
+                        type="button"
+                        className={classes.nameButton}
+                        onClick={() => setViewing(row)}
+                        aria-label={`Details for ${row.name}`}
+                      >
+                        <Group gap={6} wrap="nowrap">
+                          <Text size="sm" fw={500}>{row.name}</Text>
+                          {row.underOneMonth && (
+                            <Tooltip label="Under one month — no holiday pay or offsetting yet" withArrow>
+                              <Badge size="xs" variant="light" color="orange">new</Badge>
+                            </Tooltip>
+                          )}
+                        </Group>
+                        <Text size="xs" c="dimmed">{row.position}</Text>
+                      </button>
                     </Table.Td>
-                    <Table.Td><Text size="xs" c="dimmed">{row.homeArea ?? '—'}</Text></Table.Td>
-                    <Table.Td><Text size="xs" c="dimmed">{row.dateHired ?? '—'}</Text></Table.Td>
                     {schedule.days.map(d => {
                       const cell = cellOf(row, d)
                       return (
@@ -280,6 +291,86 @@ export default function WorkSchedulePage() {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+
+      {/*
+        Their record, from the 201 file — not a second copy kept here.
+        The section is omitted server-side without hr:read, so a caller who can
+        plan the week but is not entitled to staff records simply has no button
+        to press.
+      */}
+      <Modal
+        opened={viewing !== null}
+        onClose={() => setViewing(null)}
+        title={viewing?.name ?? ''}
+        centered
+      >
+        {viewing && (
+          <Stack gap="md">
+            <Group gap="xs">
+              <Badge variant="light" color="gray">{viewing.position}</Badge>
+              <Badge variant="light">{viewing.branch?.name ?? 'Unassigned'}</Badge>
+            </Group>
+
+            {viewing.details ? (
+              <>
+                <Stack gap={2}>
+                  <Text size="xs" c="dimmed">Date hired</Text>
+                  <Group gap="xs">
+                    <Text size="sm">{viewing.details.dateHired ?? 'Not recorded'}</Text>
+                    <Badge
+                      size="sm"
+                      variant="light"
+                      color={viewing.underOneMonth ? 'orange' : 'green'}
+                    >
+                      {viewing.underOneMonth ? 'Under one month' : 'Over one month'}
+                    </Badge>
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    {viewing.underOneMonth
+                      ? 'Not eligible for holiday pay or offsetting yet.'
+                      : 'Eligible for holiday pay and offsetting.'}
+                  </Text>
+                </Stack>
+
+                <Stack gap={2}>
+                  <Text size="xs" c="dimmed">Address</Text>
+                  <Text size="sm">{viewing.details.address || 'Not recorded'}</Text>
+                </Stack>
+
+                <Stack gap={2}>
+                  <Text size="xs" c="dimmed">Contact numbers</Text>
+                  {viewing.details.contacts.length === 0 && (
+                    <Text size="sm" c="dimmed">None recorded</Text>
+                  )}
+                  {viewing.details.contacts.map((c, i) => (
+                    <Group key={i} gap="xs">
+                      <Text size="sm" ff="monospace">{c.number}</Text>
+                      {c.label && <Badge size="xs" variant="light" color="gray">{c.label}</Badge>}
+                    </Group>
+                  ))}
+                </Stack>
+              </>
+            ) : (
+              <Text size="sm" c="dimmed">
+                Their address and contact numbers are part of the HR record, which needs the
+                HR permission to view.
+              </Text>
+            )}
+
+            <Group justify="flex-end">
+              {can('hr:read') && (
+                <Button
+                  variant="default"
+                  onClick={() => navigate(`/admin/employees/${viewing.employeeId}`)}
+                >
+                  Open full record
+                </Button>
+              )}
+              <Button onClick={() => setViewing(null)}>Close</Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
 
       <Modal
         opened={editing !== null}

@@ -199,16 +199,36 @@ export interface WorkScheduleEntryRecord {
   pairedWith: { id: string; name: string } | null
 }
 
+/**
+ * The 201 details a manager needs while planning — where someone lives, how to
+ * reach them, how long they have been here.
+ *
+ * OMITTED, not nulled, for a caller without `hr:read` — the same rule the
+ * employee DTO follows, so an unauthorised response carries no trace of an
+ * address rather than a shape implying one exists. Someone can hold
+ * `schedule:read` without being entitled to staff records.
+ */
+export interface WorkScheduleRowDetails {
+  dateHired: string | null
+  address: string | null
+  contacts: { number: string; label: string | null }[]
+}
+
 export interface WorkScheduleRow {
   employeeId: string
   name: string
-  /** Their own branch — the grouping in the spreadsheet's column A. */
+  /** Their own branch — the grouping the grid reads by. */
   branch: { id: string; name: string } | null
   position: string
-  homeArea: string | null
-  dateHired: string | null
-  /** Derived: not eligible for holiday pay or offsetting yet. */
+  /**
+   * Derived: not eligible for holiday pay or offsetting yet.
+   *
+   * Stays outside the gated section on purpose. It is the fact the schedule is
+   * planned against, and it is a yes/no — it discloses far less than the hire
+   * date it comes from.
+   */
   underOneMonth: boolean
+  details?: WorkScheduleRowDetails
   /** Keyed by day, so a cell lookup is not a scan of seven entries. */
   days: Record<string, WorkScheduleEntryRecord>
 }

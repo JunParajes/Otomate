@@ -231,6 +231,65 @@ describe('editing the plan', () => {
   })
 })
 
+/**
+ * The grid shows a person's address and numbers when their name is tapped, and
+ * those come from the 201 file. `schedule:read` alone must not be a way around
+ * `hr:read` — the section is omitted rather than nulled, so an unauthorised
+ * response carries no trace of an address at all.
+ */
+describe('the details behind a name', () => {
+  async function scheduleWithStaff() {
+    const branch = await prisma.branch.create({ data: { name: 'Bankerohan' } })
+    const employee = await prisma.employee.create({
+      data: {
+        firstName: 'Maria', lastName: 'Cruz', positionId: await positionId('Baker'), branchId: branch.id,
+        dateHired: new Date('2020-01-01T00:00:00.000Z'),
+        address: '12 Rizal St, Davao City',
+        contacts: { create: [{ number: '0917 555 1234', label: 'Globe', sortOrder: 0 }] },
+      },
+    })
+    const { token: hrToken } = await makeUser({
+      email: 'withhr@t.local',
+      permissions: ['schedule:read', 'schedule:write', 'hr:read'],
+    })
+    const res = await as(hrToken).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+    return { id: res.body.data.id as string, employee, hrToken }
+  }
+
+  it('includes address, hire date and numbers for a caller with hr:read', async () => {
+    const { id, hrToken } = await scheduleWithStaff()
+    const res = await as(hrToken).get(`/api/admin/work-schedule/${id}`).expect(200)
+    const row = res.body.data.rows[0]
+    expect(row.details.address).toBe('12 Rizal St, Davao City')
+    expect(row.details.dateHired).toBe('2020-01-01')
+    expect(row.details.contacts[0].number).toBe('0917 555 1234')
+    expect(row.details.contacts[0].label).toBe('Globe')
+  })
+
+  it('omits the section entirely without hr:read, leaving no trace', async () => {
+    const { id } = await scheduleWithStaff()
+    const { token } = await makeUser({ email: 'nohr@t.local', permissions: ['schedule:read'] })
+
+    const res = await as(token).get(`/api/admin/work-schedule/${id}`).expect(200)
+    expect(res.body.data.rows[0]).not.toHaveProperty('details')
+    expect(JSON.stringify(res.body)).not.toContain('Rizal')
+    expect(JSON.stringify(res.body)).not.toContain('0917')
+  })
+
+  /**
+   * The eligibility flag stays visible without hr:read: it is what the week is
+   * planned against, and a yes/no discloses far less than the hire date it is
+   * derived from.
+   */
+  it('still tells a planner whether someone is under a month', async () => {
+    const { id } = await scheduleWithStaff()
+    const { token } = await makeUser({ email: 'nohr2@t.local', permissions: ['schedule:read'] })
+    const res = await as(token).get(`/api/admin/work-schedule/${id}`).expect(200)
+    expect(res.body.data.rows[0]).toHaveProperty('underOneMonth')
+    expect(res.body.data.rows[0].underOneMonth).toBe(false)
+  })
+})
+
 describe('draft, submit, approve', () => {
   async function draft(token: string) {
     await seedStaff(1)

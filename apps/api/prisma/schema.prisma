@@ -451,10 +451,6 @@ model Employee {
   /// somebody cannot be deleted out from under them.
   positionId   String
   position     EmployeePosition @relation(fields: [positionId], references: [id])
-  /// Short area name — "Panacan", "B.A.T" — shown on the work schedule so the
-  /// manager can see at a glance who lives near the branch. Deliberately not the
-  /// full address: this is scanned across eighty rows, not read.
-  homeArea     String?
   branchId     String?
   branch       Branch?          @relation(fields: [branchId], references: [id])
   userId       String?          @unique

@@ -22,6 +22,7 @@ const WEEKS = {
   editing: '2026-09-10',
   cover: '2026-09-17',
   approval: '2026-09-24',
+  details: '2026-10-01',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -79,8 +80,9 @@ test('a new cutoff starts with everyone scheduled on all seven days', async ({ p
   await expect(page.getByRole('columnheader', { name: /Thu/ })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /Wed/ })).toBeVisible()
 
-  // The fixture employee, scheduled every day.
-  const cells = page.locator('[aria-label*="Maria Santos Cruz"]')
+  // Cells only — anchored on the "name, date" form, since the name button now
+  // carries an aria-label containing the name too.
+  const cells = page.locator('[aria-label^="Maria Santos Cruz, "]')
   await expect(cells).toHaveCount(7)
   for (const cell of await cells.all()) {
     await expect(cell).toHaveAttribute('aria-label', /Scheduled/)
@@ -140,6 +142,28 @@ test('an approved plan stops being editable', async ({ page }) => {
   await expect(page.getByText(/approved and is now a record/)).toBeVisible()
   // Reopening is offered, because the owner holds the approve permission.
   await expect(page.getByRole('button', { name: 'Reopen' })).toBeVisible()
+})
+
+/**
+ * The grid carries the week and nothing else. Where someone lives and how to
+ * reach them matter occasionally — deciding who can cover an early shift — and
+ * as columns they would be eighty rows of noise across the days.
+ */
+test("tapping a name opens that person's details", async ({ page }) => {
+  await openCutoff(page, WEEKS.details)
+
+  // The grid itself has no Home or Hired column any more.
+  await expect(page.getByRole('columnheader', { name: 'Home' })).toHaveCount(0)
+  await expect(page.getByRole('columnheader', { name: 'Hired' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Details for Maria Santos Cruz' }).click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Date hired')).toBeVisible()
+  await expect(dialog.getByText('Address')).toBeVisible()
+  await expect(dialog.getByText('Contact numbers')).toBeVisible()
+  // Eligibility is stated outright rather than left as a date to work out.
+  await expect(dialog.getByText(/one month/)).toBeVisible()
 })
 
 test('a role without schedule:read is refused the page', async ({ page }) => {

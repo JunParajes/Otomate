@@ -46,7 +46,7 @@ const named = (e: NameParts | null) => (e ? { id: e.id, name: formatEmployeeName
  * has no entries yet — building from entries would silently leave them off the
  * grid, which is exactly the person most likely to be forgotten.
  */
-async function loadSchedule(id: string): Promise<WorkSchedule | null> {
+async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule | null> {
   const schedule = await prisma.workSchedule.findUnique({
     where: { id },
     include: {
@@ -62,7 +62,11 @@ async function loadSchedule(id: string): Promise<WorkSchedule | null> {
 
   const employees = await prisma.employee.findMany({
     where: { isActive: true },
-    include: { branch: { select: { id: true, name: true } }, position: true },
+    include: {
+      branch: { select: { id: true, name: true } },
+      position: true,
+      contacts: { orderBy: { sortOrder: 'asc' } },
+    },
     orderBy: [{ branch: { name: 'asc' } }, { lastName: 'asc' }, { firstName: 'asc' }],
   })
 
@@ -92,11 +96,17 @@ async function loadSchedule(id: string): Promise<WorkSchedule | null> {
       name: formatEmployeeName(emp),
       branch: emp.branch,
       position: emp.position.name,
-      homeArea: emp.homeArea,
-      dateHired: emp.dateHired ? day(emp.dateHired) : null,
       // Against the FIRST day of the cutoff: eligibility is judged for the week
       // being planned, not for whenever the page happens to be opened.
       underOneMonth: isUnderOneMonth(emp.dateHired ? day(emp.dateHired) : null, days[0]!),
+      // Section omitted entirely without hr:read — see WorkScheduleRowDetails.
+      ...(canSeeHr && {
+        details: {
+          dateHired: emp.dateHired ? day(emp.dateHired) : null,
+          address: emp.address,
+          contacts: emp.contacts.map(c => ({ number: c.number, label: c.label })),
+        },
+      }),
       days: byDay,
     }
   })
@@ -154,7 +164,7 @@ router.get(
   '/:id',
   requirePermission('schedule:read'),
   asyncHandler(async (req, res) => {
-    const schedule = await loadSchedule(pathParam(req, 'id'))
+    const schedule = await loadSchedule(pathParam(req, 'id'), can(req, 'hr:read'))
     if (!schedule) throw new HttpError(404, 'Schedule not found', 'NOT_FOUND')
     res.json({ data: schedule, error: null })
   })
@@ -193,7 +203,7 @@ router.post(
           },
         },
       })
-      const schedule = await loadSchedule(created.id)
+      const schedule = await loadSchedule(created.id, can(req, 'hr:read'))
       res.status(201).json({ data: schedule, error: null })
     } catch (error) {
       rethrowUniqueViolation(error, 'weekStart', 'That cutoff already has a schedule')
@@ -260,7 +270,7 @@ router.patch(
       })
     )
 
-    res.json({ data: await loadSchedule(existing.id), error: null })
+    res.json({ data: await loadSchedule(existing.id, can(req, 'hr:read')), error: null })
   })
 )
 
@@ -305,7 +315,7 @@ router.patch(
         ...(next && next !== 'APPROVED' && { approvedById: null, approvedAt: null }),
       },
     })
-    res.json({ data: await loadSchedule(existing.id), error: null })
+    res.json({ data: await loadSchedule(existing.id, can(req, 'hr:read')), error: null })
   })
 )
 
