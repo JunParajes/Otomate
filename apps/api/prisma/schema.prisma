@@ -8,27 +8,28 @@ datasource db {
 }
 
 model User {
-  id                 String           @id @default(cuid())
-  email              String           @unique
+  id                 String                   @id @default(cuid())
+  email              String                   @unique
   password           String
   name               String
-  isActive           Boolean          @default(true)
+  isActive           Boolean                  @default(true)
   // Set when an admin creates the account or resets the password; the user is
   // forced through a password change before they can use the app.
-  mustChangePassword Boolean          @default(false)
+  mustChangePassword Boolean                  @default(false)
   lastLoginAt        DateTime?
   roleId             String
   branchId           String?
-  role               Role             @relation(fields: [roleId], references: [id])
-  branch             Branch?          @relation(fields: [branchId], references: [id])
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  role               Role                     @relation(fields: [roleId], references: [id])
+  branch             Branch?                  @relation(fields: [branchId], references: [id])
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
   employee           Employee?
   dsirReports        DsirReport[]
   salaryRecords      EmployeeSalary[]
   rentRecords        BranchRent[]
-  schedulesCreated   WorkSchedule[]   @relation("ScheduleCreatedBy")
-  schedulesApproved  WorkSchedule[]   @relation("ScheduleApprovedBy")
+  schedulesCreated   WorkSchedule[]           @relation("ScheduleCreatedBy")
+  schedulesApproved  WorkSchedule[]           @relation("ScheduleApprovedBy")
+  branchPlansMarked  WorkScheduleBranchPlan[] @relation("BranchPlannedBy")
 
   @@index([roleId])
   @@index([branchId])
@@ -104,11 +105,12 @@ model Branch {
   employees            Employee[]
   dsirReports          DsirReport[]
   transfersIn          DsirTransfer[]
-  inboundSnapshotsFrom DsirInboundSnapshot[]  @relation("DsirInboundFrom")
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  inboundSnapshotsFrom DsirInboundSnapshot[]    @relation("DsirInboundFrom")
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
   /// Staff from other branches planned to work here on a given day.
-  scheduledVisitors    WorkScheduleEntry[]    @relation("ScheduleAssignedBranch")
+  scheduledVisitors    WorkScheduleEntry[]      @relation("ScheduleAssignedBranch")
+  schedulePlans        WorkScheduleBranchPlan[]
 }
 
 /// One permit held by one branch.
@@ -318,12 +320,31 @@ model WorkSchedule {
   approvedBy   User?     @relation("ScheduleApprovedBy", fields: [approvedById], references: [id])
   approvedAt   DateTime?
 
-  entries   WorkScheduleEntry[]
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  entries     WorkScheduleEntry[]
+  branchPlans WorkScheduleBranchPlan[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
 }
 
 /// One employee, one day.
+/// A branch HR has finished planning for a cutoff.
+///
+/// Cannot be derived from the entries. A branch where everyone genuinely works
+/// all seven days looks exactly like one nobody has touched — and the whole
+/// point is telling those apart before the schedule goes for approval.
+model WorkScheduleBranchPlan {
+  id          String       @id @default(cuid())
+  scheduleId  String
+  schedule    WorkSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  branchId    String
+  branch      Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  plannedAt   DateTime     @default(now())
+  plannedById String?
+  plannedBy   User?        @relation("BranchPlannedBy", fields: [plannedById], references: [id])
+
+  @@unique([scheduleId, branchId])
+}
+
 model WorkScheduleEntry {
   id         String        @id @default(cuid())
   scheduleId String

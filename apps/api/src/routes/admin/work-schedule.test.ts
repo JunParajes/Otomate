@@ -385,3 +385,155 @@ describe('permissions', () => {
     await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(403)
   })
 })
+
+describe('working at another branch', () => {
+  /**
+   * Their own branch is not "another" one. Stored, it reads in the grid as a
+   * transfer that nobody planned.
+   */
+  it('ignores an assignment to the branch they already work at', async () => {
+    const branch = await prisma.branch.create({ data: { name: 'Bankerohan' } })
+    const employee = await prisma.employee.create({
+      data: { firstName: 'Maria', lastName: 'Cruz', positionId: await positionId('Baker'), branchId: branch.id },
+    })
+    const { token } = await hr()
+    const made = await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${made.body.data.id}/entries`, {
+        entries: [{ employeeId: employee.id, day: THU, status: 'SCHEDULED', assignedBranchId: branch.id }],
+      })
+      .expect(200)
+
+    expect(res.body.data.rows[0].days[THU].assignedBranch).toBeNull()
+  })
+
+  it('keeps an assignment to a genuinely different branch', async () => {
+    const home = await prisma.branch.create({ data: { name: 'Bankerohan' } })
+    const other = await prisma.branch.create({ data: { name: 'TRD' } })
+    const employee = await prisma.employee.create({
+      data: { firstName: 'Maria', lastName: 'Cruz', positionId: await positionId('Baker'), branchId: home.id },
+    })
+    const { token } = await hr()
+    const made = await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${made.body.data.id}/entries`, {
+        entries: [{ employeeId: employee.id, day: THU, status: 'SCHEDULED', assignedBranchId: other.id }],
+      })
+      .expect(200)
+
+    expect(res.body.data.rows[0].days[THU].assignedBranch.name).toBe('TRD')
+  })
+})
+
+/**
+ * Naming a cover has to show on the coverer's own day, otherwise the only place
+ * it exists is the row of the person who is absent.
+ *
+ * Derived from the off day rather than written onto the coverer: two records of
+ * one fact drift apart, and clearing the cover would leave the coverer marked.
+ */
+describe('covering for someone', () => {
+  it("shows on the coverer's day, with the branch they are covering at", async () => {
+    const branchA = await prisma.branch.create({ data: { name: 'Bankerohan' } })
+    const branchB = await prisma.branch.create({ data: { name: 'TRD' } })
+    const pos = await positionId('Baker')
+    const offPerson = await prisma.employee.create({
+      data: { firstName: 'Ana', lastName: 'Reyes', positionId: pos, branchId: branchA.id },
+    })
+    const coverer = await prisma.employee.create({
+      data: { firstName: 'Ben', lastName: 'Dorilag', positionId: pos, branchId: branchB.id },
+    })
+    const { token } = await hr()
+    const made = await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${made.body.data.id}/entries`, {
+        entries: [{ employeeId: offPerson.id, day: THU, status: 'OFF', coveredById: coverer.id }],
+      })
+      .expect(200)
+
+    const rows = res.body.data.rows as { employeeId: string; covering: Record<string, { employeeName: string; branchName: string }> }[]
+    const covererRow = rows.find(r => r.employeeId === coverer.id)!
+    expect(covererRow.covering[THU].employeeName).toBe('Ana Reyes')
+    expect(covererRow.covering[THU].branchName).toBe('Bankerohan')
+  })
+
+  it('disappears again when the cover is cleared', async () => {
+    const branch = await prisma.branch.create({ data: { name: 'Bankerohan' } })
+    const pos = await positionId('Baker')
+    const a = await prisma.employee.create({ data: { firstName: 'Ana', lastName: 'Reyes', positionId: pos, branchId: branch.id } })
+    const b = await prisma.employee.create({ data: { firstName: 'Ben', lastName: 'Dorilag', positionId: pos, branchId: branch.id } })
+    const { token } = await hr()
+    const made = await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+    const id = made.body.data.id
+
+    await as(token).patch(`/api/admin/work-schedule/${id}/entries`, {
+      entries: [{ employeeId: a.id, day: THU, status: 'OFF', coveredById: b.id }],
+    }).expect(200)
+
+    const res = await as(token).patch(`/api/admin/work-schedule/${id}/entries`, {
+      entries: [{ employeeId: a.id, day: THU, status: 'OFF', coveredById: null }],
+    }).expect(200)
+
+    const rows = res.body.data.rows as { employeeId: string; covering: Record<string, unknown> }[]
+    expect(rows.find(r => r.employeeId === b.id)!.covering[THU]).toBeUndefined()
+  })
+})
+
+/**
+ * Which branches HR has finished.
+ *
+ * Cannot be derived: a branch where everyone works all seven days is identical
+ * to one nobody has opened, and Submit sends the lot either way.
+ */
+describe('branch planning progress', () => {
+  async function twoBranches() {
+    const a = await prisma.branch.create({ data: { name: 'Bankerohan' } })
+    const b = await prisma.branch.create({ data: { name: 'TRD' } })
+    const pos = await positionId('Baker')
+    await prisma.employee.create({ data: { firstName: 'Ana', lastName: 'Reyes', positionId: pos, branchId: a.id } })
+    await prisma.employee.create({ data: { firstName: 'Ben', lastName: 'Dorilag', positionId: pos, branchId: b.id } })
+    const { token } = await hr()
+    const made = await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+    return { id: made.body.data.id as string, a, b, token }
+  }
+
+  it('starts with every branch unplanned', async () => {
+    const { id, token } = await twoBranches()
+    const res = await as(token).get(`/api/admin/work-schedule/${id}`).expect(200)
+    expect(res.body.data.branches).toHaveLength(2)
+    expect(res.body.data.branches.every((b: { planned: boolean }) => !b.planned)).toBe(true)
+    expect(res.body.data.branches[0].staffCount).toBe(1)
+  })
+
+  it('marks one branch planned and leaves the other alone', async () => {
+    const { id, a, token } = await twoBranches()
+    const res = await as(token)
+      .put(`/api/admin/work-schedule/${id}/branches/${a.id}/planned`, { planned: true })
+      .expect(200)
+
+    const branches = res.body.data.branches as { branchName: string; planned: boolean; plannedBy: { name: string } | null }[]
+    expect(branches.find(b => b.branchName === 'Bankerohan')!.planned).toBe(true)
+    expect(branches.find(b => b.branchName === 'Bankerohan')!.plannedBy).not.toBeNull()
+    expect(branches.find(b => b.branchName === 'TRD')!.planned).toBe(false)
+  })
+
+  it('can be unmarked', async () => {
+    const { id, a, token } = await twoBranches()
+    await as(token).put(`/api/admin/work-schedule/${id}/branches/${a.id}/planned`, { planned: true }).expect(200)
+    const res = await as(token)
+      .put(`/api/admin/work-schedule/${id}/branches/${a.id}/planned`, { planned: false })
+      .expect(200)
+    const branches = res.body.data.branches as { branchName: string; planned: boolean }[]
+    expect(branches.find(b => b.branchName === 'Bankerohan')!.planned).toBe(false)
+  })
+
+  it('refuses to change an approved schedule without the approver permission', async () => {
+    const { id, a, token } = await twoBranches()
+    const { token: gmToken } = await gm()
+    await as(gmToken).patch(`/api/admin/work-schedule/${id}`, { status: 'APPROVED' }).expect(200)
+    await as(token).put(`/api/admin/work-schedule/${id}/branches/${a.id}/planned`, { planned: true }).expect(409)
+  })
+})

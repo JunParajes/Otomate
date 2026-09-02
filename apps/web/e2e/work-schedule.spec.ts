@@ -27,6 +27,8 @@ const WEEKS = {
   nohire: '2026-10-15',
   numbering: '2026-11-12',
   clipping: '2026-11-19',
+  planning: '2026-11-26',
+  ownBranch: '2026-12-03',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -43,6 +45,20 @@ async function clearToasts(page: Page) {
     await btn.click().catch(() => {})
   }
   await page.waitForTimeout(150)
+}
+
+/**
+ * Submit, answering the "some branches are not marked as planned" prompt when it
+ * appears — which it does for any cutoff whose branches nobody has marked.
+ */
+async function submitForApproval(page: Page) {
+  await page.getByRole('button', { name: 'Submit' }).click()
+  const confirm = page.getByRole('button', { name: 'Submit anyway' })
+  // The modal takes a beat to mount; checking visibility immediately answers
+  // "no" and silently skips the confirmation.
+  await confirm.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {})
+  if (await confirm.isVisible().catch(() => false)) await confirm.click()
+  await expect(page.getByText('Awaiting approval')).toBeVisible()
 }
 
 /** The Sunday of a cutoff that starts on the given Thursday. */
@@ -143,10 +159,9 @@ test('a day off can record who covers it', async ({ page }) => {
 test('an approved plan stops being editable', async ({ page }) => {
   await openCutoff(page, WEEKS.approval)
 
-  await page.getByRole('button', { name: 'Submit' }).click()
-  // Wait for the state to actually change: Approve only appears once the
-  // schedule is submitted, so clicking straight away races the transition.
-  await expect(page.getByText('Awaiting approval')).toBeVisible()
+  // Approve only appears once the schedule is submitted, so this waits for the
+  // transition rather than racing it.
+  await submitForApproval(page)
   await clearToasts(page)
 
   await page.getByRole('button', { name: 'Approve' }).click()
@@ -253,8 +268,7 @@ test('a cutoff is labelled with its WS number', async ({ page }) => {
  */
 test('no status badge is cut off in the list', async ({ page }) => {
   await openCutoff(page, WEEKS.clipping)
-  await page.getByRole('button', { name: 'Submit' }).click()
-  await expect(page.getByText('Awaiting approval')).toBeVisible()
+  await submitForApproval(page)
   await clearToasts(page)
 
   await page.getByRole('button', { name: 'Back', exact: true }).click()
@@ -275,4 +289,40 @@ test('no status badge is cut off in the list', async ({ page }) => {
   // capitals are Mantine's text-transform, so matching the rendered form finds
   // nothing.
   await expect(page.getByText('Awaiting approval', { exact: true })).toBeVisible()
+})
+
+/**
+ * Which branches are finished.
+ *
+ * Submitting sends the whole cutoff, so a branch nobody has opened goes for
+ * approval alongside the ones that were planned. The list says which is which,
+ * and Submit names the stragglers rather than letting them through unnoticed.
+ */
+test('branches show whether they are planned, and Submit warns about the rest', async ({ page }) => {
+  await openCutoff(page, WEEKS.planning)
+
+  await expect(page.getByText('Not planned yet').first()).toBeVisible()
+
+  // Mark the fixture's branch as planned.
+  await page.getByText(FIXTURES.branch, { exact: true }).first().click()
+  await page.getByRole('button', { name: 'Mark as planned' }).first().click()
+  await expect(page.getByRole('button', { name: /^Planned/ })).toBeVisible()
+
+  await page.getByRole('button', { name: 'All branches' }).click()
+  await expect(page.getByText('Planned', { exact: true })).toBeVisible()
+})
+
+/**
+ * Their own branch is not "another" branch — offering it invites a choice that
+ * means nothing and reads in the grid as a transfer nobody planned.
+ */
+test('an employee cannot be sent to the branch they already work at', async ({ page }) => {
+  await openCutoff(page, WEEKS.ownBranch)
+  await openAllBranches(page)
+
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+  await page.getByRole('combobox', { name: /Working at another branch/ }).click()
+
+  // The only branch in the fixtures is her own, so there is nothing to offer.
+  await expect(page.getByRole('option', { name: FIXTURES.branch })).toHaveCount(0)
 })

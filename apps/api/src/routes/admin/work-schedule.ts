@@ -53,6 +53,7 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
       createdBy: { select: { id: true, name: true } },
       approvedBy: { select: { id: true, name: true } },
       entries: { include: entryInclude },
+      branchPlans: { include: { plannedBy: { select: { id: true, name: true } } } },
     },
   })
   if (!schedule) return null
@@ -70,11 +71,30 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
     orderBy: [{ branch: { name: 'asc' } }, { lastName: 'asc' }, { firstName: 'asc' }],
   })
 
+  /*
+   * Who is covering for whom, keyed by coverer and day.
+   *
+   * Built from the off days themselves rather than stored against the coverer,
+   * so it cannot drift out of step with the entry it describes.
+   */
+  const covering = new Map<string, { employeeName: string; branchName: string | null }>()
+
   const byEmployee = new Map<string, typeof schedule.entries>()
   for (const e of schedule.entries) {
     const list = byEmployee.get(e.employeeId) ?? []
     list.push(e)
     byEmployee.set(e.employeeId, list)
+  }
+
+  const byId = new Map(employees.map(e => [e.id, e]))
+  for (const e of schedule.entries) {
+    if (e.status !== 'OFF' || !e.coveredById) continue
+    const offPerson = byId.get(e.employeeId)
+    if (!offPerson) continue
+    covering.set(`${e.coveredById}|${day(e.day)}`, {
+      employeeName: formatEmployeeName(offPerson),
+      branchName: offPerson.branch?.name ?? null,
+    })
   }
 
   const rows: WorkScheduleRow[] = employees.map(emp => {
@@ -111,9 +131,39 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
           contacts: emp.contacts.map(c => ({ number: c.number, label: c.label })),
         },
       }),
+      covering: Object.fromEntries(
+        days
+          .map(d => [d, covering.get(`${emp.id}|${d}`)] as const)
+          .filter((pair): pair is [string, { employeeName: string; branchName: string | null }] =>
+            pair[1] !== undefined)
+      ),
       days: byDay,
     }
   })
+
+  /*
+   * Which branches HR has finished. Not derivable from the entries: a branch
+   * where everyone genuinely works all seven days looks exactly like one nobody
+   * has opened, and telling those apart before approval is the point.
+   */
+  const plans = new Map(schedule.branchPlans.map(p => [p.branchId, p]))
+  const branchOrder: WorkSchedule['branches'] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const key = row.branch?.id ?? '__none__'
+    if (seen.has(key)) continue
+    seen.add(key)
+    const plan = row.branch ? plans.get(row.branch.id) : undefined
+    branchOrder.push({
+      branchId: row.branch?.id ?? null,
+      branchName: row.branch?.name ?? 'Unassigned',
+      staffCount: rows.filter(r => (r.branch?.id ?? '__none__') === key).length,
+      planned: Boolean(plan),
+      plannedBy: plan?.plannedBy ?? null,
+      plannedAt: plan?.plannedAt.toISOString() ?? null,
+    })
+  }
+  branchOrder.sort((a, b) => a.branchName.localeCompare(b.branchName))
 
   return {
     id: schedule.id,
@@ -126,6 +176,7 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
     approvedBy: schedule.approvedBy,
     approvedAt: schedule.approvedAt?.toISOString() ?? null,
     rows,
+    branches: branchOrder,
     createdAt: schedule.createdAt.toISOString(),
   }
 }
@@ -248,13 +299,28 @@ router.patch(
       }
     }
 
+    /*
+     * "Working at another branch" means ANOTHER branch. Naming someone's own
+     * branch is a no-op that reads as a transfer in the grid, so it is
+     * normalised away here rather than only hidden in the picker — the API is
+     * where the rule has to hold.
+     */
+    const staff = await prisma.employee.findMany({
+      where: { id: { in: parsed.data.entries.map(e => e.employeeId) } },
+      select: { id: true, branchId: true },
+    })
+    const homeBranch = new Map(staff.map(e => [e.id, e.branchId]))
+
     // One transaction: a half-saved row would leave the grid showing something
     // nobody chose.
     await prisma.$transaction(
       parsed.data.entries.map(e => {
+        const assigned = e.assignedBranchId && e.assignedBranchId !== homeBranch.get(e.employeeId)
+          ? e.assignedBranchId
+          : null
         const data = {
           status: e.status,
-          assignedBranchId: e.assignedBranchId ?? null,
+          assignedBranchId: assigned,
           // Only meaningful on the matching kind of day; cleared otherwise so a
           // status change cannot leave a stale colleague attached.
           coveredById: e.status === 'OFF' ? e.coveredById ?? null : null,
@@ -319,6 +385,38 @@ router.patch(
         ...(next && next !== 'APPROVED' && { approvedById: null, approvedAt: null }),
       },
     })
+    res.json({ data: await loadSchedule(existing.id, can(req, 'hr:read')), error: null })
+  })
+)
+
+/**
+ * Marks a branch planned, or takes the mark off again.
+ *
+ * HR works branch by branch, and before this there was no way to tell a branch
+ * that was finished from one nobody had opened — Submit sent the lot either way.
+ */
+router.put(
+  '/:id/branches/:branchId/planned',
+  requirePermission('schedule:write'),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.workSchedule.findUnique({ where: { id: pathParam(req, 'id') } })
+    if (!existing) throw new HttpError(404, 'Schedule not found', 'NOT_FOUND')
+    assertEditable(existing.status, req)
+
+    const branchId = pathParam(req, 'branchId')
+    const planned = req.body?.planned !== false
+
+    if (planned) {
+      await prisma.workScheduleBranchPlan.upsert({
+        where: { scheduleId_branchId: { scheduleId: existing.id, branchId } },
+        update: { plannedAt: new Date(), plannedById: req.auth?.userId ?? null },
+        create: { scheduleId: existing.id, branchId, plannedById: req.auth?.userId ?? null },
+      })
+    } else {
+      await prisma.workScheduleBranchPlan.deleteMany({
+        where: { scheduleId: existing.id, branchId },
+      })
+    }
     res.json({ data: await loadSchedule(existing.id, can(req, 'hr:read')), error: null })
   })
 )

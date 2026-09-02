@@ -268,8 +268,29 @@ export interface WorkScheduleRow {
    */
   eligibility: 'UNDER_ONE_MONTH' | 'ELIGIBLE' | 'NO_HIRE_DATE'
   details?: WorkScheduleRowDetails
+
+  /**
+   * Days this person is named as somebody else's cover, keyed by day.
+   *
+   * DERIVED from the other person's off day, never written onto this person's
+   * entry. Storing it in both places would mean two records of one fact that
+   * have to be kept in step: clearing "covered by" on the off day would leave
+   * the coverer still marked, and nobody would notice until the week was run.
+   * Deriving it means it appears and disappears on its own.
+   */
+  covering: Record<string, { employeeName: string; branchName: string | null }>
   /** Keyed by day, so a cell lookup is not a scan of seven entries. */
   days: Record<string, WorkScheduleEntryRecord>
+}
+
+/** A branch, and whether HR has finished planning it for this cutoff. */
+export interface WorkScheduleBranchState {
+  branchId: string | null
+  branchName: string
+  staffCount: number
+  planned: boolean
+  plannedBy: { id: string; name: string } | null
+  plannedAt: string | null
 }
 
 export interface WorkSchedule {
@@ -283,5 +304,7 @@ export interface WorkSchedule {
   approvedBy: { id: string; name: string } | null
   approvedAt: string | null
   rows?: WorkScheduleRow[]
+  /** One per branch with staff in this cutoff, in the grid's own order. */
+  branches?: WorkScheduleBranchState[]
   createdAt: string
 }

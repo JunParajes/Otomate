@@ -19,9 +19,9 @@
   background: var(--mantine-color-body);
   /* Narrower than it was: the names are short and the days were the ones
      cramped for the sake of a column of whitespace. */
-  width: 170px;
-  min-width: 170px;
-  max-width: 170px;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
 }
 
 .groupRow {
@@ -31,7 +31,7 @@
 
 .cell {
   width: 100%;
-  min-height: 44px;
+  min-height: 52px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -48,9 +48,14 @@
 .cell:disabled { cursor: default; opacity: 0.75; }
 .cell:not(:disabled):hover { border-color: var(--mantine-color-blue-5); }
 
-.mark { font-size: 14px; font-weight: 600; }
+.mark { font-size: 15px; font-weight: 600; }
+
+/* The two derived lines are colour-coded as well as worded, so a glance down a
+   column separates "sent elsewhere" from "covering someone". */
+.subBranch { color: var(--mantine-color-violet-7); font-weight: 500; }
+.subCover { color: var(--mantine-color-teal-7); font-weight: 500; }
 .sub {
-  font-size: 9px;
+  font-size: 10.5px;
   color: var(--mantine-color-dimmed);
   max-width: 100%;
   overflow: hidden;

@@ -21,4 +21,7 @@ export const workScheduleApi = {
   update: (id: string, input: UpdateWorkScheduleInput) =>
     unwrap<WorkSchedule>(api.patch(`/api/admin/work-schedule/${id}`, input)),
   remove: (id: string) => unwrap<{ success: boolean }>(api.delete(`/api/admin/work-schedule/${id}`)),
+  /** Marks a branch as finished planning for this cutoff, or unmarks it. */
+  setBranchPlanned: (id: string, branchId: string, planned: boolean) =>
+    unwrap<WorkSchedule>(api.put(`/api/admin/work-schedule/${id}/branches/${branchId}/planned`, { planned })),
 }

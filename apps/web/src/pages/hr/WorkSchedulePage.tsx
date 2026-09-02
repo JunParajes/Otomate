@@ -5,7 +5,8 @@ import {
   Text, Title, Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconAlertTriangle, IconArrowLeft, IconCheck } from '@tabler/icons-react'
+import { modals } from '@mantine/modals'
+import { IconAlertTriangle, IconArrowLeft, IconCheck, IconCircleCheck } from '@tabler/icons-react'
 import {
   WORK_DAY_HINTS, WORK_DAY_LABELS, WORK_DAY_MARKS, WORK_DAY_STATUSES,
   WORK_SCHEDULE_STATUS_LABELS, cutoffCode, formatCutoff, formatCutoffLabel,
@@ -109,24 +110,39 @@ export default function WorkSchedulePage() {
   function cellOf(row: WorkScheduleRow, day: string) {
     const pending = draft.get(keyOf(row.employeeId, day))
     const saved = row.days[day]
+    // Derived from someone else's off day, so it applies whether or not this
+    // person has an entry of their own yet.
+    const cover = row.covering[day] ?? null
+    const nameOf = (id: string | null | undefined) =>
+      id ? schedule?.rows?.find(r => r.employeeId === id)?.name ?? null : null
+
     if (pending) {
       return {
         status: pending.status,
         branchName: pending.assignedBranchId
           ? branches.data?.find(b => b.id === pending.assignedBranchId)?.name ?? null
           : null,
-        partner: null as string | null,
+        partner: pending.status === 'OFF' ? nameOf(pending.coveredById) : nameOf(pending.pairedWithId),
+        partnerLabel: pending.status === 'OFF' ? 'Cover' : 'With',
+        cover,
         pending: true,
       }
     }
-    if (!saved) return { status: null, branchName: null, partner: null, pending: false }
+    if (!saved) {
+      return { status: null, branchName: null, partner: null, partnerLabel: '', cover, pending: false }
+    }
     return {
       status: saved.status,
       branchName: saved.assignedBranch?.name ?? null,
-      partner: saved.coveredBy?.name ?? saved.pairedWith?.name ?? null,
+      partner: saved.status === 'OFF' ? saved.coveredBy?.name ?? null : saved.pairedWith?.name ?? null,
+      partnerLabel: saved.status === 'OFF' ? 'Cover' : 'With',
+      cover,
       pending: false,
     }
   }
+
+  /** First name only — the grid is scanned, and surnames repeat across families. */
+  const firstName = (full: string) => full.split(' ')[0] ?? full
 
   function setCell(row: WorkScheduleRow, day: string, patch: Partial<WorkScheduleEntryInput>) {
     setDraft(prev => {
@@ -162,6 +178,53 @@ export default function WorkSchedulePage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function setBranchPlanned(branchId: string, planned: boolean) {
+    if (!schedule) return
+    setSaving(true)
+    try {
+      setSchedule(await workScheduleApi.setBranchPlanned(schedule.id, branchId, planned))
+    } catch (e) {
+      notifications.show({
+        color: 'red',
+        title: 'Could not update the branch',
+        message: e instanceof Error ? e.message : 'Something went wrong',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /**
+   * Submitting sends every branch, so anything left unplanned goes for approval
+   * unnoticed. Name them and make it a decision rather than a surprise — a
+   * branch with genuinely nothing to change is legitimate, so this asks rather
+   * than blocks.
+   */
+  function submitForApproval() {
+    const pending = (schedule?.branches ?? []).filter(b => !b.planned)
+    if (pending.length === 0) {
+      void setStatus('SUBMITTED', 'Submitted for approval')
+      return
+    }
+    modals.openConfirmModal({
+      title: 'Some branches are not marked as planned',
+      children: (
+        <Stack gap="xs">
+          <Text size="sm">
+            {pending.length} branch(es) have not been marked as planned for this cutoff:
+          </Text>
+          <Text size="sm" fw={500}>{pending.map(b => b.branchName).join(', ')}</Text>
+          <Text size="sm" c="dimmed">
+            Submitting sends the whole cutoff, these branches included, exactly as they stand.
+          </Text>
+        </Stack>
+      ),
+      labels: { confirm: 'Submit anyway', cancel: 'Go back' },
+      confirmProps: { color: 'orange' },
+      onConfirm: () => void setStatus('SUBMITTED', 'Submitted for approval'),
+    })
   }
 
   async function setStatus(status: WorkSchedule['status'], message: string) {
@@ -249,22 +312,31 @@ export default function WorkSchedulePage() {
               <Badge variant="light">{schedule.rows?.length ?? 0} staff</Badge>
             </Group>
           </Card>
-          {groups.map(([branchName, rows]) => (
+          {(schedule.branches ?? []).map(b => (
             <Card
-              key={branchName}
+              key={b.branchName}
               withBorder
               padding="md"
               radius="md"
               className={classes.branchCard}
-              onClick={() => setOpenBranch(branchName)}
+              onClick={() => setOpenBranch(b.branchName)}
             >
               <Group justify="space-between" wrap="nowrap">
-                <Text fw={500}>{branchName}</Text>
+                <Group gap="xs" wrap="nowrap">
+                  {b.planned
+                    ? <IconCircleCheck size={18} color="var(--mantine-color-green-6)" />
+                    : <IconAlertTriangle size={18} color="var(--mantine-color-gray-5)" />}
+                  <Text fw={500}>{b.branchName}</Text>
+                </Group>
                 <Group gap="xs">
-                  {rows.some(r => r.eligibility === 'UNDER_ONE_MONTH') && (
-                    <Badge size="sm" variant="light" color="orange">has new staff</Badge>
-                  )}
-                  <Badge variant="light" color="gray">{rows.length} staff</Badge>
+                  <Badge
+                    size="sm"
+                    variant="light"
+                    color={b.planned ? 'green' : 'gray'}
+                  >
+                    {b.planned ? 'Planned' : 'Not planned yet'}
+                  </Badge>
+                  <Badge variant="light" color="gray">{b.staffCount} staff</Badge>
                 </Group>
               </Group>
             </Card>
@@ -285,8 +357,35 @@ export default function WorkSchedulePage() {
             .map(([groupName, groupRows]) => (
               <Card key={groupName} withBorder padding="md" radius="md">
                 <Stack gap="sm">
-                  <Title order={5}>{groupName}</Title>
-          <Table.ScrollContainer minWidth={780}>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Title order={5}>{groupName}</Title>
+                    {(() => {
+                      const state = (schedule.branches ?? []).find(b => b.branchName === groupName)
+                      if (!state?.branchId || !canWrite) return null
+                      return state.planned ? (
+                        <Button
+                          size="compact-sm"
+                          variant="light"
+                          color="green"
+                          leftSection={<IconCircleCheck size={15} />}
+                          onClick={() => void setBranchPlanned(state.branchId!, false)}
+                          loading={saving}
+                        >
+                          Planned{state.plannedBy ? ` by ${state.plannedBy.name}` : ''}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="compact-sm"
+                          variant="default"
+                          onClick={() => void setBranchPlanned(state.branchId!, true)}
+                          loading={saving}
+                        >
+                          Mark as planned
+                        </Button>
+                      )
+                    })()}
+                  </Group>
+          <Table.ScrollContainer minWidth={850}>
             {/* No highlightOnHover: lighting up a whole row of eighty is noise, and
                   the cell being pointed at is the thing that matters. */}
                 <Table withTableBorder verticalSpacing={6} className={classes.grid}>
@@ -296,7 +395,7 @@ export default function WorkSchedulePage() {
                   {schedule.days.map(d => {
                     const date = new Date(`${d}T00:00:00.000Z`)
                     return (
-                      <Table.Th key={d} w={86} ta="center">
+                      <Table.Th key={d} w={100} ta="center">
                         <Text size="xs" fw={700}>{DAY_NAMES[date.getUTCDay()]}</Text>
                         <Text size="xs" c="dimmed">{d.slice(8)}/{d.slice(5, 7)}</Text>
                       </Table.Th>
@@ -352,8 +451,26 @@ export default function WorkSchedulePage() {
                                 <span className={classes.mark}>
                                   {cell.status ? WORK_DAY_MARKS[cell.status] : '·'}
                                 </span>
-                                {cell.branchName && <span className={classes.sub}>{cell.branchName}</span>}
-                                {cell.partner && <span className={classes.sub}>{cell.partner.split(' ')[0]}</span>}
+                                {/*
+                                  Spelled out rather than left as a bare name. "Ben"
+                                  under an Off could mean covering, covered by, or
+                                  working alongside — the word removes the guess, and
+                                  there is room for it.
+                                */}
+                                {cell.branchName && (
+                                  <span className={`${classes.sub} ${classes.subBranch}`}>@ {cell.branchName}</span>
+                                )}
+                                {cell.partner && (
+                                  <span className={classes.sub}>{cell.partnerLabel} {firstName(cell.partner)}</span>
+                                )}
+                                {cell.cover && (
+                                  <span className={`${classes.sub} ${classes.subCover}`}>
+                                    Covers {firstName(cell.cover.employeeName)}
+                                    {cell.cover.branchName && cell.cover.branchName !== row.branch?.name
+                                      ? ` @ ${cell.cover.branchName}`
+                                      : ''}
+                                  </span>
+                                )}
                               </button>
                             </Table.Td>
                           )
@@ -502,7 +619,9 @@ export default function WorkSchedulePage() {
               <Select
                 label="Working at another branch"
                 description="Leave blank for their own branch"
-                data={branchOptions}
+                // Their own branch is not "another" one — offering it invites a
+                // choice that means nothing and reads as a transfer in the grid.
+                data={branchOptions.filter(b => b.value !== editing.row.branch?.id)}
                 value={assigned}
                 onChange={v => setCell(editing.row, editing.day, { assignedBranchId: v })}
                 clearable
@@ -544,7 +663,7 @@ export default function WorkSchedulePage() {
         >
           <Button variant="default" onClick={() => navigate('/hr/work-schedule')}>Back</Button>
           {schedule.status === 'DRAFT' && !dirty && (
-            <Button variant="light" onClick={() => void setStatus('SUBMITTED', 'Submitted for approval')} loading={saving}>
+            <Button variant="light" onClick={submitForApproval} loading={saving}>
               Submit
             </Button>
           )}
