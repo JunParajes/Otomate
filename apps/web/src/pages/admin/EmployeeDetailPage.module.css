@@ -1,0 +1,25 @@
+/*
+ * The section index for the 201 file.
+ *
+ * Sticky rather than sitting at the top of the card: a jump bar you have to
+ * scroll back up to reach is no better than scrolling to the section itself.
+ *
+ * `top` is offset by the AppShell header, which is fixed — sticking at 0 would
+ * park the row underneath it, where it is invisible but still swallowing taps.
+ */
+.sectionNav {
+  position: sticky;
+  top: var(--app-shell-header-offset, 0px);
+  z-index: 2;
+  background: var(--mantine-color-body);
+  padding: var(--mantine-spacing-xs) 0;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+/*
+ * Anchored sections stop below the header AND the nav row above, rather than
+ * behind them. Without this, jumping to a section hides its own heading.
+ */
+.section {
+  scroll-margin-top: calc(var(--app-shell-header-offset, 0px) + 52px);
+}

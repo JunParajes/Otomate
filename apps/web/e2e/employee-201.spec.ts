@@ -28,19 +28,36 @@ async function openRecord(page: Page) {
   await expect(page.getByRole('button', { name: 'Save record' })).toBeVisible()
 }
 
-test('age and length of service appear from the dates, without being stored', async ({ page }) => {
+test('age fills itself from the date of birth, and cannot be typed into', async ({ page }) => {
   await openRecord(page)
+  const ageBox = page.getByLabel('Age', { exact: true })
 
+  await expect(ageBox).toHaveValue('')
   await page.getByLabel('Date of birth').fill('1998-04-20')
-  await expect(page.getByText(/\d+ years old/)).toBeVisible()
+  await expect(ageBox).not.toHaveValue('')
+  expect(Number(await ageBox.inputValue())).toBeGreaterThan(0)
 
+  // Read-only, so it can never drift out of step with the date beside it.
+  await expect(ageBox).toHaveAttribute('readonly', '')
+
+  /*
+   * And it lines up with the rest of the row. This is the whole reason it is a
+   * field rather than description text: a Mantine `description` renders between
+   * the label and the input, which pushed the date box below everything else on
+   * the row.
+   */
+  const dob = (await page.getByLabel('Date of birth').boundingBox())!
+  const age = (await ageBox.boundingBox())!
+  const birthPlace = (await page.getByLabel('Birth place').boundingBox())!
+  expect(Math.abs(dob.y - age.y)).toBeLessThan(2)
+  expect(Math.abs(dob.y - birthPlace.y)).toBeLessThan(2)
+})
+
+test('length of service is derived from the hire date', async ({ page }) => {
+  await openRecord(page)
   await page.getByLabel('Date hired').fill('2023-04-10')
   await expect(page.getByText(/of service/)).toBeVisible()
-
-  // Neither is a field anyone can type into — that is the whole point of
-  // deriving them. Exact, because getByLabel matches substrings and "Age"
-  // otherwise finds "Marriage contract".
-  await expect(page.getByLabel('Age', { exact: true })).toHaveCount(0)
+  // Still derived, so there is nothing to type into.
   await expect(page.getByLabel('Length of service', { exact: true })).toHaveCount(0)
 })
 
@@ -77,3 +94,63 @@ test('the new text fields accept real keystrokes and save', async ({ page }) => 
   await expect(page.getByLabel('Weight')).toHaveValue('62.5')
   await expect(page.getByLabel('Remarks')).toHaveValue('Transferred from Matina.')
 })
+
+/**
+ * The section index.
+ *
+ * This is here because it broke silently once already: the nav started inside
+ * the Mantine Card, whose `overflow: hidden` disables position: sticky on
+ * everything within it. Nothing errored — the row simply scrolled away, and the
+ * page looked fine in a screenshot. Only measured positions catch that.
+ */
+test('the section index stays pinned and lands headings clear of itself', async ({ page }) => {
+  await openRecord(page)
+  const nav = page.locator('[class*="sectionNav"]')
+
+  await page.getByRole('button', { name: 'Documents', exact: true }).click()
+  await page.waitForTimeout(800)
+
+  const navBox = await nav.boundingBox()
+  const heading = await page.getByText('Documents & notes').boundingBox()
+
+  // Still on screen after scrolling most of the way down the record.
+  expect(navBox).not.toBeNull()
+  expect(navBox!.y).toBeGreaterThanOrEqual(0)
+  expect(navBox!.y).toBeLessThan(200)
+
+  // And the section it jumped to is BELOW it, not hidden underneath.
+  expect(heading!.y).toBeGreaterThanOrEqual(navBox!.y + navBox!.height)
+})
+
+test('every section chip actually scrolls to its section', async ({ page }) => {
+  await openRecord(page)
+  const nav = page.locator('[class*="sectionNav"]')
+
+  // Chip label -> the id it should scroll to. A chip whose id no longer matches
+  // a section scrolls nowhere and looks like a dead button, which is easy to
+  // miss by eye and impossible to miss here.
+  const chips: [string, string][] = [
+    ['Pay', 'pay'],
+    ['Documents', 'documents'],
+    ['Gov IDs', 'gov-ids'],
+    ['Employment', 'employment'],
+    ['Emergency', 'emergency'],
+    ['Contact', 'contact'],
+    ['Personal', 'personal'],
+  ]
+
+  for (const [label, id] of chips) {
+    await page.getByRole('button', { name: label, exact: true }).click()
+    await page.waitForTimeout(700)
+
+    const navBox = (await nav.boundingBox())!
+    const section = (await page.locator(`#${id}`).boundingBox())!
+    const viewport = page.viewportSize()!
+
+    // The section starts below the pinned nav and inside the viewport — that is
+    // what "the chip worked" means.
+    expect(section.y, `${label} should land below the nav`).toBeGreaterThanOrEqual(navBox.y + navBox.height - 2)
+    expect(section.y, `${label} should be on screen`).toBeLessThan(viewport.height)
+  }
+})
+
