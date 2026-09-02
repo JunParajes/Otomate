@@ -8,6 +8,7 @@ import categoriesRouter from './categories'
 import productsRouter from './products'
 import employeesRouter from './employees'
 import positionsRouter from './positions'
+import workScheduleRouter from './work-schedule'
 import dsirRouter from './dsir'
 
 const router = Router()
@@ -23,6 +24,7 @@ router.use('/categories', categoriesRouter)
 router.use('/products', productsRouter)
 router.use('/employees', employeesRouter)
 router.use('/positions', positionsRouter)
+router.use('/work-schedule', workScheduleRouter)
 router.use('/dsir', dsirRouter)
 
 export default router

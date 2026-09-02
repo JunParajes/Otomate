@@ -92,6 +92,16 @@ revisit this "when real staff data accumulates"; that has happened.
       the employee and already end at payroll, and nothing yet consumes them.
       Includes the review step — approve, waive or spread a deduction — which is
       where wrong deductions get caught.
+- [x] **5g — the work schedule (the plan).** Live at `/hr/work-schedule`. One
+      grid per Thursday–Wednesday cutoff, pre-filled as scheduled so HR marks
+      only the exceptions; five statuses, cross-branch assignment, and who
+      covers a day off. Drafted by HR, approved by the General Manager, and
+      locked once approved.
+- [ ] **5h — the actual of what happened.** The other half of the split above:
+      absences, half days, suspensions and late changes recorded AGAINST an
+      approved plan rather than overwriting it. This is why the plan is frozen
+      on approval — the spreadsheet lost the original plan every cutoff because
+      the same cells were edited all week.
 - [ ] **5c — attendance.** Days present, absences, leaves. Not biometrics.
 - [ ] **5d — payroll runs.** Payslips and 13th month pay. Contribution tables must
       be effective-dated **data**, never constants in code.

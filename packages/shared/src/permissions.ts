@@ -34,6 +34,10 @@ export const PERMISSIONS = [
   // Separate from employees:write: adding a job role changes what every branch
   // can pick from, which is administration rather than an everyday staff edit.
   { name: 'positions:write', category: 'Employees', description: 'Add, rename and remove employee positions' },
+  { name: 'schedule:read', category: 'Employees', description: 'View work schedules' },
+  { name: 'schedule:write', category: 'Employees', description: 'Draft and edit the work schedule' },
+  // The General Manager approves; drafting it is not the same as signing it off.
+  { name: 'schedule:approve', category: 'Employees', description: 'Approve or return a submitted work schedule' },
   // Separate from employees:* so a branch manager can see who works for them
   // without seeing government IDs or pay. Salary is split again because it is
   // the more sensitive of the two socially, and far fewer people need it.

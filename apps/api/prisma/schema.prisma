@@ -27,6 +27,8 @@ model User {
   dsirReports        DsirReport[]
   salaryRecords      EmployeeSalary[]
   rentRecords        BranchRent[]
+  schedulesCreated   WorkSchedule[]   @relation("ScheduleCreatedBy")
+  schedulesApproved  WorkSchedule[]   @relation("ScheduleApprovedBy")
 
   @@index([roleId])
   @@index([branchId])
@@ -105,6 +107,8 @@ model Branch {
   inboundSnapshotsFrom DsirInboundSnapshot[]  @relation("DsirInboundFrom")
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
+  /// Staff from other branches planned to work here on a given day.
+  scheduledVisitors    WorkScheduleEntry[]    @relation("ScheduleAssignedBranch")
 }
 
 /// One permit held by one branch.
@@ -269,6 +273,86 @@ model EmployeePosition {
   updatedAt DateTime   @updatedAt
 }
 
+/// What an employee is planned to be doing on one day of a cutoff.
+///
+/// The five the branches actually use. Anything about what HAPPENED — absent,
+/// half day, suspended, resigned — is deliberately NOT here: the plan and the
+/// actual were the same spreadsheet before, which is why the plan could never be
+/// looked back on. Actuals get their own record later.
+enum WorkDayStatus {
+  /// The tick. Scheduled; for the ladies the Team Leader decides opener/closer.
+  SCHEDULED
+  /// The X. No shift that day — not a day off, simply not rostered.
+  NOT_SCHEDULED
+  OFF
+  /// Commissary staff sent to the bakery counter when there is nothing to cook.
+  FRONTLINE
+  /// The manager naming the opener directly instead of leaving it to the Team Leader.
+  OPENER
+}
+
+enum WorkScheduleStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+/// One cutoff's plan, for every branch at once — the shape of the spreadsheet
+/// this replaces.
+///
+/// The week runs THURSDAY to WEDNESDAY. That is the payroll cutoff, not a
+/// convention worth "fixing": every figure derived from a week has to line up
+/// with it.
+model WorkSchedule {
+  id        String             @id @default(cuid())
+  /// The Thursday. Enforced in the API, and unique so one cutoff cannot be
+  /// planned twice.
+  weekStart DateTime           @unique @db.Date
+  status    WorkScheduleStatus @default(DRAFT)
+  notes     String?
+
+  createdById  String?
+  createdBy    User?     @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
+  /// The General Manager. One approver, not one per branch.
+  approvedById String?
+  approvedBy   User?     @relation("ScheduleApprovedBy", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+
+  entries   WorkScheduleEntry[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+}
+
+/// One employee, one day.
+model WorkScheduleEntry {
+  id         String        @id @default(cuid())
+  scheduleId String
+  schedule   WorkSchedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  /// The calendar day, not an offset: a date is unambiguous when read back.
+  day        DateTime      @db.Date
+  status     WorkDayStatus @default(SCHEDULED)
+
+  /// Set when they are planned to work somewhere other than their own branch —
+  /// the TRD/Pan/Km11 cells in the spreadsheet.
+  assignedBranchId String?
+  assignedBranch   Branch? @relation("ScheduleAssignedBranch", fields: [assignedBranchId], references: [id])
+
+  /// "Off/Dorilag" — off, with Dorilag covering. Only meaningful on an OFF day.
+  coveredById  String?
+  coveredBy    Employee? @relation("ScheduleCoveredBy", fields: [coveredById], references: [id])
+  /// "w/ Dorilag" — rostered alongside someone. Only meaningful on a working day.
+  pairedWithId String?
+  pairedWith   Employee? @relation("SchedulePairedWith", fields: [pairedWithId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([scheduleId, employeeId, day])
+  @@index([scheduleId, day])
+}
+
 model Product {
   id               String                @id @default(cuid())
   /// Optional short code (BRD-001). Unique when present; Postgres allows many NULLs.
@@ -367,6 +451,10 @@ model Employee {
   /// somebody cannot be deleted out from under them.
   positionId   String
   position     EmployeePosition @relation(fields: [positionId], references: [id])
+  /// Short area name — "Panacan", "B.A.T" — shown on the work schedule so the
+  /// manager can see at a glance who lives near the branch. Deliberately not the
+  /// full address: this is scanned across eighty rows, not read.
+  homeArea     String?
   branchId     String?
   branch       Branch?          @relation(fields: [branchId], references: [id])
   userId       String?          @unique
@@ -443,6 +531,13 @@ model Employee {
   closedFor   DsirReport[]      @relation("DsirCloser")
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  // ─── Work schedule ───────────────────────────────────────────────────────
+  scheduleEntries WorkScheduleEntry[]
+  /// Days this person is covering someone else's day off.
+  coveringEntries WorkScheduleEntry[] @relation("ScheduleCoveredBy")
+  /// Days someone else is rostered alongside them.
+  pairedEntries   WorkScheduleEntry[] @relation("SchedulePairedWith")
 
   @@index([branchId])
   @@index([isActive])

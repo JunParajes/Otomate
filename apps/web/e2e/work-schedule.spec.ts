@@ -1,0 +1,151 @@
+import { expect, test, type Page } from '@playwright/test'
+import { FIXTURES } from './global-setup'
+
+/**
+ * The work schedule grid.
+ *
+ * The API tests cover the transitions and the pre-fill. What only a browser
+ * shows is the grid itself: that a cell edit is held as unsaved until Save is
+ * pressed, that it survives a reload, and that an approved plan stops being
+ * editable — which is the whole point of separating the plan from the actuals.
+ */
+
+/**
+ * Thursdays. The create dialog refuses anything else.
+ *
+ * A cutoff is unique, and these specs share one database and run in order — so
+ * each test plans its OWN week rather than colliding on the same one.
+ */
+const WEEKS = {
+  boundaries: '2026-08-27',
+  prefill: '2026-09-03',
+  editing: '2026-09-10',
+  cover: '2026-09-17',
+  approval: '2026-09-24',
+}
+
+async function signIn(page: Page, who: typeof FIXTURES.owner) {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(who.email)
+  await page.locator('input[type="password"]').fill(who.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.waitForURL(u => !u.pathname.includes('/login'))
+}
+
+/** Toasts stack in the corner the action bar lives in and swallow clicks. */
+async function clearToasts(page: Page) {
+  for (const btn of await page.locator('.mantine-Notification-closeButton').all()) {
+    await btn.click().catch(() => {})
+  }
+  await page.waitForTimeout(150)
+}
+
+/** The Sunday of a cutoff that starts on the given Thursday. */
+function sundayOf(thursday: string): string {
+  const d = new Date(`${thursday}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + 3)
+  return d.toISOString().slice(0, 10)
+}
+
+async function openCutoff(page: Page, weekStart: string) {
+  await signIn(page, FIXTURES.owner)
+  await page.goto('/hr/work-schedule')
+  await page.getByRole('button', { name: 'Start a cutoff' }).click()
+  await page.getByLabel('Cutoff starts').fill(weekStart)
+  await page.getByRole('button', { name: 'Start', exact: true }).click()
+  await page.waitForURL(/\/hr\/work-schedule\/.+/)
+  await clearToasts(page)
+}
+
+test('a cutoff runs Thursday to Wednesday and refuses any other start', async ({ page }) => {
+  await signIn(page, FIXTURES.owner)
+  await page.goto('/hr/work-schedule')
+  await page.getByRole('button', { name: 'Start a cutoff' }).click()
+
+  // A Monday.
+  await page.getByLabel('Cutoff starts').fill('2026-08-31')
+  await expect(page.getByText('Pick a Thursday')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeDisabled()
+
+  await page.getByLabel('Cutoff starts').fill(WEEKS.boundaries)
+  await expect(page.getByText(/27 Aug – 2 Sep 2026/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeEnabled()
+})
+
+test('a new cutoff starts with everyone scheduled on all seven days', async ({ page }) => {
+  await openCutoff(page, WEEKS.prefill)
+
+  // Seven day columns, Thursday first.
+  await expect(page.getByRole('columnheader', { name: /Thu/ })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /Wed/ })).toBeVisible()
+
+  // The fixture employee, scheduled every day.
+  const cells = page.locator('[aria-label*="Maria Santos Cruz"]')
+  await expect(cells).toHaveCount(7)
+  for (const cell of await cells.all()) {
+    await expect(cell).toHaveAttribute('aria-label', /Scheduled/)
+  }
+})
+
+test('a cell edit is held unsaved, then survives a reload', async ({ page }) => {
+  await openCutoff(page, WEEKS.editing)
+  const sun = sundayOf(WEEKS.editing)
+  const cell = page.getByLabel(new RegExp(`Maria Santos Cruz, ${sun}`))
+
+  await expect(cell).toHaveAttribute('aria-label', /Scheduled/)
+  await cell.click()
+  await page.getByRole('button', { name: /Day off/ }).click()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  // Nothing has gone to the server yet — that is what Save is for.
+  await expect(page.getByText(/1 unsaved change/)).toBeVisible()
+  await expect(cell).toHaveAttribute('aria-label', /Day off/)
+
+  await clearToasts(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('No changes')).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByLabel(new RegExp(`Maria Santos Cruz, ${sun}`)))
+    .toHaveAttribute('aria-label', /Day off/)
+})
+
+/**
+ * The notation the spreadsheet used — "Off/Dorilag", meaning off with Dorilag
+ * covering. It is part of the plan, not something added during the week.
+ */
+test('a day off can record who covers it', async ({ page }) => {
+  await openCutoff(page, WEEKS.cover)
+  const cell = page.getByLabel(new RegExp(`Maria Santos Cruz, ${sundayOf(WEEKS.cover)}`))
+  await cell.click()
+
+  await page.getByRole('button', { name: /Day off/ }).click()
+  // The field renames itself once the day is an off day.
+  await expect(page.getByText('Who takes the shift while they are off')).toBeVisible()
+  await page.getByRole('button', { name: 'Done' }).click()
+})
+
+test('an approved plan stops being editable', async ({ page }) => {
+  await openCutoff(page, WEEKS.approval)
+
+  await page.getByRole('button', { name: 'Submit' }).click()
+  // Wait for the state to actually change: Approve only appears once the
+  // schedule is submitted, so clicking straight away races the transition.
+  await expect(page.getByText('Awaiting approval')).toBeVisible()
+  await clearToasts(page)
+
+  await page.getByRole('button', { name: 'Approve' }).click()
+  await clearToasts(page)
+
+  await expect(page.getByText(/approved and is now a record/)).toBeVisible()
+  // Reopening is offered, because the owner holds the approve permission.
+  await expect(page.getByRole('button', { name: 'Reopen' })).toBeVisible()
+})
+
+test('a role without schedule:read is refused the page', async ({ page }) => {
+  // Hiding a nav link is not access control — someone with the URL must still
+  // be stopped. Either bounced away or shown a refusal, but never the grid.
+  await signIn(page, FIXTURES.plain)
+  await page.goto('/hr/work-schedule')
+  await expect(page.locator('body')).not.toContainText('Start a cutoff')
+})

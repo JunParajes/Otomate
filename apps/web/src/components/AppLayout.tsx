@@ -35,6 +35,7 @@ import {
   IconShieldLock,
   IconUsers,
   IconBriefcase,
+  IconCalendarWeek,
   IconId,
   IconClipboardList,
   IconArchive,
@@ -120,6 +121,7 @@ const ADMIN: NavItem[] = [
   { label: 'Users', to: '/admin/users', icon: IconUsers, permission: 'users:read' },
   { label: 'Employees', to: '/admin/employees', icon: IconId, permission: 'employees:read' },
   { label: 'Positions', to: '/admin/positions', icon: IconBriefcase, permission: 'employees:read' },
+  { label: 'Work schedule', to: '/hr/work-schedule', icon: IconCalendarWeek, permission: 'schedule:read' },
   { label: 'Roles', to: '/admin/roles', icon: IconShieldLock, permission: 'roles:read' },
   { label: 'Branches', to: '/admin/branches', icon: IconBuildingStore, permission: 'branches:read' },
 ]

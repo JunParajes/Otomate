@@ -137,6 +137,27 @@ Lives at `/admin/employees/:id`. It shipped as a modal and was converted to a
 route — a record this size needs to be linkable, printable and closable with the
 back gesture, and 5b–5e all hang off it.
 
+### 5g. The work schedule — DONE
+
+The plan for one cutoff, and only the plan.
+
+The cutoff runs **Thursday to Wednesday**. That is the payroll week; every figure
+derived from a week is reckoned against it, so it is a fact to build on rather
+than a convention to normalise away.
+
+The decision that shapes everything else: **the plan and the actual are separate
+records.** In the spreadsheet they were the same cells — HR drafted the week,
+then edited those same cells as absences and off-requests came in, so by
+Wednesday the original plan no longer existed. Nobody could ask "what did we
+intend, and what happened instead?", which is the only question that makes the
+schedule worth keeping. Approving a plan freezes it; the actuals (5h) will point
+at it.
+
+Codes are the five the branches use — scheduled, no-schedule, off, frontline,
+opener — plus the branch someone is sent to and the colleague covering a day off.
+Absent, half-day, suspended and resigned are deliberately absent: those describe
+outcomes.
+
 ### 5b. Close the money loop
 
 - [ ] Per-employee ledger of charges and shortages, by pay period

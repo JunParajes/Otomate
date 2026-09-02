@@ -1,0 +1,70 @@
+/*
+ * The schedule grid.
+ *
+ * Cells are bare buttons rather than Mantine components: a full cutoff is around
+ * eighty staff across seven days, so this is ~580 of them on one screen and the
+ * per-component cost is what would be felt. Same reasoning as QtyInput on the
+ * DSIR page.
+ */
+.grid {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The employee column stays put while the days scroll sideways — on a tablet the
+   grid is wider than the screen, and a tick with no name against it is useless. */
+.nameCol {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--mantine-color-body);
+  min-width: 190px;
+}
+
+.groupRow {
+  background: var(--mantine-color-default-hover);
+  color: var(--mantine-color-dimmed);
+}
+
+.cell {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+  cursor: pointer;
+  padding: 2px;
+  font: inherit;
+  line-height: 1.1;
+}
+.cell:disabled { cursor: default; opacity: 0.75; }
+.cell:not(:disabled):hover { border-color: var(--mantine-color-blue-5); }
+
+.mark { font-size: 14px; font-weight: 600; }
+.sub {
+  font-size: 9px;
+  color: var(--mantine-color-dimmed);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Colour carries the status at a glance; the mark carries it for anyone who
+   cannot rely on colour. Never colour alone. */
+.cell[data-status='SCHEDULED'] { background: var(--mantine-color-green-light); }
+.cell[data-status='OFF']       { background: var(--mantine-color-blue-light); }
+.cell[data-status='NOT_SCHEDULED'] { background: var(--mantine-color-gray-light); }
+.cell[data-status='FRONTLINE'] { background: var(--mantine-color-grape-light); }
+.cell[data-status='OPENER']    { background: var(--mantine-color-orange-light); }
+.cell[data-status='NONE']      { background: transparent; }
+
+/* Unsaved, so it is obvious what the Save button is about to send. */
+.pending {
+  border-color: var(--mantine-color-orange-6);
+  border-width: 2px;
+}
