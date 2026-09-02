@@ -86,6 +86,7 @@ test('fields on the same row line up', async ({ page }) => {
     ['Regularised on', 'Separated on', 'Reason for leaving'],
     ['Confidentiality agreement', 'Authority to deduct', 'Birth certificate', 'Marriage contract'],
     ['Payout method', 'Account'],
+    ['Height', 'Height in inches', 'Height in centimetres', 'Weight'],
   ]
 
   for (const row of rows) {
@@ -116,7 +117,8 @@ test('the new text fields accept real keystrokes and save', async ({ page }) => 
   await page.getByLabel('Email address').pressSequentially('maria@example.com')
   await page.getByLabel('Birth place').pressSequentially('Davao City')
   await page.getByLabel('Religion').pressSequentially('Roman Catholic')
-  await page.getByLabel('Height').pressSequentially('158')
+  await page.getByLabel('Height', { exact: true }).pressSequentially('5')
+  await page.getByLabel('Height in inches').pressSequentially('2')
   await page.getByLabel('Weight').pressSequentially('62.5')
   await page.getByLabel('Course or strand').pressSequentially('BS Hotel and Restaurant Management')
   await page.getByLabel('Remarks').pressSequentially('Transferred from Matina.')
@@ -129,7 +131,8 @@ test('the new text fields accept real keystrokes and save', async ({ page }) => 
 
   await expect(page.getByLabel('Email address')).toHaveValue('maria@example.com')
   await expect(page.getByLabel('Birth place')).toHaveValue('Davao City')
-  await expect(page.getByLabel('Height')).toHaveValue('158')
+  await expect(page.getByLabel('Height', { exact: true })).toHaveValue('5')
+  await expect(page.getByLabel('Height in inches')).toHaveValue('2')
   // Typed in kilos, stored in grams, and read back as the same kilos.
   await expect(page.getByLabel('Weight')).toHaveValue('62.5')
   await expect(page.getByLabel('Remarks')).toHaveValue('Transferred from Matina.')
@@ -194,3 +197,36 @@ test('every section chip actually scrolls to its section', async ({ page }) => {
   }
 })
 
+/**
+ * Height is said in feet and inches here and stored in centimetres.
+ *
+ * The conversion is unit-tested exhaustively; what only a browser can show is
+ * that the two entry boxes and the derived centimetres stay in step as you type,
+ * and that a saved height comes back as the same feet and inches rather than an
+ * inch short.
+ */
+test('height is entered in feet and inches and survives a save', async ({ page }) => {
+  await openRecord(page)
+  const feet = page.getByLabel('Height', { exact: true })
+  const inches = page.getByLabel('Height in inches')
+  const cm = page.getByLabel('Height in centimetres')
+
+  // These specs share one database and run in order, and an earlier test saves
+  // a height — so start from empty rather than appending to what it left.
+  await feet.fill('')
+  await inches.fill('')
+  await feet.pressSequentially('5')
+  await inches.pressSequentially('7')
+  await expect(cm).toHaveValue('170')
+
+  // Centimetres are stored, so they must not be editable — two sources of truth
+  // for one measurement is how they end up disagreeing.
+  await expect(cm).toHaveAttribute('readonly', '')
+
+  await page.getByRole('button', { name: 'Save record' }).click()
+  await page.reload()
+
+  await expect(feet).toHaveValue('5')
+  await expect(inches).toHaveValue('7')
+  await expect(cm).toHaveValue('170')
+})

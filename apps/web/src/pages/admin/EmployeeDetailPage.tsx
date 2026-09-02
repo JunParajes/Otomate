@@ -16,7 +16,8 @@ import {
   SALARY_RATE_TYPES, SALARY_RATE_LABELS,
   CONTACT_LABEL_SUGGESTIONS,
   POSITION_LABELS,
-  ageOn, currentSalary, formatLengthOfService, formatMoney, lengthOfService, probationStatus,
+  ageOn, cmToFeetInches, currentSalary, feetInchesToCm, formatLengthOfService, formatMoney,
+  lengthOfService, probationStatus,
   type CivilStatus, type EducationLevel, type Employee, type EmploymentType, type Gender,
   type PayoutMethod,
   type SalaryRateType, type UpdateEmployeeHrInput,
@@ -236,6 +237,19 @@ export default function EmployeeDetailPage() {
   // as it is being typed, so the answer appears while the date is entered.
   const age = ageOn(form.birthDate || null)
   const tenure = lengthOfService(form.dateHired || null, form.separatedAt || null)
+  /**
+   * Height is entered in feet and inches and stored in centimetres, so the two
+   * boxes are derived from the stored value rather than being form state of
+   * their own. One source of truth: typing in either box recomputes the
+   * centimetres, and nothing can drift.
+   */
+  const heightFtIn = cmToFeetInches(form.heightCm ? Number(form.heightCm) : null)
+  const setHeight = (feet: number, inches: number) => {
+    // Both boxes empty means "not recorded", not a height of zero.
+    if (!feet && !inches) return set('heightCm')('')
+    set('heightCm')(String(feetInchesToCm(feet, inches)))
+  }
+
   const probation = probationStatus({
     employmentType: form.employmentType as EmploymentType,
     probationEndDate: form.probationEndDate || null,
@@ -475,14 +489,60 @@ export default function EmployeeDetailPage() {
                 {...field('educationDetail')}
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 6, sm: 3 }}>
+            {/*
+              Feet and inches, because that is how height is said here — nobody
+              reports "170 centimetres". Two number boxes rather than a text box
+              parsing 5'7": a numeric keypad on a tablet beats reaching for the
+              apostrophe and quote marks, and there is nothing to mis-parse.
+
+              Centimetres remain what is STORED, and are shown read-only beside
+              them so the conversion is visible rather than a black box. The
+              round trip is lossless for whole inches — see the height helpers.
+            */}
+            <Grid.Col span={{ base: 3, sm: 2 }}>
               <TextInput
                 label="Height"
                 type="number"
                 inputMode="numeric"
-                placeholder="158"
+                min={0}
+                placeholder="5"
+                rightSection={<Text size="xs" c="dimmed">ft</Text>}
+                value={heightFtIn ? String(heightFtIn.feet) : ''}
+                disabled={!canWriteHr}
+                onChange={e => {
+                  const feet = Number(e.currentTarget.value)
+                  setHeight(Number.isFinite(feet) ? feet : 0, heightFtIn?.inches ?? 0)
+                }}
+              />
+            </Grid.Col>
+            <Grid.Col span={{ base: 3, sm: 2 }}>
+              <TextInput
+                label="&nbsp;"
+                aria-label="Height in inches"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={11}
+                placeholder="7"
+                rightSection={<Text size="xs" c="dimmed">in</Text>}
+                value={heightFtIn ? String(heightFtIn.inches) : ''}
+                disabled={!canWriteHr}
+                onChange={e => {
+                  const inches = Number(e.currentTarget.value)
+                  setHeight(heightFtIn?.feet ?? 0, Number.isFinite(inches) ? inches : 0)
+                }}
+              />
+            </Grid.Col>
+            <Grid.Col span={{ base: 6, sm: 2 }}>
+              <TextInput
+                label="&nbsp;"
+                aria-label="Height in centimetres"
+                readOnly
+                tabIndex={-1}
+                variant="filled"
+                placeholder="—"
                 rightSection={<Text size="xs" c="dimmed">cm</Text>}
-                {...field('heightCm')}
+                value={form.heightCm || ''}
               />
             </Grid.Col>
             <Grid.Col span={{ base: 6, sm: 3 }}>
