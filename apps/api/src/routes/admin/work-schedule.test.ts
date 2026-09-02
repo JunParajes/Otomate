@@ -225,9 +225,12 @@ describe('editing the plan', () => {
     })
 
     const res = await as(token).get(`/api/admin/work-schedule/${id}`).expect(200)
-    const rows = res.body.data.rows as { name: string; underOneMonth: boolean }[]
-    expect(rows.find(r => r.name === 'Just Joined')!.underOneMonth).toBe(true)
-    expect(rows.find(r => r.name === 'Long Serving')!.underOneMonth).toBe(false)
+    const rows = res.body.data.rows as { name: string; eligibility: string }[]
+    expect(rows.find(r => r.name === 'Just Joined')!.eligibility).toBe('UNDER_ONE_MONTH')
+    expect(rows.find(r => r.name === 'Long Serving')!.eligibility).toBe('ELIGIBLE')
+    // Nobody recorded a start date for the staff seeded without one. "We do not
+    // know" is the honest answer, not "eligible".
+    expect(rows.find(r => r.name.startsWith('Staff'))!.eligibility).toBe('NO_HIRE_DATE')
   })
 })
 
@@ -285,8 +288,8 @@ describe('the details behind a name', () => {
     const { id } = await scheduleWithStaff()
     const { token } = await makeUser({ email: 'nohr2@t.local', permissions: ['schedule:read'] })
     const res = await as(token).get(`/api/admin/work-schedule/${id}`).expect(200)
-    expect(res.body.data.rows[0]).toHaveProperty('underOneMonth')
-    expect(res.body.data.rows[0].underOneMonth).toBe(false)
+    expect(res.body.data.rows[0]).toHaveProperty('eligibility')
+    expect(res.body.data.rows[0].eligibility).toBe('ELIGIBLE')
   })
 })
 

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  ActionIcon, Alert, Badge, Button, Center, Group, Loader, Modal, Select, Stack, Table, Text,
-  Title, Tooltip,
+  ActionIcon, Alert, Badge, Button, Card, Center, Group, Loader, Modal, Select, Stack, Table,
+  Text, Title, Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconAlertTriangle, IconArrowLeft, IconCheck } from '@tabler/icons-react'
@@ -47,6 +47,23 @@ export default function WorkSchedulePage() {
   const [draft, setDraft] = useState<Draft>(new Map())
   const [editing, setEditing] = useState<{ row: WorkScheduleRow; day: string } | null>(null)
   const [viewing, setViewing] = useState<WorkScheduleRow | null>(null)
+  /**
+   * Which branch's grid is open. null shows the branch list instead — eighty
+   * staff in one table is a scroll, and a branch manager only ever wants their
+   * own. 'ALL' is the whole company, one card per branch.
+   *
+   * Held in the URL rather than in state so a reload keeps you where you were,
+   * and so a branch's week can be linked to. As component state, refreshing
+   * mid-edit dropped you back to the branch list.
+   */
+  const [params, setParams] = useSearchParams()
+  const openBranch = params.get('branch')
+  const setOpenBranch = (branch: string | null) => {
+    const next = new URLSearchParams(params)
+    if (branch === null) next.delete('branch')
+    else next.set('branch', branch)
+    setParams(next, { replace: true })
+  }
   const [saving, setSaving] = useState(false)
   const branches = useResource(adminApi.listBranches)
   const dirtyRef = useRef(false)
@@ -212,85 +229,144 @@ export default function WorkSchedulePage() {
         </Alert>
       )}
 
-      <Table.ScrollContainer minWidth={900}>
-        <Table withTableBorder highlightOnHover verticalSpacing={6} className={classes.grid}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th className={classes.nameCol}>Employee</Table.Th>
-              {schedule.days.map(d => {
-                const date = new Date(`${d}T00:00:00.000Z`)
-                return (
-                  <Table.Th key={d} w={78} ta="center">
-                    <Text size="xs" fw={700}>{DAY_NAMES[date.getUTCDay()]}</Text>
-                    <Text size="xs" c="dimmed">{d.slice(8)}/{d.slice(5, 7)}</Text>
-                  </Table.Th>
-                )
-              })}
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {groups.map(([branchName, rows]) => (
-              <>
-                <Table.Tr key={`h-${branchName}`}>
-                  <Table.Td colSpan={1 + schedule.days.length} className={classes.groupRow}>
-                    <Text size="xs" fw={700} tt="uppercase">{branchName}</Text>
-                  </Table.Td>
+      {/*
+        The branch list, not the whole company by default.
+
+        Eighty-odd staff in one table is a scroll on any screen, and whoever is
+        planning almost always wants one branch. "All branches" is still there,
+        as a card per branch — the same shape the 201 file uses for its sections,
+        so a long page stays readable instead of being one unbroken grid.
+      */}
+      {openBranch === null ? (
+        <Stack gap="sm">
+          <Card withBorder padding="md" radius="md" className={classes.branchCard} onClick={() => setOpenBranch('ALL')}>
+            <Group justify="space-between" wrap="nowrap">
+              <Stack gap={2}>
+                <Text fw={600}>All branches</Text>
+                <Text size="xs" c="dimmed">Every branch, one card each</Text>
+              </Stack>
+              <Badge variant="light">{schedule.rows?.length ?? 0} staff</Badge>
+            </Group>
+          </Card>
+          {groups.map(([branchName, rows]) => (
+            <Card
+              key={branchName}
+              withBorder
+              padding="md"
+              radius="md"
+              className={classes.branchCard}
+              onClick={() => setOpenBranch(branchName)}
+            >
+              <Group justify="space-between" wrap="nowrap">
+                <Text fw={500}>{branchName}</Text>
+                <Group gap="xs">
+                  {rows.some(r => r.eligibility === 'UNDER_ONE_MONTH') && (
+                    <Badge size="sm" variant="light" color="orange">has new staff</Badge>
+                  )}
+                  <Badge variant="light" color="gray">{rows.length} staff</Badge>
+                </Group>
+              </Group>
+            </Card>
+          ))}
+        </Stack>
+      ) : (
+        <Stack gap="md">
+          <Group gap="xs">
+            <Button variant="subtle" size="compact-sm" leftSection={<IconArrowLeft size={14} />} onClick={() => setOpenBranch(null)}>
+              All branches
+            </Button>
+            <Text size="sm" c="dimmed">
+              {openBranch === 'ALL' ? 'Every branch' : openBranch}
+            </Text>
+          </Group>
+
+          {(openBranch === 'ALL' ? groups : groups.filter(([name]) => name === openBranch))
+            .map(([groupName, groupRows]) => (
+              <Card key={groupName} withBorder padding="md" radius="md">
+                <Stack gap="sm">
+                  <Title order={5}>{groupName}</Title>
+          <Table.ScrollContainer minWidth={780}>
+            {/* No highlightOnHover: lighting up a whole row of eighty is noise, and
+                  the cell being pointed at is the thing that matters. */}
+                <Table withTableBorder verticalSpacing={6} className={classes.grid}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th className={classes.nameCol}>Employee</Table.Th>
+                  {schedule.days.map(d => {
+                    const date = new Date(`${d}T00:00:00.000Z`)
+                    return (
+                      <Table.Th key={d} w={86} ta="center">
+                        <Text size="xs" fw={700}>{DAY_NAMES[date.getUTCDay()]}</Text>
+                        <Text size="xs" c="dimmed">{d.slice(8)}/{d.slice(5, 7)}</Text>
+                      </Table.Th>
+                    )
+                  })}
                 </Table.Tr>
-                {rows.map(row => (
-                  <Table.Tr key={row.employeeId}>
-                    <Table.Td className={classes.nameCol}>
-                      {/*
-                        The name opens the person's details rather than the grid
-                        carrying columns for them. Address and contact numbers
-                        are needed occasionally — when deciding who can cover an
-                        early shift — and permanently on screen they are eighty
-                        rows of noise in the way of the week.
-                      */}
-                      <button
-                        type="button"
-                        className={classes.nameButton}
-                        onClick={() => setViewing(row)}
-                        aria-label={`Details for ${row.name}`}
-                      >
-                        <Group gap={6} wrap="nowrap">
-                          <Text size="sm" fw={500}>{row.name}</Text>
-                          {row.underOneMonth && (
-                            <Tooltip label="Under one month — no holiday pay or offsetting yet" withArrow>
-                              <Badge size="xs" variant="light" color="orange">new</Badge>
-                            </Tooltip>
-                          )}
-                        </Group>
-                        <Text size="xs" c="dimmed">{row.position}</Text>
-                      </button>
-                    </Table.Td>
-                    {schedule.days.map(d => {
-                      const cell = cellOf(row, d)
-                      return (
-                        <Table.Td key={d} p={2}>
+              </Table.Thead>
+              <Table.Tbody>
+                {groupRows.map(row => (
+                      <Table.Tr key={row.employeeId}>
+                        <Table.Td className={classes.nameCol}>
+                          {/*
+                            The name opens the person's details rather than the grid
+                            carrying columns for them. Address and contact numbers
+                            are needed occasionally — when deciding who can cover an
+                            early shift — and permanently on screen they are eighty
+                            rows of noise in the way of the week.
+                          */}
                           <button
                             type="button"
-                            className={`${classes.cell} ${cell.pending ? classes.pending : ''}`}
-                            data-status={cell.status ?? 'NONE'}
-                            disabled={!canWrite}
-                            aria-label={`${row.name}, ${d}: ${cell.status ? WORK_DAY_LABELS[cell.status] : 'not set'}`}
-                            onClick={() => setEditing({ row, day: d })}
+                            className={classes.nameButton}
+                            onClick={() => setViewing(row)}
+                            aria-label={`Details for ${row.name}`}
                           >
-                            <span className={classes.mark}>
-                              {cell.status ? WORK_DAY_MARKS[cell.status] : '·'}
-                            </span>
-                            {cell.branchName && <span className={classes.sub}>{cell.branchName}</span>}
-                            {cell.partner && <span className={classes.sub}>{cell.partner.split(' ')[0]}</span>}
+                            <Group gap={6} wrap="nowrap">
+                              <Text size="sm" fw={500}>{row.name}</Text>
+                              {row.eligibility === 'UNDER_ONE_MONTH' && (
+                                <Tooltip label="Under one month — no holiday pay or offsetting yet" withArrow>
+                                  <Badge size="xs" variant="light" color="orange">new</Badge>
+                                </Tooltip>
+                              )}
+                              {row.eligibility === 'NO_HIRE_DATE' && (
+                                <Tooltip label="No hire date on record — eligibility unknown" withArrow>
+                                  <Badge size="xs" variant="light" color="gray">?</Badge>
+                                </Tooltip>
+                              )}
+                            </Group>
+                            <Text size="xs" c="dimmed">{row.position}</Text>
                           </button>
                         </Table.Td>
-                      )
-                    })}
-                  </Table.Tr>
+                        {schedule.days.map(d => {
+                          const cell = cellOf(row, d)
+                          return (
+                            <Table.Td key={d} p={2}>
+                              <button
+                                type="button"
+                                className={`${classes.cell} ${cell.pending ? classes.pending : ''}`}
+                                data-status={cell.status ?? 'NONE'}
+                                disabled={!canWrite}
+                                aria-label={`${row.name}, ${d}: ${cell.status ? WORK_DAY_LABELS[cell.status] : 'not set'}`}
+                                onClick={() => setEditing({ row, day: d })}
+                              >
+                                <span className={classes.mark}>
+                                  {cell.status ? WORK_DAY_MARKS[cell.status] : '·'}
+                                </span>
+                                {cell.branchName && <span className={classes.sub}>{cell.branchName}</span>}
+                                {cell.partner && <span className={classes.sub}>{cell.partner.split(' ')[0]}</span>}
+                              </button>
+                            </Table.Td>
+                          )
+                        })}
+                      </Table.Tr>
                 ))}
-              </>
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+                </Stack>
+              </Card>
             ))}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+        </Stack>
+      )}
 
       {/*
         Their record, from the 201 file — not a second copy kept here.
@@ -315,21 +391,38 @@ export default function WorkSchedulePage() {
               <>
                 <Stack gap={2}>
                   <Text size="xs" c="dimmed">Date hired</Text>
-                  <Group gap="xs">
-                    <Text size="sm">{viewing.details.dateHired ?? 'Not recorded'}</Text>
-                    <Badge
-                      size="sm"
-                      variant="light"
-                      color={viewing.underOneMonth ? 'orange' : 'green'}
-                    >
-                      {viewing.underOneMonth ? 'Under one month' : 'Over one month'}
-                    </Badge>
-                  </Group>
-                  <Text size="xs" c="dimmed">
-                    {viewing.underOneMonth
-                      ? 'Not eligible for holiday pay or offsetting yet.'
-                      : 'Eligible for holiday pay and offsetting.'}
-                  </Text>
+                  {/*
+                    No hire date is its own answer. It used to fall through to
+                    "Over one month", which told the planner something confident
+                    and wrong about someone nobody had recorded a start date for.
+                  */}
+                  {viewing.eligibility === 'NO_HIRE_DATE' ? (
+                    <Alert color="orange" icon={<IconAlertTriangle size={16} />} p="xs">
+                      <Text size="sm" fw={500}>No date hired on record</Text>
+                      <Text size="xs">
+                        Add it to their record before planning around holiday pay or offsetting —
+                        eligibility cannot be worked out without it.
+                      </Text>
+                    </Alert>
+                  ) : (
+                    <>
+                      <Group gap="xs">
+                        <Text size="sm">{viewing.details.dateHired}</Text>
+                        <Badge
+                          size="sm"
+                          variant="light"
+                          color={viewing.eligibility === 'UNDER_ONE_MONTH' ? 'orange' : 'green'}
+                        >
+                          {viewing.eligibility === 'UNDER_ONE_MONTH' ? 'Under one month' : 'Over one month'}
+                        </Badge>
+                      </Group>
+                      <Text size="xs" c="dimmed">
+                        {viewing.eligibility === 'UNDER_ONE_MONTH'
+                          ? 'Not eligible for holiday pay or offsetting yet.'
+                          : 'Eligible for holiday pay and offsetting.'}
+                      </Text>
+                    </>
+                  )}
                 </Stack>
 
                 <Stack gap={2}>

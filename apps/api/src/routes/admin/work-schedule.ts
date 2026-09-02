@@ -98,7 +98,11 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
       position: emp.position.name,
       // Against the FIRST day of the cutoff: eligibility is judged for the week
       // being planned, not for whenever the page happens to be opened.
-      underOneMonth: isUnderOneMonth(emp.dateHired ? day(emp.dateHired) : null, days[0]!),
+      eligibility: !emp.dateHired
+        ? ('NO_HIRE_DATE' as const)
+        : isUnderOneMonth(day(emp.dateHired), days[0]!)
+          ? ('UNDER_ONE_MONTH' as const)
+          : ('ELIGIBLE' as const),
       // Section omitted entirely without hr:read — see WorkScheduleRowDetails.
       ...(canSeeHr && {
         details: {

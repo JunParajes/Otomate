@@ -23,6 +23,8 @@ const WEEKS = {
   cover: '2026-09-17',
   approval: '2026-09-24',
   details: '2026-10-01',
+  branches: '2026-10-08',
+  nohire: '2026-10-15',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -58,6 +60,12 @@ async function openCutoff(page: Page, weekStart: string) {
   await clearToasts(page)
 }
 
+/** The grid sits behind a branch choice now — open every branch at once. */
+async function openAllBranches(page: Page) {
+  await page.getByText('All branches', { exact: true }).first().click()
+  await expect(page.getByRole('columnheader', { name: /Thu/ }).first()).toBeVisible()
+}
+
 test('a cutoff runs Thursday to Wednesday and refuses any other start', async ({ page }) => {
   await signIn(page, FIXTURES.owner)
   await page.goto('/hr/work-schedule')
@@ -75,10 +83,11 @@ test('a cutoff runs Thursday to Wednesday and refuses any other start', async ({
 
 test('a new cutoff starts with everyone scheduled on all seven days', async ({ page }) => {
   await openCutoff(page, WEEKS.prefill)
+  await openAllBranches(page)
 
   // Seven day columns, Thursday first.
-  await expect(page.getByRole('columnheader', { name: /Thu/ })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: /Wed/ })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /Thu/ }).first()).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /Wed/ }).first()).toBeVisible()
 
   // Cells only — anchored on the "name, date" form, since the name button now
   // carries an aria-label containing the name too.
@@ -91,6 +100,7 @@ test('a new cutoff starts with everyone scheduled on all seven days', async ({ p
 
 test('a cell edit is held unsaved, then survives a reload', async ({ page }) => {
   await openCutoff(page, WEEKS.editing)
+  await openAllBranches(page)
   const sun = sundayOf(WEEKS.editing)
   const cell = page.getByLabel(new RegExp(`Maria Santos Cruz, ${sun}`))
 
@@ -118,6 +128,7 @@ test('a cell edit is held unsaved, then survives a reload', async ({ page }) => 
  */
 test('a day off can record who covers it', async ({ page }) => {
   await openCutoff(page, WEEKS.cover)
+  await openAllBranches(page)
   const cell = page.getByLabel(new RegExp(`Maria Santos Cruz, ${sundayOf(WEEKS.cover)}`))
   await cell.click()
 
@@ -151,6 +162,7 @@ test('an approved plan stops being editable', async ({ page }) => {
  */
 test("tapping a name opens that person's details", async ({ page }) => {
   await openCutoff(page, WEEKS.details)
+  await openAllBranches(page)
 
   // The grid itself has no Home or Hired column any more.
   await expect(page.getByRole('columnheader', { name: 'Home' })).toHaveCount(0)
@@ -159,11 +171,9 @@ test("tapping a name opens that person's details", async ({ page }) => {
   await page.getByRole('button', { name: 'Details for Maria Santos Cruz' }).click()
 
   const dialog = page.getByRole('dialog')
-  await expect(dialog.getByText('Date hired')).toBeVisible()
-  await expect(dialog.getByText('Address')).toBeVisible()
-  await expect(dialog.getByText('Contact numbers')).toBeVisible()
-  // Eligibility is stated outright rather than left as a date to work out.
-  await expect(dialog.getByText(/one month/)).toBeVisible()
+  await expect(dialog.getByText('Date hired', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Address', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Contact numbers', { exact: true })).toBeVisible()
 })
 
 test('a role without schedule:read is refused the page', async ({ page }) => {
@@ -172,4 +182,42 @@ test('a role without schedule:read is refused the page', async ({ page }) => {
   await signIn(page, FIXTURES.plain)
   await page.goto('/hr/work-schedule')
   await expect(page.locator('body')).not.toContainText('Start a cutoff')
+})
+
+/**
+ * The branch list, rather than every branch in one table.
+ *
+ * A full cutoff is eighty-odd staff; whoever is planning almost always wants one
+ * branch, and one table of everyone is a scroll before it is useful.
+ */
+test('a cutoff opens on the branch list, and a branch opens its grid', async ({ page }) => {
+  await openCutoff(page, WEEKS.branches)
+
+  // No grid until a branch is chosen.
+  await expect(page.getByRole('columnheader', { name: /Thu/ })).toHaveCount(0)
+  await expect(page.getByText('All branches', { exact: true })).toBeVisible()
+
+  const branch = page.getByText(FIXTURES.branch, { exact: true }).first()
+  await branch.click()
+  await expect(page.getByRole('columnheader', { name: /Thu/ }).first()).toBeVisible()
+
+  // And back again.
+  await page.getByRole('button', { name: 'All branches' }).click()
+  await expect(page.getByRole('columnheader', { name: /Thu/ })).toHaveCount(0)
+})
+
+/**
+ * A missing hire date is not the same as being over a month. It used to read
+ * "Over one month" — a confident wrong answer about someone nobody had recorded
+ * a start date for.
+ */
+test('a missing hire date asks for one instead of guessing', async ({ page }) => {
+  await openCutoff(page, WEEKS.nohire)
+  await openAllBranches(page)
+  await page.getByRole('button', { name: /^Details for/ }).first().click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('No date hired on record')).toBeVisible()
+  await expect(dialog.getByText(/Add it to their record/)).toBeVisible()
+  await expect(dialog.getByText('Over one month')).toHaveCount(0)
 })

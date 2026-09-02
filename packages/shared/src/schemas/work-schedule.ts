@@ -221,13 +221,17 @@ export interface WorkScheduleRow {
   branch: { id: string; name: string } | null
   position: string
   /**
-   * Derived: not eligible for holiday pay or offsetting yet.
+   * Holiday-pay and offsetting eligibility, derived from the hire date.
    *
-   * Stays outside the gated section on purpose. It is the fact the schedule is
-   * planned against, and it is a yes/no — it discloses far less than the hire
-   * date it comes from.
+   * Three states, not a boolean. A missing hire date is NOT the same as being
+   * over a month: as a boolean it answered "eligible" for someone nobody had
+   * recorded a start date for, which is a confident wrong answer where the
+   * honest one is "we do not know yet".
+   *
+   * Stays outside the gated section on purpose — it is the fact the week is
+   * planned against, and it discloses far less than the date behind it.
    */
-  underOneMonth: boolean
+  eligibility: 'UNDER_ONE_MONTH' | 'ELIGIBLE' | 'NO_HIRE_DATE'
   details?: WorkScheduleRowDetails
   /** Keyed by day, so a cell lookup is not a scan of seven entries. */
   days: Record<string, WorkScheduleEntryRecord>

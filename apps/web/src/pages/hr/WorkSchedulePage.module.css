@@ -17,7 +17,11 @@
   left: 0;
   z-index: 1;
   background: var(--mantine-color-body);
-  min-width: 190px;
+  /* Narrower than it was: the names are short and the days were the ones
+     cramped for the sake of a column of whitespace. */
+  width: 170px;
+  min-width: 170px;
+  max-width: 170px;
 }
 
 .groupRow {
@@ -27,7 +31,7 @@
 
 .cell {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -81,3 +85,6 @@
 }
 .nameButton:hover { background: var(--mantine-color-default-hover); }
 .nameButton:focus-visible { outline: 2px solid var(--mantine-color-blue-5); }
+
+.branchCard { cursor: pointer; }
+.branchCard:hover { border-color: var(--mantine-color-blue-5); }
