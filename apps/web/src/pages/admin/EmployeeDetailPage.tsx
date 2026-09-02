@@ -585,15 +585,21 @@ export default function EmployeeDetailPage() {
 
         <Section id="employment" title="Employment">
           <Grid gap="sm">
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 8, sm: 3 }}>
+              <TextInput label="Date hired" type="date" {...field('dateHired')} />
+            </Grid.Col>
+            {/* Derived like Age, and read-only for the same reason — see the note there. */}
+            <Grid.Col span={{ base: 4, sm: 3 }}>
               <TextInput
-                label="Date hired"
-                type="date"
-                description={tenure ? `${formatLengthOfService(tenure)} of service` : undefined}
-                {...field('dateHired')}
+                label="Length of service"
+                readOnly
+                tabIndex={-1}
+                variant="filled"
+                placeholder="—"
+                value={tenure ? formatLengthOfService(tenure) : ''}
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <Select
                 label="Employment type"
                 data={EMPLOYMENT_TYPES.map(t => ({ value: t, label: EMPLOYMENT_TYPE_LABELS[t] }))}
@@ -603,21 +609,23 @@ export default function EmployeeDetailPage() {
                 allowDeselect={false}
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
-              <TextInput
-                label="Probation ends"
-                type="date"
-                description="Caps at six months by law"
-                {...field('probationEndDate')}
-              />
+            <Grid.Col span={{ base: 12, sm: 3 }}>
+              <TextInput label="Probation ends" type="date" {...field('probationEndDate')} />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
-              <TextInput
-                label="Probation extended to"
-                type="date"
-                description="Leave blank unless the deadline was moved"
-                {...field('probationExtendedTo')}
-              />
+          </Grid>
+
+          {/*
+            A Grid of its own, not more columns in the one above.
+
+            "Why it was extended" only renders when there is an extension, and in
+            a single flowing Grid its absence let the following fields ride up
+            into this row and pushed "Reason for leaving" onto a line by itself.
+            One Grid per visual row means the layout cannot depend on whether a
+            conditional field happens to be showing.
+          */}
+          <Grid gap="sm">
+            <Grid.Col span={{ base: 12, sm: 3 }}>
+              <TextInput label="Probation extended to" type="date" {...field('probationExtendedTo')} />
             </Grid.Col>
             {/*
               Shown only once an extension exists. An extension is a decision
@@ -626,7 +634,7 @@ export default function EmployeeDetailPage() {
               the form for the majority who were never extended.
             */}
             {form.probationExtendedTo && (
-              <Grid.Col span={{ base: 12, sm: 8 }}>
+              <Grid.Col span={{ base: 12, sm: 9 }}>
                 <TextInput
                   label="Why it was extended"
                   placeholder="What has to improve, and by when"
@@ -634,16 +642,30 @@ export default function EmployeeDetailPage() {
                 />
               </Grid.Col>
             )}
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+          </Grid>
+
+          <Grid gap="sm">
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <TextInput label="Regularised on" type="date" {...field('regularizedAt')} />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <TextInput label="Separated on" type="date" {...field('separatedAt')} />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <TextInput label="Reason for leaving" {...field('separationReason')} />
             </Grid.Col>
           </Grid>
+          {/*
+            The guidance that used to sit under two of these fields as
+            `description` text. It was pushing those inputs a row-height below
+            their neighbours, which reads as a broken layout rather than as
+            help. Same information, one place, nothing knocked out of line.
+          */}
+          <Text size="xs" c="dimmed">
+            Probation caps at six months by law. Fill in "Probation extended to" only if that
+            deadline was formally moved — the original date stays as it was, so the record still
+            shows what was first agreed.
+          </Text>
         </Section>
 
         <Section id="gov-ids" title="Government IDs">
@@ -727,13 +749,13 @@ export default function EmployeeDetailPage() {
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 8 }}>
-              <TextInput
-                label="Account"
-                description="Bank account or e-wallet number, if not paid in cash"
-                {...field('payoutAccount')}
-              />
+              <TextInput label="Account" {...field('payoutAccount')} />
             </Grid.Col>
           </Grid>
+          <Text size="xs" c="dimmed">
+            Account is their bank account or e-wallet number, and is only needed if they are not
+            paid in cash.
+          </Text>
         </Section>
 
         {canSeeSalary && (

@@ -53,12 +53,52 @@ test('age fills itself from the date of birth, and cannot be typed into', async 
   expect(Math.abs(dob.y - birthPlace.y)).toBeLessThan(2)
 })
 
-test('length of service is derived from the hire date', async ({ page }) => {
+test('length of service is derived from the hire date, and cannot be typed into', async ({ page }) => {
   await openRecord(page)
+  const box = page.getByLabel('Length of service', { exact: true })
+
+  await expect(box).toHaveValue('')
   await page.getByLabel('Date hired').fill('2023-04-10')
-  await expect(page.getByText(/of service/)).toBeVisible()
-  // Still derived, so there is nothing to type into.
-  await expect(page.getByLabel('Length of service', { exact: true })).toHaveCount(0)
+  await expect(box).toHaveValue(/yr|mo/)
+  await expect(box).toHaveAttribute('readonly', '')
+})
+
+/**
+ * Every field on a row shares one top edge.
+ *
+ * Mantine renders `description` text BETWEEN the label and the input, so adding
+ * one to a single field drops that input a row-height below its neighbours. It
+ * happened three times on this page — the date of birth, probation, and the
+ * payout account — and it reads as a broken layout rather than as help, which is
+ * exactly how someone mis-reads which box they are typing into.
+ *
+ * Guidance now lives in a dimmed line under its card instead. This test fails
+ * the moment a `description` is added back to one field on a shared row.
+ */
+test('fields on the same row line up', async ({ page }) => {
+  await openRecord(page)
+  await page.getByLabel('Date of birth').fill('1998-04-20')
+  await page.getByLabel('Date hired').fill('2023-04-10')
+
+  const rows = [
+    ['Date of birth', 'Age', 'Birth place', 'Gender', 'Civil status'],
+    ['Date hired', 'Length of service', 'Employment type', 'Probation ends'],
+    ['Regularised on', 'Separated on', 'Reason for leaving'],
+    ['Confidentiality agreement', 'Authority to deduct', 'Birth certificate', 'Marriage contract'],
+    ['Payout method', 'Account'],
+  ]
+
+  for (const row of rows) {
+    const tops: number[] = []
+    for (const label of row) {
+      // .first(): Mantine's Select renders a visible combobox and a hidden
+      // input, both carrying the label.
+      const box = await page.getByLabel(label, { exact: true }).first().boundingBox()
+      tops.push(box!.y)
+    }
+    const spread = Math.max(...tops) - Math.min(...tops)
+    expect(spread, `${row.join(' / ')} should share a top edge`).toBeLessThan(2)
+  }
 })
 
 test('the extension reason appears only once a date is set', async ({ page }) => {
