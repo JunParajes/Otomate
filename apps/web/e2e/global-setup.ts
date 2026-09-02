@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process'
+import { DEFAULT_EMPLOYEE_POSITIONS } from '@otomate/shared'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -122,9 +123,22 @@ export default async function globalSetup(): Promise<void> {
     name: FIXTURES.product, categoryId: (category as { id: string }).id,
     priceCents: 300, unit: 'PIECE', isActive: true,
   })
+  /*
+   * Positions are rows now, not an enum value that can be named inline.
+   *
+   * The migration seeds them, but the truncation above empties every table, so
+   * they have to be put back — the same reason the roles and users below are
+   * created here rather than assumed.
+   */
+  for (const [i, name] of DEFAULT_EMPLOYEE_POSITIONS.entries()) {
+    await api(admin, 'POST', '/api/admin/positions', { name, sortOrder: i, isActive: true })
+  }
+  const positions = (await api(admin, 'GET', '/api/admin/positions')) as { id: string; name: string }[]
+  const cashier = positions.find(p => p.name === 'Cashier')
+  if (!cashier) throw new Error('No Cashier position — did the position seeding above fail?')
   const employee = await api(admin, 'POST', '/api/admin/employees', {
     firstName: 'Maria', middleName: 'Santos', lastName: 'Cruz',
-    position: 'CASHIER', branchId: (branch as { id: string }).id,
+    positionId: cashier.id, branchId: (branch as { id: string }).id,
   })
 
   // The draft the entry tests use, built through the API rather than by driving

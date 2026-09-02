@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { as, assertTestDatabase, makeUser, migrate, prisma, syncPermissions, truncateAll } from '../../test/harness'
+import {
+  as, assertTestDatabase, makeUser, migrate, positionId, prisma, syncPermissions, syncPositions,
+  truncateAll,
+} from '../../test/harness'
 
 /**
  * The 201 file round-trip.
@@ -19,11 +22,12 @@ afterAll(async () => { await prisma.$disconnect() })
 beforeEach(async () => {
   await truncateAll()
   await syncPermissions()
+  await syncPositions()
 })
 
 async function seed() {
   const employee = await prisma.employee.create({
-    data: { firstName: 'Maria', lastName: 'Cruz', position: 'CASHIER' },
+    data: { firstName: 'Maria', lastName: 'Cruz', positionId: await positionId('Cashier') },
   })
   const { token } = await makeUser({
     email: 'hr@t.local',

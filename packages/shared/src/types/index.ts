@@ -143,7 +143,7 @@ export interface Product {
 
 // ─── Employees ────────────────────────────────────────────────────────────
 import type {
-  CivilStatus, EducationLevel, EmployeeContactRecord, EmployeePosition, EmployeeSalaryRecord,
+  CivilStatus, EducationLevel, EmployeeContactRecord, EmployeeSalaryRecord,
   EmploymentType, Gender, PayoutMethod,
 } from '../schemas/employee.js'
 
@@ -220,7 +220,8 @@ export interface Employee {
   suffix: string | null
   /** Derived from the parts by the API, so callers never have to assemble it. */
   name: string
-  position: EmployeePosition
+  /** The position as stored, so a rename shows everywhere at once. */
+  position: { id: string; name: string }
   branch: { id: string; name: string } | null
   linkedUser: { id: string; email: string } | null
   isActive: boolean

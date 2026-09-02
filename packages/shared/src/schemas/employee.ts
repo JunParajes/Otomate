@@ -1,27 +1,46 @@
 import { z } from 'zod'
 import { currentlyEffective, deadlineStatus, effectiveOn, todayIso } from '../lib/effective-dated.js'
 
-/** Job role on the shop floor — distinct from Role, which governs system access. */
-export const EMPLOYEE_POSITIONS = [
-  'MANAGER',
-  'BAKER',
-  'FRONTLINER',
-  'CASHIER',
-  'HELPER',
-  'DRIVER',
-  'OTHER',
+/**
+ * Job role on the shop floor — distinct from Role, which governs system access.
+ *
+ * These were a fixed enum until 2026-09-02. They are now rows, because the roles
+ * a bakery actually has are not knowable from here: a branch takes on a pastry
+ * chef or a delivery helper and that should not need a deploy. The seven
+ * original values below are only the DEFAULTS a fresh database starts with.
+ */
+export const DEFAULT_EMPLOYEE_POSITIONS = [
+  'Manager',
+  'Baker',
+  'Frontliner',
+  'Cashier',
+  'Helper',
+  'Driver',
+  'Other',
 ] as const
-export type EmployeePosition = (typeof EMPLOYEE_POSITIONS)[number]
 
-export const POSITION_LABELS: Record<EmployeePosition, string> = {
-  MANAGER: 'Manager',
-  BAKER: 'Baker',
-  FRONTLINER: 'Frontliner',
-  CASHIER: 'Cashier',
-  HELPER: 'Helper',
-  DRIVER: 'Driver',
-  OTHER: 'Other',
+/** A position as stored. */
+export interface EmployeePositionRecord {
+  id: string
+  name: string
+  isActive: boolean
+  sortOrder: number
+  /** How many employees hold it — a position in use cannot be deleted. */
+  employeeCount: number
 }
+
+export const createPositionSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Give the position a name')
+    .max(40, 'That name is too long'),
+  isActive: z.boolean().optional().default(true),
+  sortOrder: z.number().int().min(0).optional().default(0),
+})
+export const updatePositionSchema = createPositionSchema.partial()
+export type CreatePositionInput = z.infer<typeof createPositionSchema>
+export type UpdatePositionInput = z.infer<typeof updatePositionSchema>
 
 /**
  * Names are stored in parts rather than as one string.
@@ -48,7 +67,8 @@ export const createEmployeeSchema = z.object({
     .regex(/^[A-Za-z0-9_-]*$/, 'Use letters, numbers, hyphens and underscores only')
     .nullable()
     .optional(),
-  position: z.enum(EMPLOYEE_POSITIONS).optional().default('OTHER'),
+  // A position id, not a name: renaming "Baker" must not orphan every baker.
+  positionId: z.string().min(1, 'Pick a position'),
   // Current assignment only — staff transfer between branches and trading names.
   branchId: z.string().min(1).nullable().optional(),
   // Set only for the few staff who also hold an Otomate login.

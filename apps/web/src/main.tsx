@@ -28,6 +28,7 @@ const BranchDetailPage = React.lazy(() => import('@/pages/admin/BranchDetailPage
 const ProductsPage = React.lazy(() => import('@/pages/admin/ProductsPage'))
 const CategoriesPage = React.lazy(() => import('@/pages/admin/CategoriesPage'))
 const EmployeesPage = React.lazy(() => import('@/pages/admin/EmployeesPage'))
+const PositionsPage = React.lazy(() => import('@/pages/admin/PositionsPage'))
 const EmployeeDetailPage = React.lazy(() => import('@/pages/admin/EmployeeDetailPage'))
 const DsirListPage = React.lazy(() => import('@/pages/dsir/DsirListPage'))
 const DsirArchivePage = React.lazy(() => import('@/pages/dsir/DsirArchivePage'))
@@ -109,6 +110,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 <Route path="/admin/users" element={<Shell permission="users:read"><UsersPage /></Shell>} />
                 <Route path="/admin/employees" element={<Shell permission="employees:read"><EmployeesPage /></Shell>} />
                 <Route path="/admin/employees/:id" element={<Shell permission="employees:read"><EmployeeDetailPage /></Shell>} />
+                {/* employees:read to view; positions:write gates the buttons inside. */}
+                <Route path="/admin/positions" element={<Shell permission="employees:read"><PositionsPage /></Shell>} />
                 <Route path="/admin/roles" element={<Shell permission="roles:read"><RolesPage /></Shell>} />
                 <Route path="/admin/branches" element={<Shell permission="branches:read"><BranchesPage /></Shell>} />
                 <Route path="/admin/branches/:id" element={<Shell permission="branches:read"><BranchDetailPage /></Shell>} />

@@ -1,5 +1,8 @@
 import type {
   CreateEmployeeInput,
+  CreatePositionInput,
+  EmployeePositionRecord,
+  UpdatePositionInput,
   CreateSalaryInput,
   Employee,
   UpdateEmployeeHrInput,
@@ -26,4 +29,19 @@ export const employeeApi = {
     unwrap<Employee>(api.post(`/api/admin/employees/${id}/salary`, input)),
   removeSalary: (id: string, salaryId: string) =>
     unwrap<Employee>(api.delete(`/api/admin/employees/${id}/salary/${salaryId}`)),
+}
+
+/**
+ * Job positions.
+ *
+ * Reading is gated on `employees:read` server-side — the picker on the employee
+ * form needs it — while changing the list needs `positions:write`.
+ */
+export const positionApi = {
+  list: () => unwrap<EmployeePositionRecord[]>(api.get('/api/admin/positions')),
+  create: (input: CreatePositionInput) =>
+    unwrap<EmployeePositionRecord>(api.post('/api/admin/positions', input)),
+  update: (id: string, input: UpdatePositionInput) =>
+    unwrap<EmployeePositionRecord>(api.patch(`/api/admin/positions/${id}`, input)),
+  remove: (id: string) => unwrap<{ success: boolean }>(api.delete(`/api/admin/positions/${id}`)),
 }

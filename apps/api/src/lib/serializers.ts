@@ -9,7 +9,6 @@ import type {
   PermitType,
   UtilityType,
   Employee as EmployeeDto,
-  EmployeePosition,
   CivilStatus,
   Gender,
   EducationLevel,
@@ -222,7 +221,7 @@ export function toProductDto(product: ProductWithCategory, canSeeCost: boolean):
 }
 
 type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
-  include: { branch: true; user: true }
+  include: { branch: true; user: true; position: true }
 }> & {
   contacts?: Prisma.EmployeeContactGetPayload<{}>[]
   // Present only when the caller asked for salary and may see it.
@@ -260,7 +259,9 @@ export function toEmployeeDto(
     // Assembled here so no caller has to, and so every screen shows the same
     // thing. The parts are still sent, for anything that needs them apart.
     name: formatEmployeeName(employee),
-    position: employee.position as EmployeePosition,
+    // The whole row, not a code: a position renamed in the UI then reads
+    // correctly everywhere without a second lookup.
+    position: { id: employee.position.id, name: employee.position.name },
     branch: employee.branch ? { id: employee.branch.id, name: employee.branch.name } : null,
     // Only the identifying bits of the linked account — never the password hash.
     linkedUser: employee.user ? { id: employee.user.id, email: employee.user.email } : null,

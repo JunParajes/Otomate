@@ -15,7 +15,6 @@ import {
   PAYOUT_METHODS, PAYOUT_METHOD_LABELS,
   SALARY_RATE_TYPES, SALARY_RATE_LABELS,
   CONTACT_LABEL_SUGGESTIONS,
-  POSITION_LABELS,
   ageOn, cmToFeetInches, currentSalary, feetInchesToCm, formatLengthOfService, formatMoney,
   lengthOfService, probationStatus,
   type CivilStatus, type EducationLevel, type Employee, type EmploymentType, type Gender,
@@ -370,7 +369,7 @@ export default function EmployeeDetailPage() {
             </Badge>
           </Group>
           <Text size="sm" c="dimmed">
-            {[POSITION_LABELS[employee.position], employee.branch?.name ?? 'Unassigned'].join(' · ')}
+            {[employee.position.name, employee.branch?.name ?? 'Unassigned'].join(' · ')}
           </Text>
         </Stack>
       </Group>

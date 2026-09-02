@@ -252,6 +252,23 @@ model Category {
   updatedAt   DateTime  @updatedAt
 }
 
+/// Job role on the shop floor — distinct from Role, which governs system access.
+///
+/// This was a Prisma enum until 2026-09-02. It became a table because the roles
+/// a bakery actually has are not knowable from here: a new branch adds a
+/// "Pastry Chef" or a "Delivery Helper" and nobody should need a deploy for it.
+/// The seven original values are seeded, so nothing that existed is lost.
+model EmployeePosition {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  /// Kept out of pickers without breaking the employees who still hold it.
+  isActive  Boolean    @default(true)
+  sortOrder Int        @default(0)
+  employees Employee[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
 model Product {
   id               String                @id @default(cuid())
   /// Optional short code (BRD-001). Unique when present; Postgres allows many NULLs.
@@ -281,16 +298,6 @@ model Product {
 }
 
 /// Job role on the shop floor. Distinct from `Role`, which governs system access.
-enum EmployeePosition {
-  MANAGER
-  BAKER
-  FRONTLINER
-  CASHIER
-  HELPER
-  DRIVER
-  OTHER
-}
-
 enum Gender {
   MALE
   FEMALE
@@ -356,7 +363,10 @@ model Employee {
   middleName   String?
   lastName     String
   suffix       String?
-  position     EmployeePosition @default(OTHER)
+  /// ON DELETE RESTRICT, like Product.categoryId: a position still held by
+  /// somebody cannot be deleted out from under them.
+  positionId   String
+  position     EmployeePosition @relation(fields: [positionId], references: [id])
   branchId     String?
   branch       Branch?          @relation(fields: [branchId], references: [id])
   userId       String?          @unique

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
-  ALL_PERMISSIONS, as, assertTestDatabase, makeUser, migrate, prisma, syncPermissions, truncateAll,
+  ALL_PERMISSIONS, as, assertTestDatabase, makeUser, migrate, positionId, prisma, syncPermissions,
+  syncPositions, truncateAll,
 } from '../../test/harness'
 
 /**
@@ -20,6 +21,7 @@ afterAll(async () => { await prisma.$disconnect() })
 beforeEach(async () => {
   await truncateAll()
   await syncPermissions()
+  await syncPositions()
 })
 
 async function scenario() {
@@ -238,7 +240,7 @@ describe('dates survive the round trip', () => {
     const { token } = await makeUser({ email: 'dates@t.local', permissions: ALL_PERMISSIONS })
     const branch = await prisma.branch.create({ data: { name: 'Dates' } })
     const employee = await prisma.employee.create({
-      data: { firstName: 'A', lastName: 'B', branchId: branch.id },
+      data: { firstName: 'A', lastName: 'B', branchId: branch.id, positionId: await positionId() },
     })
 
     await as(token).patch(`/api/admin/employees/${employee.id}/hr`, {
@@ -267,7 +269,9 @@ describe('dates survive the round trip', () => {
 describe('effective-dated records correct rather than duplicate', () => {
   it('re-entering a salary start date updates that row', async () => {
     const { token } = await makeUser({ email: 'sal@t.local', permissions: ALL_PERMISSIONS })
-    const employee = await prisma.employee.create({ data: { firstName: 'A', lastName: 'B' } })
+    const employee = await prisma.employee.create({
+      data: { firstName: 'A', lastName: 'B', positionId: await positionId() },
+    })
 
     const post = (basicCents: number) =>
       as(token).post(`/api/admin/employees/${employee.id}/salary`, {

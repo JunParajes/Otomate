@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process'
 import bcrypt from 'bcryptjs'
 import request from 'supertest'
-import { PERMISSIONS, type PermissionName } from '@otomate/shared'
+import { DEFAULT_EMPLOYEE_POSITIONS, PERMISSIONS, type PermissionName } from '@otomate/shared'
 import app from '../app'
 import { prisma } from '../prisma/client'
 import { resetRateLimitsForTests } from '../middleware/rate-limit'
@@ -116,6 +116,30 @@ export async function syncPermissions(): Promise<void> {
       create: { name: p.name, category: p.category, description: p.description },
     })
   }
+}
+
+/**
+ * The default job positions.
+ *
+ * truncateAll() empties every table, including the positions the migration
+ * seeded — and an employee cannot be created without one. Tests that make staff
+ * call this the way they call syncPermissions().
+ */
+export async function syncPositions(): Promise<void> {
+  for (const [i, name] of DEFAULT_EMPLOYEE_POSITIONS.entries()) {
+    await prisma.employeePosition.upsert({
+      where: { name },
+      update: {},
+      create: { name, sortOrder: i },
+    })
+  }
+}
+
+/** The id of a position by name, for building employees in tests. */
+export async function positionId(name = 'Other'): Promise<string> {
+  const position = await prisma.employeePosition.findUnique({ where: { name } })
+  if (!position) throw new Error(`No position named ${name} — call syncPositions() first`)
+  return position.id
 }
 
 /** `request(app)` with the Authorization header already attached. */

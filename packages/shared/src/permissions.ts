@@ -31,6 +31,9 @@ export const PERMISSIONS = [
   { name: 'branches:lease:write', category: 'Branches', description: 'Set rent and lease terms' },
   { name: 'employees:read', category: 'Employees', description: 'View employee records' },
   { name: 'employees:write', category: 'Employees', description: 'Create, edit and deactivate employees' },
+  // Separate from employees:write: adding a job role changes what every branch
+  // can pick from, which is administration rather than an everyday staff edit.
+  { name: 'positions:write', category: 'Employees', description: 'Add, rename and remove employee positions' },
   // Separate from employees:* so a branch manager can see who works for them
   // without seeing government IDs or pay. Salary is split again because it is
   // the more sensitive of the two socially, and far fewer people need it.

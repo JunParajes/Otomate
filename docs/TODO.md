@@ -82,7 +82,8 @@ revisit this "when real staff data accumulates"; that has happened.
 - [x] **5a — the 201 file.** Live. Personal details, government IDs, employment
       dates, document checks, probation extensions, effective-dated pay, at
       `/admin/employees/:id`. Age and length of service are derived from the
-      dates rather than stored.
+      dates rather than stored. Job positions are editable rows at
+      `/admin/positions` rather than a compiled-in enum.
 - [x] **5f — branch records.** Live. Lease, effective-dated rent, permits with
       expiry warnings, and utility accounts with bills, unpaid warnings and
       year-on-year consumption, at `/admin/branches/:id`.

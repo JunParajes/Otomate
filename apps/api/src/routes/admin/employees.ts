@@ -12,11 +12,12 @@ import { toEmployeeDto } from '../../lib/serializers'
 import { rethrowUniqueViolation } from './guards'
 
 const router = Router()
-const withRelations = { branch: true, user: true, contacts: true } as const
+const withRelations = { branch: true, user: true, contacts: true, position: true } as const
 const withSalaries = {
   branch: true,
   user: true,
   contacts: true,
+  position: true,
   salaries: { include: { recordedBy: true } },
 } as const
 
@@ -111,7 +112,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const parsed = createEmployeeSchema.safeParse(req.body)
     if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error), 'VALIDATION_ERROR')
-    const { firstName, lastName, position, isActive } = parsed.data
+    const { firstName, lastName, positionId, isActive } = parsed.data
     const middleName = cleanOptional(parsed.data.middleName) ?? null
     const suffix = cleanOptional(parsed.data.suffix) ?? null
     const employeeCode = cleanOptional(parsed.data.employeeCode) ?? null
@@ -124,7 +125,7 @@ router.post(
       const employee = await prisma.employee.create({
         data: {
           firstName, middleName, lastName, suffix,
-          position, isActive, employeeCode, userId,
+          positionId, isActive, employeeCode, userId,
           branchId: parsed.data.branchId ?? null,
         },
         include: withRelations,
@@ -159,7 +160,7 @@ router.patch(
           ...(parsed.data.lastName !== undefined && { lastName: parsed.data.lastName }),
           ...(parsed.data.middleName !== undefined && { middleName: cleanOptional(parsed.data.middleName) ?? null }),
           ...(parsed.data.suffix !== undefined && { suffix: cleanOptional(parsed.data.suffix) ?? null }),
-          ...(parsed.data.position !== undefined && { position: parsed.data.position }),
+          ...(parsed.data.positionId !== undefined && { positionId: parsed.data.positionId }),
           ...(parsed.data.isActive !== undefined && { isActive: parsed.data.isActive }),
           ...(parsed.data.branchId !== undefined && { branchId: parsed.data.branchId }),
           ...(employeeCode !== undefined && { employeeCode }),

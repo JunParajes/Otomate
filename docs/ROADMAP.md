@@ -109,6 +109,9 @@ falls through is money the business meant to recover and simply doesn't."*
       received rather than a tick
 - [x] Pay: basic and allowance, as **effective-dated history** (below)
 - [x] Payout method and account
+- [x] Job positions are **rows, not an enum** — managed at `/admin/positions`,
+      because the roles a bakery takes on are not knowable at build time and a
+      new one should not need a deploy
 - [x] Permission split so pay is not visible to everyone with `employees:read`
 
 Age and length of service are **derived from the dates, never stored** — a

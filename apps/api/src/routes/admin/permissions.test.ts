@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
-  ALL_PERMISSIONS, as, assertTestDatabase, makeUser, migrate, prisma, syncPermissions, truncateAll,
+  ALL_PERMISSIONS, as, assertTestDatabase, makeUser, migrate, positionId, prisma, syncPermissions,
+  syncPositions, truncateAll,
 } from '../../test/harness'
 
 /**
@@ -21,6 +22,8 @@ afterAll(async () => { await prisma.$disconnect() })
 beforeEach(async () => {
   await truncateAll()
   await syncPermissions()
+  await syncPositions()
+  await syncPositions()
 })
 
 async function seedEmployee() {
@@ -28,7 +31,7 @@ async function seedEmployee() {
   const employee = await prisma.employee.create({
     data: {
       firstName: 'Maria', middleName: 'Santos', lastName: 'Cruz',
-      position: 'CASHIER', branchId: branch.id,
+      positionId: await positionId('Cashier'), branchId: branch.id,
       sssNumber: '34-1234567-8', tin: '123-456-789-000',
       dateHired: new Date('2026-03-01T00:00:00Z'),
       address: '12 Rizal St, Davao City',

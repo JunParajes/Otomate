@@ -9,9 +9,9 @@ import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
 import { IconId, IconLink, IconPencil, IconPlus, IconSearch, IconUserCheck, IconUserOff } from '@tabler/icons-react'
 import {
-  EMPLOYEE_POSITIONS, POSITION_LABELS, createEmployeeSchema, formatEmployeeName, type Employee,
+  createEmployeeSchema, formatEmployeeName, type Employee,
 } from '@otomate/shared'
-import { employeeApi } from '@/lib/employees'
+import { employeeApi, positionApi } from '@/lib/employees'
 import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
 import { adminApi } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
@@ -24,6 +24,7 @@ export default function EmployeesPage() {
   const navigate = useNavigate()
   const employees = useResource(employeeApi.list)
   const branches = useResource(adminApi.listBranches)
+  const positions = useResource(positionApi.list)
   // Only loadable with users:read — the login link is hidden without it.
   const canLinkLogins = can('users:read')
   const users = useResource(() => (canLinkLogins ? adminApi.listUsers() : Promise.resolve([])), [canLinkLogins])
@@ -36,10 +37,27 @@ export default function EmployeesPage() {
   const [branchFilter, setBranchFilter] = useState<string | null>(null)
   const [positionFilter, setPositionFilter] = useState<string | null>(null)
 
+  /**
+   * "Other" if it still exists, otherwise whatever sorts first. A new record has
+   * to start on something now that a position is required, and picking the first
+   * real role would silently mislabel people.
+   */
+  function defaultPositionId(): string {
+    const list = (positions.data ?? []).filter(p => p.isActive)
+    return (list.find(p => p.name === 'Other') ?? list[0])?.id ?? ''
+  }
+
   const canWrite = can('employees:write')
   const canReadHr = can('hr:read')
   const branchOptions = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }))
-  const positionOptions = EMPLOYEE_POSITIONS.map(p => ({ value: p, label: POSITION_LABELS[p] }))
+  /*
+   * Positions are rows now, so the picker is loaded rather than compiled in.
+   * Inactive ones are dropped from the choices but still render on staff who
+   * hold them — retiring a role must not blank out existing records.
+   */
+  const positionOptions = (positions.data ?? [])
+    .filter(p => p.isActive)
+    .map(p => ({ value: p.id, label: p.name }))
 
   /** A login belongs to at most one employee, so hide ones already taken. */
   const userOptions = useMemo(() => {
@@ -56,7 +74,7 @@ export default function EmployeesPage() {
   const form = useForm({
     initialValues: {
       firstName: '', middleName: '', lastName: '', suffix: '',
-      employeeCode: '', position: 'OTHER',
+      employeeCode: '', positionId: '',
       branchId: null as string | null, userId: null as string | null, isActive: true,
     },
     validate: zodResolver(createEmployeeSchema),
@@ -66,7 +84,7 @@ export default function EmployeesPage() {
     const q = search.trim().toLowerCase()
     return (employees.data ?? []).filter(e => {
       if (branchFilter && e.branch?.id !== branchFilter) return false
-      if (positionFilter && e.position !== positionFilter) return false
+      if (positionFilter && e.position.id !== positionFilter) return false
       if (!q) return true
       const haystack = [e.name, e.firstName, e.middleName, e.lastName, e.suffix, e.employeeCode]
         .filter(Boolean).join(' ').toLowerCase()
@@ -91,7 +109,7 @@ export default function EmployeesPage() {
   function openCreate() {
     form.setValues({
       firstName: '', middleName: '', lastName: '', suffix: '',
-      employeeCode: '', position: 'OTHER', branchId: null, userId: null, isActive: true,
+      employeeCode: '', positionId: defaultPositionId(), branchId: null, userId: null, isActive: true,
     })
     form.clearErrors(); setCreating(true)
   }
@@ -102,7 +120,7 @@ export default function EmployeesPage() {
       middleName: e.middleName ?? '',
       lastName: e.lastName,
       suffix: e.suffix ?? '',
-      employeeCode: e.employeeCode ?? '', position: e.position,
+      employeeCode: e.employeeCode ?? '', positionId: e.position.id,
       branchId: e.branch?.id ?? null, userId: e.linkedUser?.id ?? null, isActive: e.isActive,
     })
     form.clearErrors(); setEditing(e)
@@ -183,7 +201,7 @@ export default function EmployeesPage() {
                       {e.employeeCode && <Text size="xs" c="dimmed" ff="monospace">{e.employeeCode}</Text>}
                     </Stack>
                   </Table.Td>
-                  <Table.Td><Badge variant="light" color="gray">{POSITION_LABELS[e.position]}</Badge></Table.Td>
+                  <Table.Td><Badge variant="light" color="gray">{e.position.name}</Badge></Table.Td>
                   <Table.Td>
                     {e.branch ? <Text size="sm">{e.branch.name}</Text> : <Text size="sm" c="dimmed">Unassigned</Text>}
                   </Table.Td>
@@ -210,7 +228,7 @@ export default function EmployeesPage() {
         opened={acting !== null}
         onClose={() => setActing(null)}
         title={acting?.name ?? ''}
-        subtitle={acting ? [POSITION_LABELS[acting.position], acting.branch?.name ?? 'Unassigned'].join(' · ') : undefined}
+        subtitle={acting ? [acting.position.name, acting.branch?.name ?? 'Unassigned'].join(' · ') : undefined}
         actions={
           acting
             ? ([
@@ -246,7 +264,7 @@ export default function EmployeesPage() {
               const payload = {
                 ...values,
                 employeeCode: values.employeeCode.trim() || null,
-                position: values.position as (typeof EMPLOYEE_POSITIONS)[number],
+                positionId: values.positionId,
               }
               return isEditing ? employeeApi.update(editing!.id, payload) : employeeApi.create(payload)
             },
@@ -279,7 +297,7 @@ export default function EmployeesPage() {
                 two inputs on different lines. */}
             <Group grow align="flex-end">
               <TextInput label="Employee code" placeholder="EMP-001" description="Optional, must be unique" {...form.getInputProps('employeeCode')} />
-              <Select label="Position" data={positionOptions} {...form.getInputProps('position')} />
+              <Select label="Position" data={positionOptions} withAsterisk {...form.getInputProps('positionId')} />
             </Group>
 
             <Select
