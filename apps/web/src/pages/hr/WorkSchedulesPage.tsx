@@ -84,7 +84,7 @@ export default function WorkSchedulesPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Cutoff</Table.Th>
-                <Table.Th w={150}>Status</Table.Th>
+                <Table.Th w={190}>Status</Table.Th>
                 <Table.Th w={160}>Drafted by</Table.Th>
                 <Table.Th w={160}>Approved by</Table.Th>
               </Table.Tr>

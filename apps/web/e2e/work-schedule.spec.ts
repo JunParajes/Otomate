@@ -26,6 +26,7 @@ const WEEKS = {
   branches: '2026-10-08',
   nohire: '2026-10-15',
   numbering: '2026-11-12',
+  clipping: '2026-11-19',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -239,4 +240,39 @@ test('a cutoff is labelled with its WS number', async ({ page }) => {
   // And on the list it sits beside the dates.
   await page.getByRole('button', { name: 'Back', exact: true }).click()
   await expect(page.getByText('WS-46', { exact: true })).toBeVisible()
+})
+
+/**
+ * Status labels must fit their column.
+ *
+ * "Awaiting approval" is the longest, and it was rendering as "AWAITING APPR…".
+ * Mantine uppercases badge labels and ellipsises the overflow, so a column
+ * narrower than the widest status truncates silently — it looks like a styling
+ * choice rather than a bug. Measured rather than eyeballed: scrollWidth beyond
+ * clientWidth is the definition of clipped.
+ */
+test('no status badge is cut off in the list', async ({ page }) => {
+  await openCutoff(page, WEEKS.clipping)
+  await page.getByRole('button', { name: 'Submit' }).click()
+  await expect(page.getByText('Awaiting approval')).toBeVisible()
+  await clearToasts(page)
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Work schedule' })).toBeVisible()
+
+  const badges = page.locator('tbody .mantine-Badge-label')
+  await expect(badges.first()).toBeVisible()
+
+  for (const badge of await badges.all()) {
+    const { text, clipped } = await badge.evaluate(el => ({
+      text: el.textContent ?? '',
+      clipped: el.scrollWidth > el.clientWidth + 1,
+    }))
+    expect(clipped, `"${text}" is cut off`).toBe(false)
+  }
+
+  // And the longest one is there in full. The DOM text is sentence case — the
+  // capitals are Mantine's text-transform, so matching the rendered form finds
+  // nothing.
+  await expect(page.getByText('Awaiting approval', { exact: true })).toBeVisible()
 })
