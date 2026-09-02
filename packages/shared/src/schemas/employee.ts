@@ -150,9 +150,18 @@ export const updateEmployeeHrSchema = z.object({
   civilStatus: z.enum(CIVIL_STATUSES).nullable().optional(),
   religion: z.string().trim().max(80, 'Religion is too long').nullable().optional(),
   email: z.union([z.email('Enter a valid email address'), z.literal('')]).nullable().optional(),
-  // Whole centimetres. The bounds reject a decimal point in the wrong place
-  // rather than any real person.
-  heightCm: z.number().int('Enter whole centimetres').min(50).max(250).nullable().optional(),
+  /**
+   * Whole centimetres, though the form takes feet and inches and converts — see
+   * lib/height.ts. The bounds reject a slip of the finger rather than any real
+   * person, and say so in feet, because that is what was actually typed.
+   */
+  heightCm: z
+    .number()
+    .int('Enter whole centimetres')
+    .min(50, 'That is under 1\'8" — check the feet and inches')
+    .max(250, 'That is over 8\'2" — check the feet and inches')
+    .nullable()
+    .optional(),
   // Grams, so 62.5 kg is exact and no float enters the record.
   weightGrams: z.number().int().min(1000).max(500000).nullable().optional(),
   educationLevel: z.enum(EDUCATION_LEVELS).nullable().optional(),
