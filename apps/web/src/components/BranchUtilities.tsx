@@ -74,6 +74,16 @@ export default function BranchUtilities({ branch, canWrite, onChange }: Props) {
   const accounts = branch.utilities ?? []
   const unpaid = unpaidSummary(accounts)
 
+  /**
+   * Note the shape of every onChange below: the value is read out of the event
+   * BEFORE the state updater runs, never inside it.
+   *
+   * React clears `currentTarget` once the event finishes dispatching, and a
+   * functional updater runs later — so `set(f => ({ ...f, x: e.currentTarget.value }))`
+   * throws "Cannot read properties of null (reading 'value')" and blanks the
+   * page. It survives a `fill()` in a test because that dispatches differently;
+   * only real keystrokes hit it.
+   */
   const [accountForm, setAccountForm] = useState<AccountForm | null>(null)
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
   const [savingAccount, setSavingAccount] = useState(false)
@@ -353,28 +363,28 @@ export default function BranchUtilities({ branch, canWrite, onChange }: Props) {
                 label="Name"
                 withAsterisk
                 value={accountForm.label}
-                onChange={e => setAccountForm(f => (f ? { ...f, label: e.currentTarget.value } : f))}
+                onChange={e => { const v = e.currentTarget.value; setAccountForm(f => (f ? { ...f, label: v } : f)) }}
               />
             )}
             <TextInput
               label="Provider"
               placeholder="Davao Light, Davao City Water District…"
               value={accountForm.provider}
-              onChange={e => setAccountForm(f => (f ? { ...f, provider: e.currentTarget.value } : f))}
+              onChange={e => { const v = e.currentTarget.value; setAccountForm(f => (f ? { ...f, provider: v } : f)) }}
             />
             <Grid gap="sm">
               <Grid.Col span={6}>
                 <TextInput
                   label="Account number"
                   value={accountForm.accountNumber}
-                  onChange={e => setAccountForm(f => (f ? { ...f, accountNumber: e.currentTarget.value } : f))}
+                  onChange={e => { const v = e.currentTarget.value; setAccountForm(f => (f ? { ...f, accountNumber: v } : f)) }}
                 />
               </Grid.Col>
               <Grid.Col span={6}>
                 <TextInput
                   label="Meter number"
                   value={accountForm.meterNumber}
-                  onChange={e => setAccountForm(f => (f ? { ...f, meterNumber: e.currentTarget.value } : f))}
+                  onChange={e => { const v = e.currentTarget.value; setAccountForm(f => (f ? { ...f, meterNumber: v } : f)) }}
                 />
               </Grid.Col>
             </Grid>
@@ -404,7 +414,7 @@ export default function BranchUtilities({ branch, canWrite, onChange }: Props) {
                   type="date"
                   withAsterisk
                   value={billForm.periodStart}
-                  onChange={e => setBillForm(f => ({ ...f, periodStart: e.currentTarget.value }))}
+                  onChange={e => { const v = e.currentTarget.value; setBillForm(f => ({ ...f, periodStart: v })) }}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -413,7 +423,7 @@ export default function BranchUtilities({ branch, canWrite, onChange }: Props) {
                   type="date"
                   withAsterisk
                   value={billForm.periodEnd}
-                  onChange={e => setBillForm(f => ({ ...f, periodEnd: e.currentTarget.value }))}
+                  onChange={e => { const v = e.currentTarget.value; setBillForm(f => ({ ...f, periodEnd: v })) }}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -440,7 +450,7 @@ export default function BranchUtilities({ branch, canWrite, onChange }: Props) {
                   label="Due date"
                   type="date"
                   value={billForm.dueDate}
-                  onChange={e => setBillForm(f => ({ ...f, dueDate: e.currentTarget.value }))}
+                  onChange={e => { const v = e.currentTarget.value; setBillForm(f => ({ ...f, dueDate: v })) }}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -449,14 +459,14 @@ export default function BranchUtilities({ branch, canWrite, onChange }: Props) {
                   type="date"
                   description="Leave blank if not yet paid"
                   value={billForm.paidOn}
-                  onChange={e => setBillForm(f => ({ ...f, paidOn: e.currentTarget.value }))}
+                  onChange={e => { const v = e.currentTarget.value; setBillForm(f => ({ ...f, paidOn: v })) }}
                 />
               </Grid.Col>
               <Grid.Col span={12}>
                 <TextInput
                   label="Reference / OR number"
                   value={billForm.referenceNo}
-                  onChange={e => setBillForm(f => ({ ...f, referenceNo: e.currentTarget.value }))}
+                  onChange={e => { const v = e.currentTarget.value; setBillForm(f => ({ ...f, referenceNo: v })) }}
                 />
               </Grid.Col>
             </Grid>
@@ -465,7 +475,7 @@ export default function BranchUtilities({ branch, canWrite, onChange }: Props) {
               autosize
               minRows={2}
               value={billForm.note}
-              onChange={e => setBillForm(f => ({ ...f, note: e.currentTarget.value }))}
+              onChange={e => { const v = e.currentTarget.value; setBillForm(f => ({ ...f, note: v })) }}
             />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setBillFor(null)}>Cancel</Button>

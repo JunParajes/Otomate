@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter * exec tsc --noEmit)",
+      "Bash(pnpm -r exec tsc --noEmit)",
+      "Bash(pnpm --filter * build)",
+      "Bash(curl -s -o /dev/null -w *)",
+      "Bash(pnpm -r test)",
+      "Bash(docker volume ls *)",
+      "Bash(docker system df)",
+      "Bash(docker version *)",
+      "Bash(docker network ls *)",
+      "Bash(pnpm --filter api exec prisma migrate status)"
+    ]
+  }
+}

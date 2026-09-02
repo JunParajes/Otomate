@@ -542,7 +542,7 @@ export default function BranchDetailPage() {
                 label="Name of permit"
                 withAsterisk
                 value={permitForm.label}
-                onChange={e => setPermitForm(f => (f ? { ...f, label: e.currentTarget.value } : f))}
+                onChange={e => { const v = e.currentTarget.value; setPermitForm(f => (f ? { ...f, label: v } : f)) }}
               />
             )}
             <Grid gap="sm">
@@ -550,14 +550,14 @@ export default function BranchDetailPage() {
                 <TextInput
                   label="Permit number"
                   value={permitForm.number}
-                  onChange={e => setPermitForm(f => (f ? { ...f, number: e.currentTarget.value } : f))}
+                  onChange={e => { const v = e.currentTarget.value; setPermitForm(f => (f ? { ...f, number: v } : f)) }}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, sm: 6 }}>
                 <TextInput
                   label="Issuing authority"
                   value={permitForm.authority}
-                  onChange={e => setPermitForm(f => (f ? { ...f, authority: e.currentTarget.value } : f))}
+                  onChange={e => { const v = e.currentTarget.value; setPermitForm(f => (f ? { ...f, authority: v } : f)) }}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -565,7 +565,7 @@ export default function BranchDetailPage() {
                   label="Issued on"
                   type="date"
                   value={permitForm.issuedOn}
-                  onChange={e => setPermitForm(f => (f ? { ...f, issuedOn: e.currentTarget.value } : f))}
+                  onChange={e => { const v = e.currentTarget.value; setPermitForm(f => (f ? { ...f, issuedOn: v } : f)) }}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -574,7 +574,7 @@ export default function BranchDetailPage() {
                   type="date"
                   description="What the reminder is based on"
                   value={permitForm.expiresOn}
-                  onChange={e => setPermitForm(f => (f ? { ...f, expiresOn: e.currentTarget.value } : f))}
+                  onChange={e => { const v = e.currentTarget.value; setPermitForm(f => (f ? { ...f, expiresOn: v } : f)) }}
                 />
               </Grid.Col>
             </Grid>
@@ -583,7 +583,7 @@ export default function BranchDetailPage() {
               autosize
               minRows={2}
               value={permitForm.note}
-              onChange={e => setPermitForm(f => (f ? { ...f, note: e.currentTarget.value } : f))}
+              onChange={e => { const v = e.currentTarget.value; setPermitForm(f => (f ? { ...f, note: v } : f)) }}
             />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => { setPermitForm(null); setEditingPermitId(null) }}>Cancel</Button>
