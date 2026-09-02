@@ -24,6 +24,10 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      # The builder stage, not the default final one. The api image is
+      # multi-stage and its last stage installs --prod, so ts-node-dev and tsc
+      # are absent there — every dev command here needs devDependencies.
+      target: builder
     command: pnpm --filter @otomate/shared dev
     working_dir: /app
     volumes:
@@ -38,6 +42,9 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      # See the note on `shared` — dev runs ts-node-dev, which only the builder
+      # stage has.
+      target: builder
     command: pnpm --filter api dev
     working_dir: /app/apps/api
     environment:
@@ -46,6 +53,10 @@ services:
       API_PORT: ${API_PORT:-3001}
       NODE_ENV: development
       UPLOAD_DIR: /app/uploads
+      # Read by `prisma db seed`. Without it here, setting SEED_ADMIN_PASSWORD in
+      # .env does nothing — the seed runs inside this container and falls back to
+      # its placeholder, leaving an admin account nobody knows the password to.
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
     volumes:
       - ./apps/api/src:/app/apps/api/src
       - ./apps/api/prisma:/app/apps/api/prisma
