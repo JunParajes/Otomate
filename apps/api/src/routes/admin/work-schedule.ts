@@ -7,6 +7,7 @@ import {
   updateEntriesSchema,
   updateWorkScheduleSchema,
   formatEmployeeName,
+  formatEmployeeNameFiled,
   type WorkSchedule,
   type WorkScheduleRow,
 } from '@otomate/shared'
@@ -114,6 +115,7 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
     return {
       employeeId: emp.id,
       name: formatEmployeeName(emp),
+      nameFiled: formatEmployeeNameFiled(emp),
       branch: emp.branch,
       position: emp.position.name,
       // Against the FIRST day of the cutoff: eligibility is judged for the week

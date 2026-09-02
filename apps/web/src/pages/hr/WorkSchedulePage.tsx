@@ -395,7 +395,7 @@ export default function WorkSchedulePage() {
                   {schedule.days.map(d => {
                     const date = new Date(`${d}T00:00:00.000Z`)
                     return (
-                      <Table.Th key={d} w={100} ta="center">
+                      <Table.Th key={d} w={96} ta="center">
                         <Text size="xs" fw={700}>{DAY_NAMES[date.getUTCDay()]}</Text>
                         <Text size="xs" c="dimmed">{d.slice(8)}/{d.slice(5, 7)}</Text>
                       </Table.Th>
@@ -421,7 +421,16 @@ export default function WorkSchedulePage() {
                             aria-label={`Details for ${row.name}`}
                           >
                             <Group gap={6} wrap="nowrap">
-                              <Text size="sm" fw={500}>{row.name}</Text>
+                              {/*
+                                Filed form — "Espinosa, Edgar C." A full name with
+                                a middle name wraps to three lines in this column,
+                                which makes every row a different height and the
+                                grid much taller than the week it shows. The full
+                                name is on the details panel.
+                              */}
+                              <Text size="sm" fw={500} lineClamp={1} style={{ minWidth: 0 }}>
+                                {row.nameFiled}
+                              </Text>
                               {row.eligibility === 'UNDER_ONE_MONTH' && (
                                 <Tooltip label="Under one month — no holiday pay or offsetting yet" withArrow>
                                   <Badge size="xs" variant="light" color="orange">new</Badge>

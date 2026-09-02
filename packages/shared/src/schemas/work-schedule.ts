@@ -251,7 +251,17 @@ export interface WorkScheduleRowDetails {
 
 export interface WorkScheduleRow {
   employeeId: string
+  /** Full name, for the details panel and anywhere a person is named in prose. */
   name: string
+  /**
+   * "Maglana, Michelle S." — the filing form, for the grid.
+   *
+   * A full Filipino name with a middle name wraps to three lines in a column
+   * this narrow, which makes every row a different height and the grid a good
+   * deal taller than the week it shows. The filed form is one line and sorts
+   * the way a payroll list reads.
+   */
+  nameFiled: string
   /** Their own branch — the grouping the grid reads by. */
   branch: { id: string; name: string } | null
   position: string
