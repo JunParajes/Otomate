@@ -100,6 +100,30 @@ revisit this "when real staff data accumulates"; that has happened.
       waiting on the backup drive — scanned government documents should not live
       in only one place.
 
+- [ ] **Import existing 201 records from the Excel.** Decided 2026-09-02: a
+      one-off importer that posts through the API rather than raw SQL, so every
+      row passes the same Zod validation and permission checks as the UI. Three
+      safeguards: a dry run that reports create/update/skip/reject and writes
+      nothing; a full rehearsal against the local docker instance before
+      production; and matching on employee code (or name + birth date) so
+      re-running updates instead of duplicating.
+
+      The traps are all Excel's doing, and each produces plausible-looking wrong
+      data rather than an error:
+      - Leading zeros are eaten — `0917...` becomes `917...`, and a TIN starting
+        with 0 loses it. Those columns must be formatted as **Text** before export.
+      - Dates export as serial numbers (`45000`) unless forced to text `YYYY-MM-DD`.
+      - A single "Name" column has to be split **in Excel**, not by the script.
+        Names are stored in parts precisely because splitting guesses wrong on the
+        cases that matter here: "Ethelredo Parajes Jr" makes "Jr" the surname, and
+        a mother's maiden middle name is indistinguishable from a two-word given
+        name.
+      - Branch names must match the existing rows exactly.
+
+      An in-app CSV upload screen with a preview table is the bigger, reusable
+      version; the script is the right call for a one-time migration and its
+      mapping logic carries over.
+
 ### Later
 - [ ] Branch performance dashboard
 - [ ] Inventory tracking
