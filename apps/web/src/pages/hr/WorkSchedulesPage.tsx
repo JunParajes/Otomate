@@ -4,7 +4,8 @@ import { notifications } from '@mantine/notifications'
 import { IconPlus } from '@tabler/icons-react'
 import { useNavigate } from 'react-router-dom'
 import {
-  WORK_SCHEDULE_STATUS_LABELS, cutoffStartFor, formatCutoff, isCutoffStart,
+  WORK_SCHEDULE_STATUS_LABELS, cutoffCode, cutoffStartFor, formatCutoff, formatCutoffLabel,
+  isCutoffStart,
 } from '@otomate/shared'
 import { workScheduleApi } from '@/lib/work-schedule'
 import { useResource } from '@/hooks/useResource'
@@ -41,7 +42,7 @@ export default function WorkSchedulesPage() {
     setSaving(true)
     try {
       const made = await workScheduleApi.create({ weekStart: chosen, notes: notes.trim() || null })
-      notifications.show({ color: 'green', title: 'Schedule started', message: formatCutoff(made.weekStart) })
+      notifications.show({ color: 'green', title: 'Schedule started', message: formatCutoffLabel(made.weekStart) })
       setCreating(false)
       navigate(`/hr/work-schedule/${made.id}`)
     } catch (e) {
@@ -95,7 +96,12 @@ export default function WorkSchedulesPage() {
                   style={{ cursor: 'pointer' }}
                   onClick={() => navigate(`/hr/work-schedule/${s.id}`)}
                 >
-                  <Table.Td><Text fw={500}>{formatCutoff(s.weekStart)}</Text></Table.Td>
+                  <Table.Td>
+                    <Group gap="xs" wrap="nowrap">
+                      <Badge variant="light" color="blue">{cutoffCode(s.weekStart)}</Badge>
+                      <Text fw={500}>{formatCutoff(s.weekStart)}</Text>
+                    </Group>
+                  </Table.Td>
                   <Table.Td>
                     <Badge variant="light" color={STATUS_COLOUR[s.status]}>
                       {WORK_SCHEDULE_STATUS_LABELS[s.status]}
@@ -117,7 +123,7 @@ export default function WorkSchedulesPage() {
             type="date"
             description={
               valid
-                ? `Thursday — runs to ${formatCutoff(chosen)}`
+                ? `${cutoffCode(chosen)} — ${formatCutoff(chosen)}`
                 : 'A cutoff starts on a Thursday'
             }
             error={!valid && chosen ? 'Pick a Thursday' : undefined}

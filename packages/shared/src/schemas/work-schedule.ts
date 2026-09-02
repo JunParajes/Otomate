@@ -135,6 +135,41 @@ export function formatCutoff(weekStart: string): string {
 }
 
 /**
+ * Which cutoff of the year this is — the WS number.
+ *
+ * DERIVED from the Thursday, never stored and never a creation counter. The same
+ * week therefore always carries the same number: backfilling an old cutoff, or
+ * planning two out of order, cannot renumber anything. It resets each January.
+ *
+ * A cutoff counts under the year it STARTS in, so Thursday 31 December 2026 is
+ * WS-53 of 2026 even though five of its days fall in January. The cutoff is
+ * identified by its Thursday everywhere else in the system — that is what you
+ * pick when creating one — and one rule beats two.
+ */
+export function cutoffNumber(weekStart: string): number | null {
+  const d = parseDay(weekStart)
+  if (!d || d.getUTCDay() !== CUTOFF_START_WEEKDAY) return null
+
+  // The first Thursday of the same year.
+  const first = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  first.setUTCDate(first.getUTCDate() + ((CUTOFF_START_WEEKDAY - first.getUTCDay() + 7) % 7))
+
+  const MS_PER_WEEK = 7 * 86_400_000
+  return Math.round((d.getTime() - first.getTime()) / MS_PER_WEEK) + 1
+}
+
+/** "WS-35", the way a cutoff is referred to. */
+export function cutoffCode(weekStart: string): string {
+  const n = cutoffNumber(weekStart)
+  return n === null ? 'WS-?' : `WS-${n}`
+}
+
+/** "WS-35 · 27 Aug – 2 Sep 2026" — the number first, since that is how it is named. */
+export function formatCutoffLabel(weekStart: string): string {
+  return `${cutoffCode(weekStart)} · ${formatCutoff(weekStart)}`
+}
+
+/**
  * Whether someone had been employed a full month by a given day.
  *
  * Staff under a month are not eligible for holiday pay or offsetting, and the

@@ -25,6 +25,7 @@ const WEEKS = {
   details: '2026-10-01',
   branches: '2026-10-08',
   nohire: '2026-10-15',
+  numbering: '2026-11-12',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -220,4 +221,22 @@ test('a missing hire date asks for one instead of guessing', async ({ page }) =>
   await expect(dialog.getByText('No date hired on record')).toBeVisible()
   await expect(dialog.getByText(/Add it to their record/)).toBeVisible()
   await expect(dialog.getByText('Over one month')).toHaveCount(0)
+})
+
+/**
+ * Cutoffs are referred to by their WS number — "WS-35", the 35th cutoff of the
+ * year. Derived from the Thursday, so the same week always carries the same
+ * number regardless of the order schedules were created in.
+ */
+test('a cutoff is labelled with its WS number', async ({ page }) => {
+  await openCutoff(page, WEEKS.numbering)
+
+  // 12 Nov 2026 is the 46th Thursday of 2026.
+  // exact: the creation toast also reads "WS-46 · 12 Nov – 18 Nov 2026".
+  await expect(page.getByText('WS-46', { exact: true })).toBeVisible()
+  await expect(page.getByText('12 Nov – 18 Nov 2026', { exact: true })).toBeVisible()
+
+  // And on the list it sits beside the dates.
+  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await expect(page.getByText('WS-46', { exact: true })).toBeVisible()
 })

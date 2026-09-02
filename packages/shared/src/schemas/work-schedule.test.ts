@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   createWorkScheduleSchema,
+  cutoffCode,
+  cutoffNumber,
+  formatCutoffLabel,
   cutoffDays,
   cutoffEnd,
   cutoffStartFor,
@@ -107,5 +110,42 @@ describe('one month of service', () => {
   it('flags someone hired inside the sample cutoff', () => {
     // From the spreadsheet: hired 26 Aug 2026, planning the week of 27 Aug.
     expect(isUnderOneMonth('2026-08-26', '2026-08-27')).toBe(true)
+  })
+})
+
+/**
+ * The WS number.
+ *
+ * Derived from the Thursday rather than counted on creation, so the same week
+ * always carries the same number however the schedules were made.
+ */
+describe('cutoff numbering', () => {
+  it('starts at WS-1 on the first Thursday of the year', () => {
+    // 1 January 2026 is itself a Thursday.
+    expect(cutoffNumber('2026-01-01')).toBe(1)
+    expect(cutoffNumber('2026-01-08')).toBe(2)
+  })
+
+  it('numbers the sample week from the spreadsheet', () => {
+    expect(cutoffNumber('2026-08-27')).toBe(35)
+    expect(formatCutoffLabel('2026-08-27')).toBe('WS-35 · 27 Aug – 2 Sep 2026')
+  })
+
+  it('counts a New Year cutoff under the year it starts in', () => {
+    // Thursday 31 December 2026 — five of its days are in January 2027.
+    expect(cutoffNumber('2026-12-31')).toBe(53)
+    // And the next one resets.
+    expect(cutoffNumber('2027-01-07')).toBe(1)
+  })
+
+  it('handles a year whose first Thursday is not 1 January', () => {
+    // 1 January 2025 is a Wednesday; the first Thursday is the 2nd.
+    expect(cutoffNumber('2025-01-02')).toBe(1)
+    expect(cutoffNumber('2025-01-09')).toBe(2)
+  })
+
+  it('refuses to number a day that is not a Thursday', () => {
+    expect(cutoffNumber('2026-08-31')).toBeNull()
+    expect(cutoffCode('2026-08-31')).toBe('WS-?')
   })
 })

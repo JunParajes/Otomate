@@ -8,7 +8,7 @@ import { notifications } from '@mantine/notifications'
 import { IconAlertTriangle, IconArrowLeft, IconCheck } from '@tabler/icons-react'
 import {
   WORK_DAY_HINTS, WORK_DAY_LABELS, WORK_DAY_MARKS, WORK_DAY_STATUSES,
-  WORK_SCHEDULE_STATUS_LABELS, formatCutoff,
+  WORK_SCHEDULE_STATUS_LABELS, cutoffCode, formatCutoff, formatCutoffLabel,
   type WorkDayStatus, type WorkSchedule, type WorkScheduleEntryInput, type WorkScheduleRow,
 } from '@otomate/shared'
 import { workScheduleApi } from '@/lib/work-schedule'
@@ -169,7 +169,7 @@ export default function WorkSchedulePage() {
     setSaving(true)
     try {
       setSchedule(await workScheduleApi.update(schedule.id, { status }))
-      notifications.show({ color: 'green', title: message, message: formatCutoff(schedule.weekStart) })
+      notifications.show({ color: 'green', title: message, message: formatCutoffLabel(schedule.weekStart) })
     } catch (e) {
       notifications.show({
         color: 'red',
@@ -209,6 +209,7 @@ export default function WorkSchedulePage() {
         </ActionIcon>
         <Stack gap={2} style={{ minWidth: 0 }}>
           <Group gap="xs" wrap="nowrap">
+            <Badge variant="light" color="blue" size="lg">{cutoffCode(schedule.weekStart)}</Badge>
             <Title order={2} size="h4">{formatCutoff(schedule.weekStart)}</Title>
             <Badge variant="light" color={STATUS_COLOUR[schedule.status]}>
               {WORK_SCHEDULE_STATUS_LABELS[schedule.status]}
