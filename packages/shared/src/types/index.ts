@@ -143,7 +143,8 @@ export interface Product {
 
 // ─── Employees ────────────────────────────────────────────────────────────
 import type {
-  CivilStatus, EmployeeContactRecord, EmployeePosition, EmployeeSalaryRecord, EmploymentType, PayoutMethod,
+  CivilStatus, EducationLevel, EmployeeContactRecord, EmployeePosition, EmployeeSalaryRecord,
+  EmploymentType, Gender, PayoutMethod,
 } from '../schemas/employee.js'
 
 /**
@@ -152,7 +153,30 @@ import type {
  */
 export interface EmployeeHr {
   birthDate: string | null
+  birthPlace: string | null
+  gender: Gender | null
   civilStatus: CivilStatus | null
+  religion: string | null
+  email: string | null
+  /** Whole centimetres. */
+  heightCm: number | null
+  /** Grams — divide by 1000 to display kilos. Integer units, as with money. */
+  weightGrams: number | null
+  educationLevel: EducationLevel | null
+  /** The course or strand, e.g. "BS Hotel and Restaurant Management". */
+  educationDetail: string | null
+  remarks: string | null
+
+  /**
+   * Document checks, held as the date the document was signed or produced
+   * rather than a yes/no. A tick tells you nothing six months later; the date
+   * answers "signed under which contract?" and still reads as "yes" when set.
+   */
+  confidentialityAgreementOn: string | null
+  authorityToDeductOn: string | null
+  birthCertificateOn: string | null
+  marriageContractOn: string | null
+
   address: string | null
   /** In the order to try them. Empty when none are recorded. */
   contacts: EmployeeContactRecord[]
@@ -168,6 +192,9 @@ export interface EmployeeHr {
   dateHired: string | null
   employmentType: EmploymentType
   probationEndDate: string | null
+  /** Set when probation was extended; the original date above is left intact. */
+  probationExtendedTo: string | null
+  probationExtensionReason: string | null
   regularizedAt: string | null
   separatedAt: string | null
   separationReason: string | null

@@ -61,6 +61,23 @@ export const updateEmployeeSchema = createEmployeeSchema.partial()
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>
 
+export const GENDERS = ['MALE', 'FEMALE'] as const
+export type Gender = (typeof GENDERS)[number]
+export const GENDER_LABELS: Record<Gender, string> = { MALE: 'Male', FEMALE: 'Female' }
+
+export const EDUCATION_LEVELS = [
+  'ELEMENTARY', 'HIGH_SCHOOL', 'SENIOR_HIGH', 'VOCATIONAL', 'COLLEGE', 'POST_GRADUATE',
+] as const
+export type EducationLevel = (typeof EDUCATION_LEVELS)[number]
+export const EDUCATION_LEVEL_LABELS: Record<EducationLevel, string> = {
+  ELEMENTARY: 'Elementary',
+  HIGH_SCHOOL: 'High School',
+  SENIOR_HIGH: 'Senior High',
+  VOCATIONAL: 'Vocational',
+  COLLEGE: 'College',
+  POST_GRADUATE: 'Post-graduate',
+}
+
 export const CIVIL_STATUSES = ['SINGLE', 'MARRIED', 'WIDOWED', 'SEPARATED'] as const
 export type CivilStatus = (typeof CIVIL_STATUSES)[number]
 
@@ -128,7 +145,24 @@ export interface EmployeeContactRecord {
 /** The 201 file. Every field optional: records are built up over time, not in one sitting. */
 export const updateEmployeeHrSchema = z.object({
   birthDate: dateOnly,
+  birthPlace: z.string().trim().max(200, 'Birth place is too long').nullable().optional(),
+  gender: z.enum(GENDERS).nullable().optional(),
   civilStatus: z.enum(CIVIL_STATUSES).nullable().optional(),
+  religion: z.string().trim().max(80, 'Religion is too long').nullable().optional(),
+  email: z.union([z.email('Enter a valid email address'), z.literal('')]).nullable().optional(),
+  // Whole centimetres. The bounds reject a decimal point in the wrong place
+  // rather than any real person.
+  heightCm: z.number().int('Enter whole centimetres').min(50).max(250).nullable().optional(),
+  // Grams, so 62.5 kg is exact and no float enters the record.
+  weightGrams: z.number().int().min(1000).max(500000).nullable().optional(),
+  educationLevel: z.enum(EDUCATION_LEVELS).nullable().optional(),
+  educationDetail: z.string().trim().max(160, 'That is too long').nullable().optional(),
+  remarks: z.string().trim().max(2000, 'Remarks are too long').nullable().optional(),
+
+  confidentialityAgreementOn: dateOnly,
+  authorityToDeductOn: dateOnly,
+  birthCertificateOn: dateOnly,
+  marriageContractOn: dateOnly,
   address: z.string().trim().max(300, 'Address is too long').nullable().optional(),
   /**
    * Replaces the whole set when present. Omitted entirely, the existing numbers
@@ -148,6 +182,8 @@ export const updateEmployeeHrSchema = z.object({
   dateHired: dateOnly,
   employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
   probationEndDate: dateOnly,
+  probationExtendedTo: dateOnly,
+  probationExtensionReason: z.string().trim().max(300, 'Reason is too long').nullable().optional(),
   regularizedAt: dateOnly,
   separatedAt: dateOnly,
   separationReason: z.string().trim().max(300, 'Reason is too long').nullable().optional(),
@@ -200,6 +236,68 @@ export function currentSalary(history: EmployeeSalaryRecord[]): EmployeeSalaryRe
 }
 
 /**
+ * Age and length of service are DERIVED, never stored.
+ *
+ * A stored age is wrong the day after it is typed, and a stored tenure is wrong
+ * every day. Both are computed from the dates that don't change.
+ *
+ * The arithmetic is on the date PARTS, not on Date objects. A date-only string
+ * parsed with Date.parse becomes midnight UTC, which is the previous evening in
+ * Davao (UTC+8) — so a birthday would appear to arrive a day early for half the
+ * year. Splitting the string sidesteps timezones entirely.
+ */
+function dateParts(iso: string): { y: number; m: number; d: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
+  if (!match) return null
+  return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) }
+}
+
+/** Whole years elapsed. Null for a missing, malformed or future date. */
+export function ageOn(
+  birthDate: string | null | undefined,
+  today: string = todayIso()
+): number | null {
+  const born = birthDate ? dateParts(birthDate) : null
+  const now = dateParts(today)
+  if (!born || !now) return null
+  let years = now.y - born.y
+  // Birthday not yet reached this year.
+  if (now.m < born.m || (now.m === born.m && now.d < born.d)) years -= 1
+  return years < 0 ? null : years
+}
+
+/**
+ * Time on the payroll, in whole years and months.
+ *
+ * Counted to the separation date for someone who has left, so a former
+ * employee's record keeps showing the tenure they actually served rather than
+ * growing forever.
+ */
+export function lengthOfService(
+  dateHired: string | null | undefined,
+  separatedAt: string | null | undefined,
+  today: string = todayIso()
+): { years: number; months: number } | null {
+  const from = dateHired ? dateParts(dateHired) : null
+  const until = dateParts(separatedAt || today)
+  if (!from || !until) return null
+  let months = (until.y - from.y) * 12 + (until.m - from.m)
+  // The day of the month hasn't come round yet, so that month is incomplete.
+  if (until.d < from.d) months -= 1
+  if (months < 0) return null
+  return { years: Math.floor(months / 12), months: months % 12 }
+}
+
+/** "3 yrs 5 mos", "7 mos", "New" — for display next to the hire date. */
+export function formatLengthOfService(span: { years: number; months: number } | null): string {
+  if (!span) return '—'
+  const parts: string[] = []
+  if (span.years > 0) parts.push(`${span.years} yr${span.years === 1 ? '' : 's'}`)
+  if (span.months > 0) parts.push(`${span.months} mo${span.months === 1 ? '' : 's'}`)
+  return parts.length ? parts.join(' ') : 'Less than a month'
+}
+
+/**
  * Whether a probation deadline needs attention, and how urgently.
  *
  * Probation caps at six months under the Labor Code: an employee not acted on by
@@ -214,17 +312,21 @@ export function probationStatus(
   employee: {
     employmentType: EmploymentType
     probationEndDate: string | null
+    /** An extension moves the deadline; the original date stays on the record. */
+    probationExtendedTo?: string | null
     separatedAt: string | null
     isActive: boolean
   },
   today: string = new Date().toISOString().slice(0, 10)
 ): { state: 'none' | 'due' | 'overdue'; daysLeft: number | null } {
-  const { employmentType, probationEndDate, separatedAt, isActive } = employee
-  if (employmentType !== 'PROBATIONARY' || !probationEndDate || separatedAt || !isActive) {
+  const { employmentType, separatedAt, isActive } = employee
+  // The deadline that actually binds is the extended one, when there is one.
+  const deadline = employee.probationExtendedTo || employee.probationEndDate
+  if (employmentType !== 'PROBATIONARY' || !deadline || separatedAt || !isActive) {
     return { state: 'none', daysLeft: null }
   }
   const MS_PER_DAY = 86_400_000
-  const daysLeft = Math.round((Date.parse(probationEndDate) - Date.parse(today)) / MS_PER_DAY)
+  const daysLeft = Math.round((Date.parse(deadline) - Date.parse(today)) / MS_PER_DAY)
   if (daysLeft < 0) return { state: 'overdue', daysLeft }
   // A month's notice is enough to hold the conversation and file the paperwork.
   if (daysLeft <= 30) return { state: 'due', daysLeft }

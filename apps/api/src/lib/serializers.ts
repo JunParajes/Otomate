@@ -11,6 +11,8 @@ import type {
   Employee as EmployeeDto,
   EmployeePosition,
   CivilStatus,
+  Gender,
+  EducationLevel,
   EmploymentType,
   PayoutMethod,
   SalaryRateType,
@@ -270,7 +272,20 @@ export function toEmployeeDto(
   if (access.hr) {
     dto.hr = {
       birthDate: dateOnly(employee.birthDate),
+      birthPlace: employee.birthPlace,
+      gender: employee.gender as Gender | null,
       civilStatus: employee.civilStatus as CivilStatus | null,
+      religion: employee.religion,
+      email: employee.email,
+      heightCm: employee.heightCm,
+      weightGrams: employee.weightGrams,
+      educationLevel: employee.educationLevel as EducationLevel | null,
+      educationDetail: employee.educationDetail,
+      remarks: employee.remarks,
+      confidentialityAgreementOn: dateOnly(employee.confidentialityAgreementOn),
+      authorityToDeductOn: dateOnly(employee.authorityToDeductOn),
+      birthCertificateOn: dateOnly(employee.birthCertificateOn),
+      marriageContractOn: dateOnly(employee.marriageContractOn),
       address: employee.address,
       contacts: [...(employee.contacts ?? [])]
         .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -285,6 +300,8 @@ export function toEmployeeDto(
       dateHired: dateOnly(employee.dateHired),
       employmentType: employee.employmentType as EmploymentType,
       probationEndDate: dateOnly(employee.probationEndDate),
+      probationExtendedTo: dateOnly(employee.probationExtendedTo),
+      probationExtensionReason: employee.probationExtensionReason,
       regularizedAt: dateOnly(employee.regularizedAt),
       separatedAt: dateOnly(employee.separatedAt),
       separationReason: employee.separationReason,

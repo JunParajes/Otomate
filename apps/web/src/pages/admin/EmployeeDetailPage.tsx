@@ -9,13 +9,16 @@ import { modals } from '@mantine/modals'
 import { IconAlertTriangle, IconArrowLeft, IconCheck, IconPlus, IconTrash } from '@tabler/icons-react'
 import {
   CIVIL_STATUSES, CIVIL_STATUS_LABELS,
+  GENDERS, GENDER_LABELS,
+  EDUCATION_LEVELS, EDUCATION_LEVEL_LABELS,
   EMPLOYMENT_TYPES, EMPLOYMENT_TYPE_LABELS,
   PAYOUT_METHODS, PAYOUT_METHOD_LABELS,
   SALARY_RATE_TYPES, SALARY_RATE_LABELS,
   CONTACT_LABEL_SUGGESTIONS,
   POSITION_LABELS,
-  currentSalary, formatMoney, probationStatus,
-  type CivilStatus, type Employee, type EmploymentType, type PayoutMethod,
+  ageOn, currentSalary, formatLengthOfService, formatMoney, lengthOfService, probationStatus,
+  type CivilStatus, type EducationLevel, type Employee, type EmploymentType, type Gender,
+  type PayoutMethod,
   type SalaryRateType, type UpdateEmployeeHrInput,
 } from '@otomate/shared'
 import { employeeApi } from '@/lib/employees'
@@ -42,7 +45,22 @@ function toForm(e: Employee): HrForm {
   const hr = e.hr
   return {
     birthDate: hr?.birthDate ?? '',
+    birthPlace: hr?.birthPlace ?? '',
+    gender: hr?.gender ?? '',
     civilStatus: hr?.civilStatus ?? '',
+    religion: hr?.religion ?? '',
+    email: hr?.email ?? '',
+    heightCm: hr?.heightCm != null ? String(hr.heightCm) : '',
+    // Stored in grams, typed and read in kilos — the same pesos/centavos split
+    // the money fields use, for the same reason: no float reaches the database.
+    weightGrams: hr?.weightGrams != null ? String(hr.weightGrams / 1000) : '',
+    educationLevel: hr?.educationLevel ?? '',
+    educationDetail: hr?.educationDetail ?? '',
+    remarks: hr?.remarks ?? '',
+    confidentialityAgreementOn: hr?.confidentialityAgreementOn ?? '',
+    authorityToDeductOn: hr?.authorityToDeductOn ?? '',
+    birthCertificateOn: hr?.birthCertificateOn ?? '',
+    marriageContractOn: hr?.marriageContractOn ?? '',
     address: hr?.address ?? '',
     emergencyName: hr?.emergencyName ?? '',
     emergencyRelation: hr?.emergencyRelation ?? '',
@@ -54,6 +72,8 @@ function toForm(e: Employee): HrForm {
     dateHired: hr?.dateHired ?? '',
     employmentType: hr?.employmentType ?? 'PROBATIONARY',
     probationEndDate: hr?.probationEndDate ?? '',
+    probationExtendedTo: hr?.probationExtendedTo ?? '',
+    probationExtensionReason: hr?.probationExtensionReason ?? '',
     regularizedAt: hr?.regularizedAt ?? '',
     separatedAt: hr?.separatedAt ?? '',
     separationReason: hr?.separationReason ?? '',
@@ -177,9 +197,15 @@ export default function EmployeeDetailPage() {
     disabled: !canWriteHr,
   })
 
+  // Derived, never stored — see ageOn/lengthOfService. Computed from the field
+  // as it is being typed, so the answer appears while the date is entered.
+  const age = ageOn(form.birthDate || null)
+  const tenure = lengthOfService(form.dateHired || null, form.separatedAt || null)
+
   const probation = probationStatus({
     employmentType: form.employmentType as EmploymentType,
     probationEndDate: form.probationEndDate || null,
+    probationExtendedTo: form.probationExtendedTo || null,
     separatedAt: form.separatedAt || null,
     isActive: employee.isActive,
   })
@@ -195,6 +221,15 @@ export default function EmployeeDetailPage() {
       // These two are enums with a default and are never null.
       payload.employmentType = form.employmentType as EmploymentType
       payload.payoutMethod = form.payoutMethod as PayoutMethod
+      // Height and weight are numbers, not text. Everything else in the form is
+      // a string, so these two have to be converted back explicitly — and weight
+      // is typed in kilos but stored in grams.
+      const toWhole = (raw: string, scale = 1): number | null => {
+        const n = Number(raw.trim())
+        return raw.trim() !== '' && Number.isFinite(n) ? Math.round(n * scale) : null
+      }
+      payload.heightCm = toWhole(form.heightCm)
+      payload.weightGrams = toWhole(form.weightGrams, 1000)
       // Blank rows are how the UI offers "add another"; they are not data.
       payload.contacts = contacts
         .filter(c => c.number.trim() !== '')
@@ -310,7 +345,12 @@ export default function EmployeeDetailPage() {
         <Divider label="Employment" labelPosition="left" />
         <Grid gap="sm">
           <Grid.Col span={{ base: 12, sm: 4 }}>
-            <TextInput label="Date hired" type="date" {...field('dateHired')} />
+            <TextInput
+              label="Date hired"
+              type="date"
+              description={tenure ? `${formatLengthOfService(tenure)} of service` : undefined}
+              {...field('dateHired')}
+            />
           </Grid.Col>
           <Grid.Col span={{ base: 12, sm: 4 }}>
             <Select
@@ -330,6 +370,29 @@ export default function EmployeeDetailPage() {
               {...field('probationEndDate')}
             />
           </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
+            <TextInput
+              label="Probation extended to"
+              type="date"
+              description="Leave blank unless the deadline was moved"
+              {...field('probationExtendedTo')}
+            />
+          </Grid.Col>
+          {/*
+            Shown only once an extension exists. An extension is a decision about
+            someone's job, and a date with no reason beside it is unusable at the
+            review — but the box has no business cluttering the form for the
+            majority who were never extended.
+          */}
+          {form.probationExtendedTo && (
+            <Grid.Col span={{ base: 12, sm: 8 }}>
+              <TextInput
+                label="Why it was extended"
+                placeholder="What has to improve, and by when"
+                {...field('probationExtensionReason')}
+              />
+            </Grid.Col>
+          )}
           <Grid.Col span={{ base: 12, sm: 4 }}>
             <TextInput label="Regularised on" type="date" {...field('regularizedAt')} />
           </Grid.Col>
@@ -360,7 +423,25 @@ export default function EmployeeDetailPage() {
         <Divider label="Personal" labelPosition="left" />
         <Grid gap="sm">
           <Grid.Col span={{ base: 12, sm: 3 }}>
-            <TextInput label="Date of birth" type="date" {...field('birthDate')} />
+            <TextInput
+              label="Date of birth"
+              type="date"
+              description={age !== null ? `${age} years old` : undefined}
+              {...field('birthDate')}
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 3 }}>
+            <TextInput label="Birth place" placeholder="Davao City" {...field('birthPlace')} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 3 }}>
+            <Select
+              label="Gender"
+              data={GENDERS.map(g => ({ value: g, label: GENDER_LABELS[g] }))}
+              value={form.gender || null}
+              onChange={v => set('gender')((v as Gender) ?? '')}
+              disabled={!canWriteHr}
+              clearable
+            />
           </Grid.Col>
           <Grid.Col span={{ base: 12, sm: 3 }}>
             <Select
@@ -430,6 +511,35 @@ export default function EmployeeDetailPage() {
             <Textarea label="Address" autosize minRows={2} {...field('address')} />
           </Grid.Col>
           <Grid.Col span={{ base: 12, sm: 4 }}>
+            <TextInput label="Email address" type="email" placeholder="name@example.com" {...field('email')} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
+            <TextInput label="Religion" {...field('religion')} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 6, sm: 2 }}>
+            <TextInput label="Height" type="number" inputMode="numeric" placeholder="158" rightSection={<Text size="xs" c="dimmed">cm</Text>} {...field('heightCm')} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 6, sm: 2 }}>
+            <TextInput label="Weight" type="number" inputMode="decimal" step="0.1" placeholder="62.5" rightSection={<Text size="xs" c="dimmed">kg</Text>} {...field('weightGrams')} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Select
+              label="Educational attainment"
+              data={EDUCATION_LEVELS.map(l => ({ value: l, label: EDUCATION_LEVEL_LABELS[l] }))}
+              value={form.educationLevel || null}
+              onChange={v => set('educationLevel')((v as EducationLevel) ?? '')}
+              disabled={!canWriteHr}
+              clearable
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 8 }}>
+            <TextInput
+              label="Course or strand"
+              placeholder="BS Hotel and Restaurant Management"
+              {...field('educationDetail')}
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <TextInput label="Emergency contact" {...field('emergencyName')} />
           </Grid.Col>
           <Grid.Col span={{ base: 12, sm: 4 }}>
@@ -437,6 +547,56 @@ export default function EmployeeDetailPage() {
           </Grid.Col>
           <Grid.Col span={{ base: 12, sm: 4 }}>
             <TextInput label="Their number" {...field('emergencyContact')} />
+          </Grid.Col>
+        </Grid>
+
+        {/*
+          Held as dates rather than ticks. A tick tells you nothing a year later;
+          the date answers "signed under which contract?" and still reads as
+          "yes" simply by being filled in.
+        */}
+        <Divider label="Documents on file" labelPosition="left" />
+        <Grid gap="sm">
+          <Grid.Col span={{ base: 12, sm: 3 }}>
+            <TextInput
+              label="Confidentiality agreement"
+              type="date"
+              description="Date signed"
+              {...field('confidentialityAgreementOn')}
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 3 }}>
+            <TextInput
+              label="Authority to deduct"
+              type="date"
+              description="Date signed"
+              {...field('authorityToDeductOn')}
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 3 }}>
+            <TextInput
+              label="Birth certificate"
+              type="date"
+              description="Date received"
+              {...field('birthCertificateOn')}
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 3 }}>
+            <TextInput
+              label="Marriage contract"
+              type="date"
+              description="Date received"
+              {...field('marriageContractOn')}
+            />
+          </Grid.Col>
+          <Grid.Col span={12}>
+            <Textarea
+              label="Remarks"
+              description="Anything else worth knowing about this record"
+              autosize
+              minRows={2}
+              {...field('remarks')}
+            />
           </Grid.Col>
         </Grid>
 

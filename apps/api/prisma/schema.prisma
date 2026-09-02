@@ -291,6 +291,23 @@ enum EmployeePosition {
   OTHER
 }
 
+enum Gender {
+  MALE
+  FEMALE
+}
+
+/// Highest level completed. A list rather than free text so "HS grad",
+/// "High School" and "Highschool" cannot become three different answers;
+/// `educationDetail` carries the course or school.
+enum EducationLevel {
+  ELEMENTARY
+  HIGH_SCHOOL
+  SENIOR_HIGH
+  VOCATIONAL
+  COLLEGE
+  POST_GRADUATE
+}
+
 enum CivilStatus {
   SINGLE
   MARRIED
@@ -347,14 +364,37 @@ model Employee {
   isActive     Boolean          @default(true)
 
   // ─── Personal ────────────────────────────────────────────────────────────
-  birthDate         DateTime?    @db.Date
-  civilStatus       CivilStatus?
-  address           String?
+  /// Age is NOT stored — it is derived from birthDate, so it cannot go stale.
+  birthDate       DateTime?       @db.Date
+  birthPlace      String?
+  gender          Gender?
+  civilStatus     CivilStatus?
+  religion        String?
+  address         String?
+  email           String?
+  /// Whole centimetres. The UI shows the feet/inches equivalent beside it.
+  heightCm        Int?
+  /// GRAMS, so 62.5 kg is exact and there is no float in the record — the same
+  /// reasoning as money being centavos. The UI works in kg.
+  weightGrams     Int?
+  educationLevel  EducationLevel?
+  /// Course or school — "BS Hotel & Restaurant Management".
+  educationDetail String?
+  remarks         String?
+
+  // ─── Paperwork on file ───────────────────────────────────────────────────
+  /// Dates rather than ticks: these answer "do we have it?" and "since when?".
+  /// Null means not on file. For the Authority to Deduct in particular, when it
+  /// was signed is what matters if a deduction is ever disputed.
+  confidentialityAgreementOn DateTime? @db.Date
+  authorityToDeductOn        DateTime? @db.Date
+  birthCertificateOn         DateTime? @db.Date
+  marriageContractOn         DateTime? @db.Date
   /// Next of kin. Three loose fields rather than a model: this is read by a
   /// human in an emergency, never queried or joined.
-  emergencyName     String?
-  emergencyRelation String?
-  emergencyContact  String?
+  emergencyName              String?
+  emergencyRelation          String?
+  emergencyContact           String?
 
   // ─── Government IDs ──────────────────────────────────────────────────────
   /// Stored as typed, not normalised: these are transcribed from cards and IDs
@@ -367,14 +407,19 @@ model Employee {
   tin              String?
 
   // ─── Employment ──────────────────────────────────────────────────────────
-  dateHired        DateTime?      @db.Date
-  employmentType   EmploymentType @default(PROBATIONARY)
+  dateHired                DateTime?      @db.Date
+  employmentType           EmploymentType @default(PROBATIONARY)
   /// When probation ends. Set explicitly rather than derived from dateHired:
   /// the actual contract date is what governs, not six months of arithmetic.
-  probationEndDate DateTime?      @db.Date
-  regularizedAt    DateTime?      @db.Date
-  separatedAt      DateTime?      @db.Date
-  separationReason String?
+  probationEndDate         DateTime?      @db.Date
+  /// Probation can be extended to give someone a further chance. The ORIGINAL
+  /// end date above is kept: the record of how long they were given, and why,
+  /// is the point. Warnings count down to this date when it is set.
+  probationExtendedTo      DateTime?      @db.Date
+  probationExtensionReason String?
+  regularizedAt            DateTime?      @db.Date
+  separatedAt              DateTime?      @db.Date
+  separationReason         String?
 
   // ─── Payout ──────────────────────────────────────────────────────────────
   payoutMethod  PayoutMethod @default(CASH)

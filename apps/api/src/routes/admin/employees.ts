@@ -214,7 +214,25 @@ router.patch(
       where: { id: existing.id },
       data: {
         ...(d.birthDate !== undefined && { birthDate: cleanDate(d.birthDate) }),
+        ...(d.birthPlace !== undefined && { birthPlace: cleanOptional(d.birthPlace) ?? null }),
+        ...(d.gender !== undefined && { gender: d.gender }),
         ...(d.civilStatus !== undefined && { civilStatus: d.civilStatus }),
+        ...(d.religion !== undefined && { religion: cleanOptional(d.religion) ?? null }),
+        // '' is how a cleared field arrives from the form; it means "not set",
+        // not an empty address on file.
+        ...(d.email !== undefined && { email: cleanOptional(d.email) ?? null }),
+        ...(d.heightCm !== undefined && { heightCm: d.heightCm }),
+        ...(d.weightGrams !== undefined && { weightGrams: d.weightGrams }),
+        ...(d.educationLevel !== undefined && { educationLevel: d.educationLevel }),
+        ...(d.educationDetail !== undefined && { educationDetail: cleanOptional(d.educationDetail) ?? null }),
+        ...(d.remarks !== undefined && { remarks: cleanOptional(d.remarks) ?? null }),
+
+        ...(d.confidentialityAgreementOn !== undefined && {
+          confidentialityAgreementOn: cleanDate(d.confidentialityAgreementOn),
+        }),
+        ...(d.authorityToDeductOn !== undefined && { authorityToDeductOn: cleanDate(d.authorityToDeductOn) }),
+        ...(d.birthCertificateOn !== undefined && { birthCertificateOn: cleanDate(d.birthCertificateOn) }),
+        ...(d.marriageContractOn !== undefined && { marriageContractOn: cleanDate(d.marriageContractOn) }),
         ...(d.address !== undefined && { address: cleanOptional(d.address) ?? null }),
         // Replacing the whole set is right for a form that shows every row at
         // once: a row deleted on screen has to disappear here too, and a diff
@@ -241,6 +259,10 @@ router.patch(
         ...(d.dateHired !== undefined && { dateHired: cleanDate(d.dateHired) }),
         ...(d.employmentType !== undefined && { employmentType: d.employmentType }),
         ...(d.probationEndDate !== undefined && { probationEndDate: cleanDate(d.probationEndDate) }),
+        ...(d.probationExtendedTo !== undefined && { probationExtendedTo: cleanDate(d.probationExtendedTo) }),
+        ...(d.probationExtensionReason !== undefined && {
+          probationExtensionReason: cleanOptional(d.probationExtensionReason) ?? null,
+        }),
         ...(d.regularizedAt !== undefined && { regularizedAt: cleanDate(d.regularizedAt) }),
         ...(d.separatedAt !== undefined && { separatedAt: cleanDate(d.separatedAt) }),
         ...(d.separationReason !== undefined && { separationReason: cleanOptional(d.separationReason) ?? null }),

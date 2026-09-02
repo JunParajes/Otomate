@@ -94,16 +94,27 @@ falls through is money the business meant to recover and simply doesn't."*
 
 ### 5a. The 201 file — DONE
 
-- [x] Personal: birth date, civil status, address, emergency contact
+- [x] Personal: birth date, birth place, gender, civil status, religion, email,
+      height and weight, educational attainment, address, emergency contact,
+      free-text remarks
 - [x] Contact numbers as a **list**, each with its network — dual SIM is normal,
       and which network a number is on decides who can reach someone when one
       has no signal
 - [x] Government IDs: SSS, PhilHealth, Pag-IBIG, TIN
-- [x] Employment: date hired, employment type, probation end, regularisation,
-      separation date and reason
+- [x] Employment: date hired, employment type, probation end, **probation
+      extension** (a separate date, so the original deadline stays on the
+      record), regularisation, separation date and reason
+- [x] Document checks — confidentiality agreement, authority to deduct, birth
+      certificate, marriage contract — each held as the **date** signed or
+      received rather than a tick
 - [x] Pay: basic and allowance, as **effective-dated history** (below)
 - [x] Payout method and account
 - [x] Permission split so pay is not visible to everyone with `employees:read`
+
+Age and length of service are **derived from the dates, never stored** — a
+stored age is wrong the day after it is typed. Height is whole centimetres and
+weight is grams, following the same integer-units rule as money: 62.5 kg is
+exact and no float reaches the database.
 
 Three decisions that are hard to reverse later:
 

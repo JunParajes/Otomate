@@ -80,7 +80,9 @@ revisit this "when real staff data accumulates"; that has happened.
 
 ### Phase 5 — HR
 - [x] **5a — the 201 file.** Live. Personal details, government IDs, employment
-      dates, effective-dated pay, at `/admin/employees/:id`.
+      dates, document checks, probation extensions, effective-dated pay, at
+      `/admin/employees/:id`. Age and length of service are derived from the
+      dates rather than stored.
 - [x] **5f — branch records.** Live. Lease, effective-dated rent, permits with
       expiry warnings, and utility accounts with bills, unpaid warnings and
       year-on-year consumption, at `/admin/branches/:id`.
