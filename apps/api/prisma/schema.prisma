@@ -8,28 +8,29 @@ datasource db {
 }
 
 model User {
-  id                 String                   @id @default(cuid())
-  email              String                   @unique
-  password           String
-  name               String
-  isActive           Boolean                  @default(true)
+  id                        String                   @id @default(cuid())
+  email                     String                   @unique
+  password                  String
+  name                      String
+  isActive                  Boolean                  @default(true)
   // Set when an admin creates the account or resets the password; the user is
   // forced through a password change before they can use the app.
-  mustChangePassword Boolean                  @default(false)
-  lastLoginAt        DateTime?
-  roleId             String
-  branchId           String?
-  role               Role                     @relation(fields: [roleId], references: [id])
-  branch             Branch?                  @relation(fields: [branchId], references: [id])
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
-  employee           Employee?
-  dsirReports        DsirReport[]
-  salaryRecords      EmployeeSalary[]
-  rentRecords        BranchRent[]
-  schedulesCreated   WorkSchedule[]           @relation("ScheduleCreatedBy")
-  schedulesApproved  WorkSchedule[]           @relation("ScheduleApprovedBy")
-  branchPlansMarked  WorkScheduleBranchPlan[] @relation("BranchPlannedBy")
+  mustChangePassword        Boolean                  @default(false)
+  lastLoginAt               DateTime?
+  roleId                    String
+  branchId                  String?
+  role                      Role                     @relation(fields: [roleId], references: [id])
+  branch                    Branch?                  @relation(fields: [branchId], references: [id])
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+  employee                  Employee?
+  dsirReports               DsirReport[]
+  salaryRecords             EmployeeSalary[]
+  rentRecords               BranchRent[]
+  schedulesCreated          WorkSchedule[]           @relation("ScheduleCreatedBy")
+  schedulesApproved         WorkSchedule[]           @relation("ScheduleApprovedBy")
+  branchPlansMarked         WorkScheduleBranchPlan[] @relation("BranchPlannedBy")
+  employmentPeriodsRecorded EmploymentPeriod[]       @relation("EmploymentPeriodRecordedBy")
 
   @@index([roleId])
   @@index([branchId])
@@ -555,14 +556,16 @@ model Employee {
   payoutMethod  PayoutMethod @default(CASH)
   payoutAccount String?
 
-  contacts    EmployeeContact[]
-  salaries    EmployeeSalary[]
-  charges     DsirCharge[]
-  collections DsirCollection[]
-  openedFor   DsirReport[]      @relation("DsirOpener")
-  closedFor   DsirReport[]      @relation("DsirCloser")
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  contacts       EmployeeContact[]
+  salaries       EmployeeSalary[]
+  /// Earlier spells of employment, newest first. Empty for most people.
+  pastEmployment EmploymentPeriod[]
+  charges        DsirCharge[]
+  collections    DsirCollection[]
+  openedFor      DsirReport[]       @relation("DsirOpener")
+  closedFor      DsirReport[]       @relation("DsirCloser")
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   // ─── Work schedule ───────────────────────────────────────────────────────
   scheduleEntries WorkScheduleEntry[]
@@ -615,6 +618,38 @@ model EmployeeContact {
 /// Superseding is by date, not by a flag: "the record with the greatest
 /// effectiveFrom not after the date in question". No `isCurrent` boolean to fall
 /// out of sync, and a future-dated raise can be entered before it takes effect.
+/// A completed spell of employment — someone who left and came back.
+///
+/// Rehired staff START FRESH: the probation clock, holiday-pay eligibility and
+/// length of service all run from the NEW hire date, and nothing from the
+/// earlier spell counts toward them. So the live employment fields on Employee
+/// are the CURRENT spell and stay exactly as they were; a rehire files the old
+/// spell in here and resets them.
+///
+/// Kept rather than overwritten because it is the answer to questions that get
+/// asked: has this person worked for us before, why did they leave, and would we
+/// take them again. Overwriting the hire date loses all of that silently, and
+/// leaves a returning employee looking like a stranger.
+model EmploymentPeriod {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  hiredOn          DateTime       @db.Date
+  separatedOn      DateTime       @db.Date
+  separationReason String?
+  /// What they were on when the spell ended — probationary, regular, and so on.
+  employmentType   EmploymentType
+  regularizedAt    DateTime?      @db.Date
+
+  /// When this spell was filed, which is when the rehire was recorded.
+  recordedAt   DateTime @default(now())
+  recordedById String?
+  recordedBy   User?    @relation("EmploymentPeriodRecordedBy", fields: [recordedById], references: [id])
+
+  @@index([employeeId, hiredOn])
+}
+
 model EmployeeSalary {
   id         String   @id @default(cuid())
   employeeId String

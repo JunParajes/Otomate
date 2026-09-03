@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ActionIcon, Alert, Badge, Button, Card, Center, Divider, Grid, Group, Loader, Select,
+  ActionIcon, Alert, Badge, Button, Card, Center, Divider, Grid, Group, Loader, Modal, Select,
   Stack, Table, Text, TextInput, Textarea, Title, Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconAlertTriangle, IconArrowLeft, IconCheck, IconPlus, IconTrash } from '@tabler/icons-react'
+import {
+  IconAlertTriangle, IconArrowBackUp, IconArrowLeft, IconCheck, IconLogout, IconPlus, IconTrash,
+} from '@tabler/icons-react'
 import {
   CIVIL_STATUSES, CIVIL_STATUS_LABELS,
   GENDERS, GENDER_LABELS,
@@ -187,6 +189,8 @@ export default function EmployeeDetailPage() {
   /** Read by the beforeunload guard, which is declared before `dirty` exists. */
   const dirtyRef = useRef(false)
   const [saving, setSaving] = useState(false)
+  const [separating, setSeparating] = useState(false)
+  const [rehiring, setRehiring] = useState(false)
 
   // New-rate fields, kept apart from the 201 form: they post to a different
   // endpoint and must not be swept into a Save of the rest.
@@ -708,12 +712,85 @@ export default function EmployeeDetailPage() {
               <TextInput label="Regularised on" type="date" {...field('regularizedAt')} />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 3 }}>
-              <TextInput label="Separated on" type="date" {...field('separatedAt')} />
+              {/*
+                Read-only, and set through the action below instead.
+                As an editable field it was possible to record that somebody had
+                left while leaving them on the roster — so they stayed on next
+                week's schedule. Leaving is an event: it closes the spell and
+                takes them off, together or not at all.
+              */}
+              <TextInput
+                label="Separated on"
+                readOnly
+                tabIndex={-1}
+                variant="filled"
+                placeholder="Still employed"
+                value={form.separatedAt}
+              />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
-              <TextInput label="Reason for leaving" {...field('separationReason')} />
+              <TextInput
+                label="Reason for leaving"
+                readOnly
+                tabIndex={-1}
+                variant="filled"
+                placeholder="—"
+                value={form.separationReason}
+              />
             </Grid.Col>
           </Grid>
+
+          <Group gap="sm">
+            {form.separatedAt ? (
+              <>
+                <Button
+                  variant="light"
+                  color="green"
+                  leftSection={<IconArrowBackUp size={16} />}
+                  disabled={!canWriteHr}
+                  onClick={() => setRehiring(true)}
+                >
+                  Rehire
+                </Button>
+                <Text size="xs" c="dimmed">
+                  A rehire starts fresh — probation and eligibility run from the new hire date.
+                  This spell is kept on the record.
+                </Text>
+              </>
+            ) : (
+              <Button
+                variant="light"
+                color="orange"
+                leftSection={<IconLogout size={16} />}
+                disabled={!canWriteHr}
+                onClick={() => setSeparating(true)}
+              >
+                Record separation
+              </Button>
+            )}
+          </Group>
+
+          {/*
+            Earlier spells. Empty for almost everyone, and the answer to "has
+            this person worked for us before, and why did they leave" for the
+            few it is not.
+          */}
+          {(employee.hr?.pastEmployment?.length ?? 0) > 0 && (
+            <Stack gap={6}>
+              <Text size="sm" fw={500}>Previously employed</Text>
+              {employee.hr!.pastEmployment.map(spell => (
+                <Group key={spell.id} gap="xs" wrap="nowrap">
+                  <Badge variant="light" color="gray" size="sm">
+                    {spell.hiredOn} – {spell.separatedOn}
+                  </Badge>
+                  <Text size="sm" c="dimmed">
+                    {EMPLOYMENT_TYPE_LABELS[spell.employmentType]}
+                    {spell.separationReason ? ` · ${spell.separationReason}` : ''}
+                  </Text>
+                </Group>
+              ))}
+            </Stack>
+          )}
           {/*
             The guidance that used to sit under two of these fields as
             `description` text. It was pushing those inputs a row-height below
@@ -935,6 +1012,22 @@ export default function EmployeeDetailPage() {
           </Section>
         )}
 
+      <Modal opened={separating} onClose={() => setSeparating(false)} title={`Record separation — ${employee.name}`} centered>
+        <SeparationForm
+          employee={employee}
+          onDone={updated => { onSaved(updated); setSeparating(false) }}
+          onCancel={() => setSeparating(false)}
+        />
+      </Modal>
+
+      <Modal opened={rehiring} onClose={() => setRehiring(false)} title={`Rehire — ${employee.name}`} centered>
+        <RehireForm
+          employee={employee}
+          onDone={updated => { onSaved(updated); setRehiring(false) }}
+          onCancel={() => setRehiring(false)}
+        />
+      </Modal>
+
       {canWriteHr && (
         <StickyActionBar
           status={
@@ -958,6 +1051,145 @@ export default function EmployeeDetailPage() {
           </Button>
         </StickyActionBar>
       )}
+    </Stack>
+  )
+}
+
+/**
+ * Recording that somebody has left.
+ *
+ * Its own form rather than a field on the 201, because it is one act with two
+ * consequences — the spell closes and they come off the roster — and doing only
+ * half of it leaves somebody on next week's schedule.
+ */
+function SeparationForm({
+  employee, onDone, onCancel,
+}: { employee: Employee; onDone: (e: Employee) => void; onCancel: () => void }) {
+  const [separatedOn, setSeparatedOn] = useState(new Date().toISOString().slice(0, 10))
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function submit() {
+    setSaving(true)
+    try {
+      onDone(await employeeApi.separate(employee.id, {
+        separatedOn,
+        separationReason: reason.trim() || null,
+      }))
+      notifications.show({ color: 'green', title: 'Separation recorded', message: employee.name })
+    } catch (e) {
+      notifications.show({
+        color: 'red',
+        title: 'Could not record it',
+        message: e instanceof Error ? e.message : 'Something went wrong',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Stack gap="md">
+      <TextInput
+        label="Last day"
+        type="date"
+        withAsterisk
+        value={separatedOn}
+        onChange={e => setSeparatedOn(e.currentTarget.value)}
+      />
+      <Textarea
+        label="Reason for leaving"
+        placeholder="Resigned, end of contract, dismissed…"
+        autosize
+        minRows={2}
+        value={reason}
+        onChange={e => setReason(e.currentTarget.value)}
+      />
+      <Text size="xs" c="dimmed">
+        Their record is kept in full — government IDs, contacts and pay history stay. They come off
+        the roster and out of new work schedules.
+      </Text>
+      <Group justify="flex-end">
+        <Button variant="default" onClick={onCancel}>Cancel</Button>
+        <Button color="orange" loading={saving} disabled={!separatedOn} onClick={() => void submit()}>
+          Record separation
+        </Button>
+      </Group>
+    </Stack>
+  )
+}
+
+/**
+ * Taking somebody back.
+ *
+ * A rehire starts fresh: probation, holiday-pay eligibility and length of
+ * service all run from the new hire date. The earlier spell is filed, not
+ * overwritten — otherwise a returning employee looks like a stranger and nobody
+ * can answer why they left the first time.
+ */
+function RehireForm({
+  employee, onDone, onCancel,
+}: { employee: Employee; onDone: (e: Employee) => void; onCancel: () => void }) {
+  const [dateHired, setDateHired] = useState(new Date().toISOString().slice(0, 10))
+  const [employmentType, setEmploymentType] = useState<EmploymentType>('PROBATIONARY')
+  const [probationEndDate, setProbationEndDate] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function submit() {
+    setSaving(true)
+    try {
+      onDone(await employeeApi.rehire(employee.id, {
+        dateHired,
+        employmentType,
+        probationEndDate: probationEndDate || null,
+      }))
+      notifications.show({ color: 'green', title: 'Rehired', message: `${employee.name} starts ${dateHired}` })
+    } catch (e) {
+      notifications.show({
+        color: 'red',
+        title: 'Could not rehire',
+        message: e instanceof Error ? e.message : 'Something went wrong',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Stack gap="md">
+      <Alert color="blue" icon={<IconAlertTriangle size={16} />} p="xs">
+        <Text size="sm">
+          They start fresh. Probation, holiday pay and offsetting all count from the new hire date —
+          the earlier spell does not carry over. It stays on the record.
+        </Text>
+      </Alert>
+      <TextInput
+        label="Starts again on"
+        type="date"
+        withAsterisk
+        value={dateHired}
+        onChange={e => setDateHired(e.currentTarget.value)}
+      />
+      <Select
+        label="Employment type"
+        data={EMPLOYMENT_TYPES.map(t => ({ value: t, label: EMPLOYMENT_TYPE_LABELS[t] }))}
+        value={employmentType}
+        onChange={v => setEmploymentType((v as EmploymentType) ?? 'PROBATIONARY')}
+        allowDeselect={false}
+      />
+      <TextInput
+        label="Probation ends"
+        type="date"
+        description="Caps at six months by law"
+        value={probationEndDate}
+        onChange={e => setProbationEndDate(e.currentTarget.value)}
+      />
+      <Group justify="flex-end">
+        <Button variant="default" onClick={onCancel}>Cancel</Button>
+        <Button color="green" loading={saving} disabled={!dateHired} onClick={() => void submit()}>
+          Rehire
+        </Button>
+      </Group>
     </Stack>
   )
 }

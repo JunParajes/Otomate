@@ -145,7 +145,7 @@ export interface Product {
 
 // ─── Employees ────────────────────────────────────────────────────────────
 import type {
-  CivilStatus, EducationLevel, EmployeeContactRecord, EmployeeSalaryRecord,
+  CivilStatus, EducationLevel, EmployeeContactRecord, EmployeeSalaryRecord, EmploymentPeriodRecord,
   EmploymentType, Gender, PayoutMethod,
 } from '../schemas/employee.js'
 
@@ -200,6 +200,13 @@ export interface EmployeeHr {
   regularizedAt: string | null
   separatedAt: string | null
   separationReason: string | null
+  /**
+   * Earlier spells, newest first. Empty for almost everyone.
+   *
+   * The fields above are the CURRENT spell — a rehire resets them and files the
+   * old one here, because a rehire starts fresh.
+   */
+  pastEmployment: EmploymentPeriodRecord[]
 
   payoutMethod: PayoutMethod
   payoutAccount: string | null

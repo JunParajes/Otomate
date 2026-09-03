@@ -223,6 +223,56 @@ export const updateEmployeeHrSchema = z.object({
 export type UpdateEmployeeHrInput = z.infer<typeof updateEmployeeHrSchema>
 
 /**
+ * Recording that someone has left.
+ *
+ * Separate from the general 201 update because it is an event, not a field
+ * edit: it closes their current spell and takes them off the roster in one
+ * step, rather than relying on somebody remembering to do both.
+ */
+export const separateEmployeeSchema = z.object({
+  separatedOn: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick the date they left'),
+  separationReason: z.string().trim().max(300, 'Reason is too long').nullable().optional(),
+})
+export type SeparateEmployeeInput = z.infer<typeof separateEmployeeSchema>
+
+/**
+ * Taking somebody back.
+ *
+ * A rehire STARTS FRESH — probation, holiday-pay eligibility and length of
+ * service all run from the new hire date, and nothing from the earlier spell
+ * counts. The earlier spell is filed rather than overwritten, because "has this
+ * person worked for us before, and why did they leave" is a question that gets
+ * asked, and a rewritten hire date answers it wrongly and silently.
+ */
+export const rehireEmployeeSchema = z.object({
+  dateHired: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick the date they start again'),
+  employmentType: z.enum(EMPLOYMENT_TYPES).optional().default('PROBATIONARY'),
+  probationEndDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the date picker')
+    .nullable()
+    .optional(),
+})
+export type RehireEmployeeInput = z.infer<typeof rehireEmployeeSchema>
+
+/** A completed spell of employment, newest first. */
+export interface EmploymentPeriodRecord {
+  id: string
+  hiredOn: string
+  separatedOn: string
+  separationReason: string | null
+  employmentType: EmploymentType
+  regularizedAt: string | null
+}
+
+/**
  * One pay rate from a date onward.
  *
  * Amounts are in CENTAVOS, as everywhere else. Zero is allowed for allowance and

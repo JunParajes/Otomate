@@ -1,5 +1,7 @@
 import type {
   CreateEmployeeInput,
+  RehireEmployeeInput,
+  SeparateEmployeeInput,
   CreatePositionInput,
   EmployeePositionRecord,
   UpdatePositionInput,
@@ -25,6 +27,18 @@ export const employeeApi = {
   // carry their own permissions, so `employees:write` alone must not reach them.
   updateHr: (id: string, input: UpdateEmployeeHrInput) =>
     unwrap<Employee>(api.patch(`/api/admin/employees/${id}/hr`, input)),
+  /**
+   * Leaving and returning are EVENTS, not field edits.
+   *
+   * Separating closes the spell and takes them off the roster together; a rehire
+   * files the old spell and resets the clock. Both would be two or three
+   * separate field updates otherwise, and any one of them could be forgotten.
+   */
+  separate: (id: string, input: SeparateEmployeeInput) =>
+    unwrap<Employee>(api.post(`/api/admin/employees/${id}/separate`, input)),
+  rehire: (id: string, input: RehireEmployeeInput) =>
+    unwrap<Employee>(api.post(`/api/admin/employees/${id}/rehire`, input)),
+
   setSalary: (id: string, input: CreateSalaryInput) =>
     unwrap<Employee>(api.post(`/api/admin/employees/${id}/salary`, input)),
   removeSalary: (id: string, salaryId: string) =>

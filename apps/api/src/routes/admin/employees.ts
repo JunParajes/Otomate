@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express'
 import {
   createEmployeeSchema, updateEmployeeSchema, updateEmployeeHrSchema, createSalarySchema,
+  separateEmployeeSchema, rehireEmployeeSchema,
   formatEmployeeName,
 } from '@otomate/shared'
 import { prisma } from '../../prisma/client'
@@ -12,12 +13,13 @@ import { toEmployeeDto } from '../../lib/serializers'
 import { rethrowUniqueViolation } from './guards'
 
 const router = Router()
-const withRelations = { branch: true, user: true, contacts: true, position: true } as const
+const withRelations = { branch: true, user: true, contacts: true, position: true, pastEmployment: true } as const
 const withSalaries = {
   branch: true,
   user: true,
   contacts: true,
   position: true,
+  pastEmployment: true,
   salaries: { include: { recordedBy: true } },
 } as const
 
@@ -45,6 +47,11 @@ function listAccess(req: Request) {
  */
 function includeFor(req: Request) {
   return can(req, 'hr:salary:read') ? withSalaries : withRelations
+}
+
+/** A stored date as YYYY-MM-DD, for comparing against what the form sent. */
+function dateOnlyString(value: Date): string {
+  return value.toISOString().slice(0, 10)
 }
 
 /** '' and undefined both mean "not set"; a date string passes through unchanged. */
@@ -272,6 +279,109 @@ router.patch(
         ...(d.payoutAccount !== undefined && { payoutAccount: cleanOptional(d.payoutAccount) ?? null }),
       },
       include: includeFor(req),
+    })
+    res.json({ data: toEmployeeDto(employee, access(req)), error: null })
+  })
+)
+
+/**
+ * Records that somebody has left.
+ *
+ * One step rather than two fields: it closes the spell AND takes them off the
+ * roster. Relying on whoever fills in a separation date to also remember to
+ * deactivate the record is how someone stays on next week's schedule.
+ */
+router.post(
+  '/:id/separate',
+  requirePermission('hr:write'),
+  asyncHandler(async (req, res) => {
+    const parsed = separateEmployeeSchema.safeParse(req.body)
+    if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error), 'VALIDATION_ERROR')
+
+    const existing = await prisma.employee.findUnique({ where: { id: pathParam(req, 'id') } })
+    if (!existing) throw new HttpError(404, 'Employee not found', 'NOT_FOUND')
+    if (existing.dateHired && parsed.data.separatedOn < dateOnlyString(existing.dateHired)) {
+      throw new HttpError(400, 'They cannot leave before they were hired', 'VALIDATION_ERROR')
+    }
+
+    const employee = await prisma.employee.update({
+      where: { id: existing.id },
+      data: {
+        separatedAt: cleanDate(parsed.data.separatedOn),
+        separationReason: cleanOptional(parsed.data.separationReason) ?? null,
+        isActive: false,
+      },
+      include: includeFor(req),
+    })
+    res.json({ data: toEmployeeDto(employee, access(req)), error: null })
+  })
+)
+
+/**
+ * Taking somebody back.
+ *
+ * A rehire STARTS FRESH: probation, holiday-pay eligibility and length of
+ * service all run from the new hire date. So the current spell is FILED into
+ * pastEmployment and the live fields are reset — not edited, because editing the
+ * hire date would erase the fact they ever worked here before, silently, and
+ * leave a returning employee looking like a stranger.
+ *
+ * Everything that is about the PERSON rather than the spell stays: government
+ * IDs, contacts, address, documents, pay history.
+ */
+router.post(
+  '/:id/rehire',
+  requirePermission('hr:write'),
+  asyncHandler(async (req, res) => {
+    const parsed = rehireEmployeeSchema.safeParse(req.body)
+    if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error), 'VALIDATION_ERROR')
+
+    const existing = await prisma.employee.findUnique({ where: { id: pathParam(req, 'id') } })
+    if (!existing) throw new HttpError(404, 'Employee not found', 'NOT_FOUND')
+    if (!existing.separatedAt) {
+      throw new HttpError(
+        409,
+        'They have not been recorded as separated, so there is nothing to rehire them from.',
+        'NOT_SEPARATED'
+      )
+    }
+    if (!existing.dateHired) {
+      throw new HttpError(409, 'Their original hire date is missing, so the spell cannot be filed', 'NO_HIRE_DATE')
+    }
+    if (parsed.data.dateHired < dateOnlyString(existing.separatedAt)) {
+      throw new HttpError(400, 'They cannot be rehired before the day they left', 'VALIDATION_ERROR')
+    }
+
+    // Filing the old spell and resetting the new one must not half-happen: a
+    // reset without the archive loses the history outright.
+    const employee = await prisma.$transaction(async tx => {
+      await tx.employmentPeriod.create({
+        data: {
+          employeeId: existing.id,
+          hiredOn: existing.dateHired!,
+          separatedOn: existing.separatedAt!,
+          separationReason: existing.separationReason,
+          employmentType: existing.employmentType,
+          regularizedAt: existing.regularizedAt,
+          recordedById: req.auth?.userId ?? null,
+        },
+      })
+      return tx.employee.update({
+        where: { id: existing.id },
+        data: {
+          dateHired: cleanDate(parsed.data.dateHired),
+          employmentType: parsed.data.employmentType,
+          probationEndDate: cleanDate(parsed.data.probationEndDate ?? null),
+          // The clock restarts, so nothing from the old spell carries over.
+          probationExtendedTo: null,
+          probationExtensionReason: null,
+          regularizedAt: null,
+          separatedAt: null,
+          separationReason: null,
+          isActive: true,
+        },
+        include: includeFor(req),
+      })
     })
     res.json({ data: toEmployeeDto(employee, access(req)), error: null })
   })

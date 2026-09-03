@@ -102,6 +102,11 @@ revisit this "when real staff data accumulates"; that has happened.
       exports as .xlsx, one sheet per branch. Both carry the marks only — no
       remarks, covers or pairings — and both take their marks from one shared
       helper so the screen, the sheet and the file cannot drift.
+- [x] **5i — separation and rehire.** Live. Leaving is an action that closes the
+      spell and takes them off the roster together; a rehire files the old spell
+      and resets the clock. Rehired staff START FRESH — probation, holiday pay
+      and offsetting all run from the new hire date, nothing carries over —
+      confirmed with the owner 2026-09-03.
 - [ ] **5h — the actual of what happened.** The other half of the split above:
       absences, half days, suspensions and late changes recorded AGAINST an
       approved plan rather than overwriting it. This is why the plan is frozen

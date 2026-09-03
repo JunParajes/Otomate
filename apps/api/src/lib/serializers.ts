@@ -225,6 +225,7 @@ type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
   include: { branch: true; user: true; position: true }
 }> & {
   contacts?: Prisma.EmployeeContactGetPayload<{}>[]
+  pastEmployment?: Prisma.EmploymentPeriodGetPayload<{}>[]
   // Present only when the caller asked for salary and may see it.
   salaries?: Prisma.EmployeeSalaryGetPayload<{ include: { recordedBy: true } }>[]
 }
@@ -307,6 +308,18 @@ export function toEmployeeDto(
       regularizedAt: dateOnly(employee.regularizedAt),
       separatedAt: dateOnly(employee.separatedAt),
       separationReason: employee.separationReason,
+      // Newest first: "have they worked here before" is answered by the most
+      // recent spell, not the oldest.
+      pastEmployment: [...(employee.pastEmployment ?? [])]
+        .sort((a, b) => (a.hiredOn < b.hiredOn ? 1 : -1))
+        .map(p => ({
+          id: p.id,
+          hiredOn: dateOnly(p.hiredOn)!,
+          separatedOn: dateOnly(p.separatedOn)!,
+          separationReason: p.separationReason,
+          employmentType: p.employmentType as EmploymentType,
+          regularizedAt: dateOnly(p.regularizedAt),
+        })),
       payoutMethod: employee.payoutMethod as PayoutMethod,
       payoutAccount: employee.payoutAccount,
     }
