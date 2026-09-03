@@ -1,0 +1,189 @@
+/*
+ * The branch's paper copy.
+ *
+ * Hidden entirely on screen and revealed only for print, so the page carries one
+ * interactive grid and one document, each shaped for where it is read.
+ */
+.sheet {
+  display: none;
+}
+
+@media print {
+  /*
+   * The app goes away — ink AND height.
+   *
+   * display:none rather than visibility:hidden: hidden elements still occupy
+   * their space, and the app page is far taller than a sheet of paper, so its
+   * leftover height paginated into blank pages behind every branch. The sheet is
+   * a direct child of body (it portals there), so this cannot hide it by
+   * accident the way hiding its ancestors did.
+   */
+  :global(body > *:not([data-print-sheet])) {
+    display: none !important;
+  }
+
+  .sheet {
+    display: block !important;
+    color: #000;
+    font-family: var(--mantine-font-family);
+  }
+
+  @page {
+    /* Seven day columns and a name column fit landscape comfortably; portrait
+       squeezes the days to the point of ambiguity. */
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  /*
+   * break-BEFORE on every section after the first, rather than break-after on
+   * every section. break-after fired on the last one too and printed a trailing
+   * blank page — every branch's sheet came out with a spare sheet behind it,
+   * which on eleven branches is eleven wasted pages.
+   */
+  .page + .page {
+    break-before: page;
+  }
+
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #000;
+    padding-bottom: 6px;
+    margin-bottom: 10px;
+  }
+
+  .title {
+    font-size: 18pt;
+    margin: 0;
+    letter-spacing: 0.5px;
+  }
+  .branch {
+    font-size: 13pt;
+    font-weight: 600;
+    margin: 2px 0 0;
+  }
+  .meta {
+    text-align: right;
+    font-size: 10pt;
+  }
+  .meta p {
+    margin: 0;
+  }
+  .code {
+    font-size: 14pt;
+    font-weight: 700;
+  }
+  .dim {
+    color: #555;
+    font-size: 8.5pt;
+  }
+
+  .draft {
+    border: 1.5px solid #000;
+    padding: 4px 8px;
+    margin: 0 0 10px;
+    font-weight: 700;
+    font-size: 10pt;
+    letter-spacing: 0.5px;
+    text-align: center;
+  }
+
+  .grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5pt;
+  }
+  .grid th,
+  .grid td {
+    border: 0.75pt solid #000;
+    padding: 2px 4px;
+  }
+  .grid thead th {
+    font-size: 9pt;
+    /* Not a background fill: printers drop those by default, and a header that
+       depends on one stops looking like a header. */
+    border-bottom-width: 1.5pt;
+  }
+  /* A row split across a page break is unreadable on both halves. */
+  .grid tr {
+    break-inside: avoid;
+  }
+
+  .nameCol {
+    width: 30%;
+    text-align: left;
+  }
+  .name {
+    display: block;
+    font-weight: 600;
+  }
+  .position {
+    display: block;
+    font-size: 8pt;
+    color: #444;
+  }
+
+  .dayCol {
+    width: 10%;
+    text-align: center;
+    font-weight: 600;
+  }
+  .dayName {
+    display: block;
+  }
+  .dayDate {
+    display: block;
+    font-weight: 400;
+    font-size: 8pt;
+  }
+
+  .legend {
+    font-size: 8.5pt;
+    margin: 8px 0 0;
+    color: #222;
+  }
+
+  .signatures {
+    display: flex;
+    gap: 34mm;
+    margin-top: 9mm;
+    break-inside: avoid;
+  }
+  .signature {
+    flex: 1;
+    max-width: 70mm;
+  }
+  .sigLabel {
+    display: block;
+    font-size: 9pt;
+    margin-bottom: 9mm;
+  }
+  .sigLine {
+    display: block;
+    border-top: 0.75pt solid #000;
+  }
+  .sigName {
+    display: block;
+    font-size: 10pt;
+    font-weight: 600;
+    text-align: center;
+    padding-top: 2px;
+    /* Reserves the line's height even when nobody has approved it yet, so an
+       unsigned sheet keeps the same shape as a signed one. */
+    min-height: 12pt;
+  }
+  .sigDate {
+    display: block;
+    font-size: 8.5pt;
+    text-align: center;
+    color: #333;
+  }
+
+  .printed {
+    margin-top: 4mm;
+    font-size: 8pt;
+    color: #444;
+  }
+}

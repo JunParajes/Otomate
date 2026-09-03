@@ -6,10 +6,10 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconAlertTriangle, IconArrowLeft, IconCheck, IconCircleCheck } from '@tabler/icons-react'
+import { IconAlertTriangle, IconArrowLeft, IconCheck, IconCircleCheck, IconPrinter } from '@tabler/icons-react'
 import {
   WORK_DAY_HINTS, WORK_DAY_LABELS, WORK_DAY_MARKS, WORK_DAY_STATUSES,
-  WORK_SCHEDULE_STATUS_LABELS, cutoffCode, formatCutoff, formatCutoffLabel, hasNoDayOff,
+  WORK_SCHEDULE_STATUS_LABELS, cellMark, cutoffCode, formatCutoff, formatCutoffLabel, hasNoDayOff,
   isWorkingStatus, partnerRoleFor,
   type WorkDayStatus, type WorkSchedule, type WorkScheduleEntryInput, type WorkScheduleRow,
 } from '@otomate/shared'
@@ -18,6 +18,7 @@ import { adminApi } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
 import StickyActionBar, { pageWithActionBar } from '@/components/StickyActionBar'
+import WorkSchedulePrintSheet from './WorkSchedulePrintSheet'
 import classes from './WorkSchedulePage.module.css'
 
 const STATUS_COLOUR = { DRAFT: 'gray', SUBMITTED: 'orange', APPROVED: 'green' } as const
@@ -439,7 +440,8 @@ export default function WorkSchedulePage() {
 
   return (
     <Stack gap="md" className={canWrite ? pageWithActionBar : undefined}>
-      <Group gap="sm" wrap="nowrap">
+      <Group gap="sm" wrap="nowrap" justify="space-between">
+        <Group gap="sm" wrap="nowrap">
         <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/hr/work-schedule')} aria-label="Back to schedules">
           <IconArrowLeft size={18} />
         </ActionIcon>
@@ -457,6 +459,20 @@ export default function WorkSchedulePage() {
               : schedule.createdBy ? `Drafted by ${schedule.createdBy.name}` : 'The plan for this cutoff'}
           </Text>
         </Stack>
+        </Group>
+
+        {/*
+          The branches have no tablet yet, so a printed sheet is their copy.
+          In the header rather than the action bar: that bar exists for people who
+          can change the plan, and printing one is not changing it.
+        */}
+        <Button
+          variant="default"
+          leftSection={<IconPrinter size={16} />}
+          onClick={() => window.print()}
+        >
+          Print
+        </Button>
       </Group>
 
       {/*
@@ -701,7 +717,9 @@ export default function WorkSchedulePage() {
                                     className={classes.mark}
                                     data-branch={cell.branchShort ? 'yes' : undefined}
                                   >
-                                    {cell.branchShort ?? (cell.status ? WORK_DAY_MARKS[cell.status] : '·')}
+                                    {cell.pending
+                                      ? cell.branchShort ?? (cell.status ? WORK_DAY_MARKS[cell.status] : '·')
+                                      : cellMark(row.days[d], '·')}
                                   </span>
                                 </button>
                                 {/*
@@ -735,6 +753,18 @@ export default function WorkSchedulePage() {
             ))}
         </Stack>
       )}
+
+      {/*
+        The branch's paper copy — hidden on screen, and the only thing that
+        prints. It follows the branch chosen above, so what is printed is what
+        was being looked at.
+      */}
+      <WorkSchedulePrintSheet
+        schedule={schedule}
+        groups={openBranch && openBranch !== 'ALL'
+          ? groups.filter(([name]) => name === openBranch)
+          : groups}
+      />
 
       {/*
         Their record, from the 201 file — not a second copy kept here.
@@ -1041,6 +1071,7 @@ export default function WorkSchedulePage() {
           }
         >
           <Button variant="default" onClick={() => navigate('/hr/work-schedule')}>Back</Button>
+
           {canWrite && schedule.status === 'DRAFT' && !dirty && (
             <Button variant="light" onClick={submitForApproval} loading={saving}>
               Submit

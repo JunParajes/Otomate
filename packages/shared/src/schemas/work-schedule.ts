@@ -93,6 +93,27 @@ export function hasNoDayOff(statuses: (WorkDayStatus | null | undefined)[]): boo
   return worksAtAll && !planned.includes('OFF')
 }
 
+/**
+ * What one cell says — on screen, on paper, and in a spreadsheet.
+ *
+ * Defined once because three renderings of the same fact WILL drift otherwise,
+ * and the way you find out is a printed sheet on a branch wall disagreeing with
+ * the screen. Somebody lent to another branch shows THAT branch's short name in
+ * place of the tick; everyone else shows their status mark.
+ *
+ * A branch with no short name set falls back to the status mark rather than
+ * printing a name too long for the column — the detail is on screen either way.
+ */
+export function cellMark(
+  entry: Pick<WorkScheduleEntryRecord, 'status' | 'assignedBranch'> | null | undefined,
+  unplanned = ''
+): string {
+  if (!entry) return unplanned
+  const short = entry.assignedBranch?.abbreviation
+  if (short && isWorkingStatus(entry.status)) return short
+  return WORK_DAY_MARKS[entry.status]
+}
+
 export const WORK_SCHEDULE_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED'] as const
 export type WorkScheduleStatus = (typeof WORK_SCHEDULE_STATUSES)[number]
 

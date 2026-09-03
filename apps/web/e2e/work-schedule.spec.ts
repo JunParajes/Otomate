@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { cutoffCode as cutoffCodeFor } from '@otomate/shared'
 import { FIXTURES } from './global-setup'
 
 /**
@@ -45,6 +46,9 @@ const WEEKS = {
   colourLight: '2027-03-11',
   colourDark: '2027-03-18',
   reopen: '2027-03-25',
+  printing: '2027-04-01',
+  printPages: '2027-04-08',
+  printPerm: '2027-04-15',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -93,6 +97,16 @@ async function openCutoff(page: Page, weekStart: string) {
   await page.waitForURL(/\/hr\/work-schedule\/.+/)
   await clearToasts(page)
 }
+
+/**
+ * The interactive app, excluding the print sheet.
+ *
+ * The paper copy is always in the DOM (hidden) and portals to <body>, outside
+ * #root — so it carries the same names and marks as the grid. Assertions about
+ * what is ON SCREEN scope to the app; otherwise they match the sheet as well and
+ * report a duplicate that is not a bug.
+ */
+const app = (page: Page) => page.locator('#root')
 
 /** The grid sits behind a branch choice now — open every branch at once. */
 async function openAllBranches(page: Page) {
@@ -296,12 +310,12 @@ test('a cutoff is labelled with its WS number', async ({ page }) => {
 
   // 12 Nov 2026 is the 46th Thursday of 2026.
   // exact: the creation toast also reads "WS-46 · 12 Nov – 18 Nov 2026".
-  await expect(page.getByText('WS-46', { exact: true })).toBeVisible()
-  await expect(page.getByText('12 Nov – 18 Nov 2026', { exact: true })).toBeVisible()
+  await expect(app(page).getByText('WS-46', { exact: true })).toBeVisible()
+  await expect(app(page).getByText('12 Nov – 18 Nov 2026', { exact: true })).toBeVisible()
 
   // And on the list it sits beside the dates.
   await page.getByRole('button', { name: 'Back', exact: true }).click()
-  await expect(page.getByText('WS-46', { exact: true })).toBeVisible()
+  await expect(app(page).getByText('WS-46', { exact: true })).toBeVisible()
 })
 
 /**
@@ -657,7 +671,7 @@ test('a week with no day off says so, and stops saying it once one is given', as
   await page.getByRole('button', { name: 'Done' }).click()
 
   await expect(flagged).toHaveCount(before - 1)
-  await expect(page.locator('tbody tr').filter({ hasText: 'Cruz, Maria S.' }))
+  await expect(app(page).locator('tbody tr').filter({ hasText: 'Cruz, Maria S.' }))
     .not.toContainText('no day off')
 })
 
@@ -667,7 +681,7 @@ test('a week with no day off says so, and stops saying it once one is given', as
 test('a no-schedule day does not count as a day off', async ({ page }) => {
   await openCutoff(page, WEEKS.noSchedRest)
   await openAllBranches(page)
-  const row = page.locator('tbody tr').filter({ hasText: 'Cruz, Maria S.' })
+  const row = app(page).locator('tbody tr').filter({ hasText: 'Cruz, Maria S.' })
   await expect(row).toContainText('no day off')
 
   await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
@@ -722,3 +736,58 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(byGroup.yes![0]).not.toBe(byGroup.no![0])
   })
 }
+
+/**
+ * The branch's paper copy.
+ *
+ * The branches have no tablet yet, so a printed sheet IS the schedule as far as
+ * they are concerned. It goes on a wall and has to answer on its own: which
+ * week, who prepared it, who approved it, and whether it is final.
+ */
+test('the print sheet is hidden on screen and carries what a posted sheet needs', async ({ page }) => {
+  await openCutoff(page, WEEKS.printing)
+  await openAllBranches(page)
+
+  const sheet = page.locator('[data-print-sheet]')
+  await expect(sheet).toBeAttached()
+  await expect(sheet).toBeHidden()          // never in the way of the grid
+
+  await page.emulateMedia({ media: 'print' })
+  await expect(sheet).toBeVisible()
+
+  const text = await sheet.innerText()
+  expect(text).toContain('Work Schedule')
+  expect(text).toContain(cutoffCodeFor(WEEKS.printing))
+  expect(text).toContain('Prepared by')
+  expect(text).toContain('Approved by')
+  expect(text).toContain('Printed')
+  // A draft on a wall gets followed, so it has to say what it is.
+  expect(text).toContain('NOT YET APPROVED')
+
+  // And none of the working notes go to paper.
+  expect(text).not.toContain('Covered by')
+  expect(text).not.toContain('Working with')
+  expect(text).not.toContain('Remarks')
+  await page.emulateMedia({ media: 'screen' })
+})
+
+test('printing one branch gives one page, and all branches one page each', async ({ page }) => {
+  await openCutoff(page, WEEKS.printPages)
+
+  // Every branch: one section per branch.
+  await openAllBranches(page)
+  const all = await page.locator('[data-print-sheet] section').count()
+  expect(all).toBeGreaterThan(1)
+
+  // One branch: one section.
+  await page.getByRole('button', { name: 'All branches' }).click()
+  await page.getByText(FIXTURES.branch, { exact: true }).first().click()
+  await expect(page.locator('[data-print-sheet] section')).toHaveCount(1)
+  await expect(page.locator('[data-print-sheet] section')).toContainText(FIXTURES.branch)
+})
+
+/** Read-only viewers need the paper copy most — they cannot open the app on the floor. */
+test('printing is offered without permission to change the plan', async ({ page }) => {
+  await openCutoff(page, WEEKS.printPerm)
+  await expect(page.getByRole('button', { name: 'Print' })).toBeVisible()
+})

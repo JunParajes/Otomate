@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cellMark,
   createWorkScheduleSchema,
   cutoffCode,
   cutoffNumber,
@@ -199,5 +200,42 @@ describe('a cutoff with no day off', () => {
   it('handles a part-planned week', () => {
     expect(hasNoDayOff(week('SCHEDULED', 'SCHEDULED', null, null, null, null, null))).toBe(true)
     expect(hasNoDayOff(week('SCHEDULED', 'OFF', null, null, null, null, null))).toBe(false)
+  })
+})
+
+/**
+ * One mark, three renderings. If this drifts, a printed sheet on a branch wall
+ * disagrees with the screen and nobody finds out until the week is worked.
+ */
+describe('the mark in a cell', () => {
+  const at = (name: string, abbreviation: string | null) => ({ id: 'b', name, abbreviation })
+
+  it('shows the status mark for an ordinary day', () => {
+    expect(cellMark({ status: 'SCHEDULED', assignedBranch: null })).toBe('✓')
+    expect(cellMark({ status: 'NOT_SCHEDULED', assignedBranch: null })).toBe('✗')
+    expect(cellMark({ status: 'OFF', assignedBranch: null })).toBe('Off')
+    expect(cellMark({ status: 'FRONTLINE', assignedBranch: null })).toBe('FL')
+    expect(cellMark({ status: 'OPENER', assignedBranch: null })).toBe('Op')
+    expect(cellMark({ status: 'CLOSER', assignedBranch: null })).toBe('Cl')
+  })
+
+  it('shows the branch short name when someone is lent out', () => {
+    expect(cellMark({ status: 'SCHEDULED', assignedBranch: at('TRD Puan', 'TRD') })).toBe('TRD')
+    // Any working status, not just the plain tick.
+    expect(cellMark({ status: 'OPENER', assignedBranch: at('KM 11', 'KM11') })).toBe('KM11')
+  })
+
+  it('falls back to the status when the branch has no short name', () => {
+    expect(cellMark({ status: 'SCHEDULED', assignedBranch: at('Bangkerohan', null) })).toBe('✓')
+  })
+
+  it('never shows a branch against a day that is not worked', () => {
+    // The API clears this, but the mark must not depend on that having happened.
+    expect(cellMark({ status: 'OFF', assignedBranch: at('TRD Puan', 'TRD') })).toBe('Off')
+  })
+
+  it('is blank for a day nobody has planned', () => {
+    expect(cellMark(null)).toBe('')
+    expect(cellMark(undefined, '·')).toBe('·')
   })
 })
