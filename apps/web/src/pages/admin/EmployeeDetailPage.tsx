@@ -272,10 +272,24 @@ export default function EmployeeDetailPage() {
     set('heightCm')(String(feetInchesToCm(feet, inches)))
   }
 
+  /**
+   * Probation is settled history once somebody has been made regular.
+   *
+   * Keyed on the SAVED record rather than the draft on purpose: HR often enters
+   * a long-serving employee's whole history in one sitting — hired, probation
+   * ended, regularised — and locking on the draft would slam the fields shut
+   * halfway through typing it. Only a regularisation that is already on the
+   * record closes them.
+   */
+  const regularised = Boolean(employee.hr?.regularizedAt)
+
   const probation = probationStatus({
     employmentType: form.employmentType as EmploymentType,
     probationEndDate: form.probationEndDate || null,
     probationExtendedTo: form.probationExtendedTo || null,
+    // From the draft, so the warning clears the moment a regularisation date is
+    // typed rather than after the save.
+    regularizedAt: form.regularizedAt || null,
     separatedAt: form.separatedAt || null,
     isActive: employee.isActive,
   })
@@ -692,7 +706,12 @@ export default function EmployeeDetailPage() {
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 3 }}>
-              <TextInput label="Probation ends" type="date" {...field('probationEndDate')} />
+              <TextInput
+                label="Probation ends"
+                type="date"
+                {...field('probationEndDate')}
+                disabled={!canWriteHr || regularised}
+              />
             </Grid.Col>
           </Grid>
 
@@ -707,7 +726,16 @@ export default function EmployeeDetailPage() {
           */}
           <Grid gap="sm">
             <Grid.Col span={{ base: 12, sm: 3 }}>
-              <TextInput label="Probation extended to" type="date" {...field('probationExtendedTo')} />
+              {/*
+                An extension to a probation that ended in regularisation is a
+                contradiction — there is nothing left to extend.
+              */}
+              <TextInput
+                label="Probation extended to"
+                type="date"
+                {...field('probationExtendedTo')}
+                disabled={!canWriteHr || regularised}
+              />
             </Grid.Col>
             {/*
               Shown only once an extension exists. An extension is a decision
@@ -721,6 +749,7 @@ export default function EmployeeDetailPage() {
                   label="Why it was extended"
                   placeholder="What has to improve, and by when"
                   {...field('probationExtensionReason')}
+                  disabled={!canWriteHr || regularised}
                 />
               </Grid.Col>
             )}
@@ -833,9 +862,13 @@ export default function EmployeeDetailPage() {
             help. Same information, one place, nothing knocked out of line.
           */}
           <Text size="xs" c="dimmed">
-            Probation caps at six months by law. Fill in "Probation extended to" only if that
-            deadline was formally moved — the original date stays as it was, so the record still
-            shows what was first agreed.
+            {regularised
+              ? 'Regularised, so the probation dates are locked — there is no deadline left to ' +
+                'meet or to extend. Clear "Regularised on" and save if the date was entered by ' +
+                'mistake; the probation dates open again.'
+              : 'Probation caps at six months by law. Fill in "Probation extended to" only if ' +
+                'that deadline was formally moved — the original date stays as it was, so the ' +
+                'record still shows what was first agreed.'}
           </Text>
         </Section>
 

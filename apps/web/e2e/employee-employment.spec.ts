@@ -2,7 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { FIXTURES } from './global-setup'
 
 /**
- * Leaving and coming back, from the 201 file.
+ * The employment spell, from the 201 file: probation ending, leaving, coming
+ * back.
  *
  * The reported bug: after recording a separation the button still said "Record
  * separation", so it could be pressed again. The form is loaded once per
@@ -115,4 +116,62 @@ test('the actions wait for unsaved changes to be saved', async ({ page }) => {
   await page.getByRole('button', { name: 'Save record' }).click()
   await expect(page.getByText('Unsaved changes')).toHaveCount(0)
   await expect(separateButton(page)).toBeEnabled()
+})
+
+/**
+ * Being made regular ends probation.
+ *
+ * The reported bug: a regularised employee's probation dates were still
+ * editable, so a deadline could be typed against somebody who had already met
+ * it — and the page then warned about it.
+ *
+ * The lock reads the SAVED record, not the draft. HR enters a long-serving
+ * employee's whole history in one sitting: hire date, probation end and
+ * regularisation, in that order. Locking on the draft would shut the fields the
+ * moment the last of those was typed, mid-entry, before anything was saved.
+ */
+test('probation dates lock once the employee is regularised', async ({ page }) => {
+  const id = await freshEmployee(page, 'Regularised')
+  await openEmployment(page, id)
+
+  const ends = page.getByLabel('Probation ends')
+  const extendedTo = page.getByLabel('Probation extended to')
+
+  // Still on probation: the dates are HR's to set, and the deadline is warned about.
+  await expect(ends).toBeEnabled()
+  await expect(extendedTo).toBeEnabled()
+
+  /*
+   * Relative to today, not a fixed date. The warning only appears inside its
+   * window, so a hardcoded deadline stops exercising it the day it passes — and
+   * the assertion goes on passing vacuously.
+   */
+  const inDays = (n: number) => new Date(Date.now() + n * 86400_000).toISOString().slice(0, 10)
+  await page.getByLabel('Date hired').fill(inDays(-120))
+  await ends.fill(inDays(14))
+  await expect(page.getByText(/Probation ends in \d+ day/)).toBeVisible()
+
+  // The whole history typed in one sitting — the fields stay open until it is saved.
+  await page.getByLabel('Regularised on').fill(inDays(-1))
+  await expect(ends).toBeEnabled()
+  // ...but the warning goes at once. There is no deadline left to miss.
+  await expect(page.getByText(/Probation ends in \d+ day/)).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Save record' }).click()
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
+
+  // Saved and regular: the reported bug.
+  await expect(ends).toBeDisabled()
+  await expect(extendedTo).toBeDisabled()
+  await expect(page.getByText(/probation dates are locked/)).toBeVisible()
+
+  // Survives a reload — the lock is the record, not something the form remembered.
+  await page.reload()
+  await expect(page.getByLabel('Probation ends')).toBeDisabled()
+
+  // And it is reversible: a regularisation date entered by mistake can be cleared.
+  await page.getByLabel('Regularised on').fill('')
+  await page.getByRole('button', { name: 'Save record' }).click()
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
+  await expect(page.getByLabel('Probation ends')).toBeEnabled()
 })

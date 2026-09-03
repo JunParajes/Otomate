@@ -156,3 +156,44 @@ describe('the new 201 fields validate', () => {
     expect(updateEmployeeHrSchema.safeParse({ weightGrams: 62 }).success).toBe(false)
   })
 })
+
+/**
+ * Being made regular ends probation.
+ *
+ * The employment type is typed by hand and lags behind: someone regularised on
+ * the day but still marked PROBATIONARY was warned about a deadline they had
+ * already met. A warning that is wrong teaches people to dismiss the ones that
+ * are not.
+ */
+describe('probation after regularisation', () => {
+  const base = {
+    employmentType: 'PROBATIONARY' as const,
+    separatedAt: null,
+    isActive: true,
+  }
+
+  it('stops warning once they are regularised, even if still typed probationary', () => {
+    const overdue = { ...base, probationEndDate: '2026-05-01', probationExtendedTo: null }
+    // Without a regularisation date this is overdue...
+    expect(probationStatus(overdue, '2026-09-04').state).toBe('overdue')
+    // ...and with one there is nothing left to miss.
+    expect(probationStatus({ ...overdue, regularizedAt: '2026-05-01' }, '2026-09-04').state).toBe('none')
+  })
+
+  it('stops warning about an extension once they are regularised', () => {
+    const extended = {
+      ...base,
+      probationEndDate: '2026-05-01',
+      probationExtendedTo: '2026-09-10',
+      regularizedAt: '2026-08-20',
+    }
+    expect(probationStatus(extended, '2026-09-04').state).toBe('none')
+  })
+
+  it('still warns while they have not been regularised', () => {
+    const due = {
+      ...base, probationEndDate: '2026-09-20', probationExtendedTo: null, regularizedAt: null,
+    }
+    expect(probationStatus(due, '2026-09-04').state).toBe('due')
+  })
+})

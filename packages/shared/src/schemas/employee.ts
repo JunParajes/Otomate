@@ -393,6 +393,8 @@ export function probationStatus(
     probationEndDate: string | null
     /** An extension moves the deadline; the original date stays on the record. */
     probationExtendedTo?: string | null
+    /** Being made regular ENDS probation — there is no deadline left to miss. */
+    regularizedAt?: string | null
     separatedAt: string | null
     isActive: boolean
   },
@@ -401,6 +403,15 @@ export function probationStatus(
   const { employmentType, separatedAt, isActive } = employee
   // The deadline that actually binds is the extended one, when there is one.
   const deadline = employee.probationExtendedTo || employee.probationEndDate
+  /*
+   * Regularisation ends probation, whatever the employment type still says.
+   *
+   * Without this, a record regularised but left typed PROBATIONARY went on
+   * warning that "probation ended N days ago and this record is still
+   * probationary" — about somebody who had already been made regular. A warning
+   * that is wrong is worse than none: it trains people to close it.
+   */
+  if (employee.regularizedAt) return { state: 'none', daysLeft: null }
   if (employmentType !== 'PROBATIONARY' || !deadline || separatedAt || !isActive) {
     return { state: 'none', daysLeft: null }
   }
