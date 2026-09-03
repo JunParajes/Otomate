@@ -42,6 +42,8 @@ const WEEKS = {
   noDayOff: '2027-02-18',
   noSchedRest: '2027-02-25',
   noDayOffCount: '2027-03-04',
+  colourLight: '2027-03-11',
+  colourDark: '2027-03-18',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -648,3 +650,43 @@ test('the branch list counts how many have no day off', async ({ page }) => {
   await openCutoff(page, WEEKS.noDayOffCount)
   await expect(page.getByText(/with no day off/).first()).toBeVisible()
 })
+
+/**
+ * Two colours, and only two.
+ *
+ * Six statuses had six colours, which made the grid a swatch chart: the eye had
+ * to decode a hue before answering the only question a roster is asked at a
+ * glance — is this person in that day. Opener, Closer, Frontline and Scheduled
+ * are all "in"; off and no-schedule are both "not in". The mark still says
+ * which, so nothing is lost.
+ */
+for (const scheme of ['light', 'dark'] as const) {
+  test(`the grid uses one colour for working and one for not, in ${scheme} mode`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme })
+    await openCutoff(page, scheme === 'light' ? WEEKS.colourLight : WEEKS.colourDark)
+    await openAllBranches(page)
+
+    // Put every status on the board.
+    const statuses = ['No schedule', 'Day off', 'Frontline', 'Opener', 'Closer'] as const
+    const cells = page.locator('[aria-label^="Maria Santos Cruz, "]')
+    for (let i = 0; i < statuses.length; i++) {
+      await cells.nth(i).click()
+      await page.getByRole('button', { name: new RegExp(`^${statuses[i]}`) }).click()
+      await page.getByRole('button', { name: 'Done' }).click()
+    }
+
+    const byGroup = await page.locator('button[data-working]').evaluateAll(els => {
+      const out: Record<string, Set<string>> = {}
+      for (const el of els) {
+        const key = (el as HTMLElement).dataset.working!
+        ;(out[key] ??= new Set()).add(getComputedStyle(el).backgroundColor)
+      }
+      return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v]]))
+    })
+
+    // One background for everyone who is in, one for everyone who is not.
+    expect(byGroup.yes, 'working statuses share a colour').toHaveLength(1)
+    expect(byGroup.no, 'off and no-schedule share a colour').toHaveLength(1)
+    expect(byGroup.yes![0]).not.toBe(byGroup.no![0])
+  })
+}

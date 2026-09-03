@@ -52,8 +52,8 @@
 
 /* The two derived lines are colour-coded as well as worded, so a glance down a
    column separates "sent elsewhere" from "covering someone". */
-.subBranch { color: var(--mantine-color-violet-7); font-weight: 500; }
-.subCover { color: var(--mantine-color-teal-7); font-weight: 500; }
+.subBranch { color: light-dark(var(--mantine-color-violet-7), var(--mantine-color-violet-3)); font-weight: 500; }
+.subCover { color: light-dark(var(--mantine-color-teal-7), var(--mantine-color-teal-3)); font-weight: 500; }
 .sub {
   font-size: 10.5px;
   color: var(--mantine-color-dimmed);
@@ -63,14 +63,41 @@
   white-space: nowrap;
 }
 
-/* Colour carries the status at a glance; the mark carries it for anyone who
-   cannot rely on colour. Never colour alone. */
-.cell[data-status='SCHEDULED'] { background: var(--mantine-color-green-light); }
-.cell[data-status='OFF']       { background: var(--mantine-color-blue-light); }
-.cell[data-status='NOT_SCHEDULED'] { background: var(--mantine-color-gray-light); }
-.cell[data-status='FRONTLINE'] { background: var(--mantine-color-grape-light); }
-.cell[data-status='OPENER']    { background: var(--mantine-color-orange-light); }
-.cell[data-status='NONE']      { background: transparent; }
+
+/*
+ * TWO colours, and only two: in, or not in.
+ *
+ * Six statuses had six colours, which made the grid a swatch chart — the eye had
+ * to decode a hue before it could answer the only question being asked of a
+ * roster at a glance, which is whether this person is on that day. Opener,
+ * Closer, Frontline and Scheduled are all "in"; off and no-schedule are both
+ * "not in". The mark still says which, for anyone who needs the detail.
+ *
+ * Keyed on data-working rather than the status, so this cannot fall out of step
+ * with the status list — adding Closer needed a new colour rule before, and
+ * needs nothing now.
+ *
+ * Both are written with light-dark() rather than Mantine's -light tokens: those
+ * are tuned for filled badges on a page background, and as large adjacent blocks
+ * in dark mode they read as a wall of colour.
+ */
+.cell[data-working='yes'] {
+  background: light-dark(var(--mantine-color-green-0), rgba(64, 192, 87, 0.13));
+  border-color: light-dark(var(--mantine-color-green-2), rgba(64, 192, 87, 0.28));
+  color: light-dark(var(--mantine-color-green-9), var(--mantine-color-green-3));
+}
+
+.cell[data-working='no'] {
+  background: light-dark(var(--mantine-color-gray-2), rgba(255, 255, 255, 0.06));
+  border-color: light-dark(var(--mantine-color-gray-4), rgba(255, 255, 255, 0.14));
+  color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
+}
+
+/* Never planned — no colour to give, and none earned. */
+.cell[data-working='none'] {
+  background: transparent;
+  color: var(--mantine-color-dimmed);
+}
 
 /* Unsaved, so it is obvious what the Save button is about to send. */
 .pending {
@@ -124,16 +151,21 @@
 }
 .info:hover { transform: scale(1.12); }
 .info:focus-visible { outline: 2px solid var(--mantine-color-blue-5); }
-.info[data-kind='branch'] { color: var(--mantine-color-violet-7); border-color: var(--mantine-color-violet-4); }
-.info[data-kind='cover']  { color: var(--mantine-color-teal-7); border-color: var(--mantine-color-teal-4); }
+.info[data-kind='branch'] {
+  color: light-dark(var(--mantine-color-violet-7), var(--mantine-color-violet-3));
+  border-color: light-dark(var(--mantine-color-violet-4), var(--mantine-color-violet-7));
+}
+.info[data-kind='cover'] {
+  color: light-dark(var(--mantine-color-teal-7), var(--mantine-color-teal-3));
+  border-color: light-dark(var(--mantine-color-teal-4), var(--mantine-color-teal-7));
+}
 
-.cell[data-status='CLOSER'] { background: var(--mantine-color-cyan-light); }
 
 /* A cover who is not working is not a cover. Red, and it outranks the others. */
 .info[data-kind='conflict'] {
-  color: var(--mantine-color-red-7);
-  border-color: var(--mantine-color-red-5);
-  background: var(--mantine-color-red-0);
+  color: light-dark(var(--mantine-color-red-7), var(--mantine-color-red-3));
+  border-color: light-dark(var(--mantine-color-red-5), var(--mantine-color-red-7));
+  background: light-dark(var(--mantine-color-red-0), rgba(224, 49, 49, 0.18));
   font-weight: 900;
 }
 
@@ -141,6 +173,6 @@
    up to six characters rather than one or two, and coloured to match the "i". */
 .mark[data-branch='yes'] {
   font-size: 12px;
-  color: var(--mantine-color-violet-7);
+  color: light-dark(var(--mantine-color-violet-7), var(--mantine-color-violet-3));
   letter-spacing: 0.2px;
 }

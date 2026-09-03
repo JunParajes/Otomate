@@ -675,7 +675,7 @@ export default function WorkSchedulePage() {
                                 <button
                                   type="button"
                                   className={`${classes.cell} ${cell.pending ? classes.pending : ''}`}
-                                  data-status={cell.status ?? 'NONE'}
+                                  data-working={cell.status ? (isWorkingStatus(cell.status) ? 'yes' : 'no') : 'none'}
                                   disabled={!canWrite}
                                   aria-label={`${row.name}, ${d}: ${cell.status ? WORK_DAY_LABELS[cell.status] : 'not set'}`}
                                   onClick={() => setEditing({ row, day: d })}
