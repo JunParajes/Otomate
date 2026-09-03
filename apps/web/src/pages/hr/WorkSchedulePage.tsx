@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  ActionIcon, Alert, Badge, Button, Card, Center, Group, Loader, Modal, Select, Stack, Table,
-  Text, Title, Tooltip,
+  ActionIcon, Alert, Badge, Button, Card, Center, Group, Loader, Modal, Select, SimpleGrid, Stack,
+  Table, Text, Title, Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
@@ -21,6 +21,13 @@ import classes from './WorkSchedulePage.module.css'
 
 const STATUS_COLOUR = { DRAFT: 'gray', SUBMITTED: 'orange', APPROVED: 'green' } as const
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/** "Thu 10 Sep" — the dialog says which day it is editing, not just a date. */
+function formatDayLabel(iso: string): string {
+  const d = new Date(`${iso}T00:00:00.000Z`)
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${month[d.getUTCMonth()]}`
+}
 
 /** A pending change to one cell, keyed by `${employeeId}|${day}`. */
 type Draft = Map<string, WorkScheduleEntryInput>
@@ -261,7 +268,28 @@ export default function WorkSchedulePage() {
 
   const dirty = draft.size > 0
   dirtyRef.current = dirty
-  const staffOptions = (schedule.rows ?? []).map(r => ({ value: r.employeeId, label: r.name }))
+  /**
+   * Colleagues to pick from, GROUPED BY BRANCH with their own branch first.
+   *
+   * Seventy-six names in one flat list is a scroll, and the answer is nearly
+   * always someone from the same branch — so that group sits at the top instead
+   * of alphabetically among ten others. Filed names, because a list is scanned.
+   */
+  function colleagueOptions(row: WorkScheduleRow) {
+    const byBranch = new Map<string, { value: string; label: string }[]>()
+    for (const r of schedule?.rows ?? []) {
+      if (r.employeeId === row.employeeId) continue
+      const branch = r.branch?.name ?? 'Unassigned'
+      byBranch.set(branch, [...(byBranch.get(branch) ?? []), { value: r.employeeId, label: r.nameFiled }])
+    }
+    const own = row.branch?.name ?? 'Unassigned'
+    return [...byBranch.entries()]
+      .sort(([a], [b]) => (a === own ? -1 : b === own ? 1 : a.localeCompare(b)))
+      .map(([branch, items]) => ({
+        group: branch === own ? `${branch} — same branch` : branch,
+        items: items.sort((x, y) => x.label.localeCompare(y.label)),
+      }))
+  }
   const branchOptions = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }))
 
   return (
@@ -592,10 +620,25 @@ export default function WorkSchedulePage() {
         )}
       </Modal>
 
+      {/*
+        Wide, and laid out in two columns. As a narrow column this ran to five
+        stacked buttons and two more fields below the fold, so setting one day
+        meant scrolling inside a dialog — on a tablet, with the grid behind it.
+      */}
       <Modal
         opened={editing !== null}
         onClose={() => setEditing(null)}
-        title={editing ? `${editing.row.name} — ${editing.day}` : ''}
+        size={760}
+        title={
+          editing ? (
+            <Group gap="xs">
+              <Text fw={600}>{editing.row.name}</Text>
+              <Badge variant="light" color="gray">{editing.row.position}</Badge>
+              <Text c="dimmed">·</Text>
+              <Text fw={500}>{formatDayLabel(editing.day)}</Text>
+            </Group>
+          ) : ''
+        }
         centered
       >
         {editing && (() => {
@@ -607,52 +650,64 @@ export default function WorkSchedulePage() {
             ? cur?.coveredById ?? saved?.coveredBy?.id ?? null
             : cur?.pairedWithId ?? saved?.pairedWith?.id ?? null
           return (
-            <Stack gap="md">
-              <Stack gap={6}>
+            <Stack gap="lg">
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
                 {WORK_DAY_STATUSES.map(s => (
                   <Button
                     key={s}
+                    h="auto"
+                    py={8}
                     variant={status === s ? 'filled' : 'default'}
                     justify="space-between"
-                    rightSection={<Text size="xs" c={status === s ? undefined : 'dimmed'}>{WORK_DAY_MARKS[s]}</Text>}
+                    rightSection={<Text size="sm" fw={700} c={status === s ? undefined : 'dimmed'}>{WORK_DAY_MARKS[s]}</Text>}
                     onClick={() => setCell(editing.row, editing.day, { status: s })}
                   >
-                    <Stack gap={0} align="flex-start">
-                      <Text size="sm">{WORK_DAY_LABELS[s]}</Text>
+                    <Stack gap={0} align="flex-start" style={{ whiteSpace: 'normal' }}>
+                      <Text size="sm" fw={600}>{WORK_DAY_LABELS[s]}</Text>
                       <Text size="xs" c={status === s ? undefined : 'dimmed'} ta="left">{WORK_DAY_HINTS[s]}</Text>
                     </Stack>
                   </Button>
                 ))}
-              </Stack>
+              </SimpleGrid>
 
-              <Select
-                label="Working at another branch"
-                description="Leave blank for their own branch"
-                // Their own branch is not "another" one — offering it invites a
-                // choice that means nothing and reads as a transfer in the grid.
-                data={branchOptions.filter(b => b.value !== editing.row.branch?.id)}
-                value={assigned}
-                onChange={v => setCell(editing.row, editing.day, { assignedBranchId: v })}
-                clearable
-                searchable
-              />
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                <Select
+                  label="Working at another branch"
+                  description="Leave blank for their own branch"
+                  placeholder="Their own branch"
+                  // Their own branch is not "another" one — offering it invites a
+                  // choice that means nothing and reads as a transfer in the grid.
+                  data={branchOptions.filter(b => b.value !== editing.row.branch?.id)}
+                  value={assigned}
+                  onChange={v => setCell(editing.row, editing.day, { assignedBranchId: v })}
+                  clearable
+                  searchable
+                  maxDropdownHeight={280}
+                />
 
-              <Select
-                label={status === 'OFF' ? 'Covered by' : 'Working with'}
-                description={
-                  status === 'OFF'
-                    ? 'Who takes the shift while they are off'
-                    : 'A colleague rostered alongside them'
-                }
-                data={staffOptions.filter(o => o.value !== editing.row.employeeId)}
-                value={partner}
-                onChange={v =>
-                  setCell(editing.row, editing.day,
-                    status === 'OFF' ? { coveredById: v } : { pairedWithId: v })
-                }
-                clearable
-                searchable
-              />
+                <Select
+                  label={status === 'OFF' ? 'Covered by' : 'Working with'}
+                  description={
+                    status === 'OFF'
+                      ? 'Who takes the shift while they are off'
+                      : 'A colleague rostered alongside them'
+                  }
+                  placeholder="Type a surname"
+                  data={colleagueOptions(editing.row)}
+                  value={partner}
+                  onChange={v =>
+                    setCell(editing.row, editing.day,
+                      status === 'OFF' ? { coveredById: v } : { pairedWithId: v })
+                  }
+                  clearable
+                  searchable
+                  // Names are filed surname-first, so typing a surname narrows
+                  // straight away — which is how anyone looks for a person here.
+                  nothingFoundMessage="No one by that name"
+                  limit={200}
+                  maxDropdownHeight={300}
+                />
+              </SimpleGrid>
 
               <Group justify="flex-end">
                 <Button onClick={() => setEditing(null)}>Done</Button>

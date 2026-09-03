@@ -21,6 +21,7 @@ export const FIXTURES = {
   /** Holds employees:* but NOT hr:* — for testing what the UI hides. */
   plain: { email: 'plain@e2e.local', password: 'E2ePassw0rd!' },
   branch: 'Matina',
+  otherBranch: 'Toril',
   product: 'Pandesal',
 }
 
@@ -140,6 +141,30 @@ export default async function globalSetup(): Promise<void> {
     firstName: 'Maria', middleName: 'Santos', lastName: 'Cruz',
     positionId: cashier.id, branchId: (branch as { id: string }).id,
   })
+
+  /*
+   * A few colleagues, across two branches.
+   *
+   * One employee was enough while the schedule was a single table, and it is
+   * not any more: the "covered by" picker groups colleagues by branch and puts
+   * the person's own branch first, which a one-person fixture cannot show at
+   * all. Seeding realistic volume locally is what surfaced the grid problems a
+   * three-row fixture had hidden, and the same applies here in miniature.
+   */
+  const second = await api(admin, 'POST', '/api/admin/branches', {
+    name: FIXTURES.otherBranch, isActive: true,
+  })
+  const baker = positions.find(p => p.name === 'Baker')!
+  for (const [first, last, at] of [
+    ['Ana', 'Reyes', branch],
+    ['Ben', 'Dorilag', second],
+    ['Cora', 'Ecling', second],
+  ] as const) {
+    await api(admin, 'POST', '/api/admin/employees', {
+      firstName: first, lastName: last,
+      positionId: baker.id, branchId: (at as { id: string }).id,
+    })
+  }
 
   // The draft the entry tests use, built through the API rather than by driving
   // the create-report and add-product dialogs. Those flows are covered by the

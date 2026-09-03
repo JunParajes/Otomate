@@ -29,6 +29,8 @@ const WEEKS = {
   clipping: '2026-11-19',
   planning: '2026-11-26',
   ownBranch: '2026-12-03',
+  picker: '2026-12-10',
+  dialog: '2026-12-17',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -124,7 +126,7 @@ test('a cell edit is held unsaved, then survives a reload', async ({ page }) => 
 
   await expect(cell).toHaveAttribute('aria-label', /Scheduled/)
   await cell.click()
-  await page.getByRole('button', { name: /Day off/ }).click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
   await page.getByRole('button', { name: 'Done' }).click()
 
   // Nothing has gone to the server yet — that is what Save is for.
@@ -150,7 +152,7 @@ test('a day off can record who covers it', async ({ page }) => {
   const cell = page.getByLabel(new RegExp(`Maria Santos Cruz, ${sundayOf(WEEKS.cover)}`))
   await cell.click()
 
-  await page.getByRole('button', { name: /Day off/ }).click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
   // The field renames itself once the day is an off day.
   await expect(page.getByText('Who takes the shift while they are off')).toBeVisible()
   await page.getByRole('button', { name: 'Done' }).click()
@@ -325,4 +327,50 @@ test('an employee cannot be sent to the branch they already work at', async ({ p
 
   // The only branch in the fixtures is her own, so there is nothing to offer.
   await expect(page.getByRole('option', { name: FIXTURES.branch })).toHaveCount(0)
+})
+
+/**
+ * Picking a colleague out of the whole company.
+ *
+ * A flat list of every employee is a scroll, and the answer is nearly always
+ * someone from the same branch — so the picker groups by branch and puts their
+ * own branch at the top, and typing a surname narrows it, because filed names
+ * are surname-first.
+ */
+test('the colleague picker groups by branch, own branch first', async ({ page }) => {
+  await openCutoff(page, WEEKS.picker)
+  await openAllBranches(page)
+
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
+  await page.getByRole('combobox', { name: /Covered by/ }).click()
+
+  // Group labels in DOM order. Maria is at Matina, so that group leads and
+  // says why it is at the top.
+  const groupLabels = page.locator('[role="listbox"] [class*="groupLabel"]')
+  await expect(groupLabels.first()).toContainText(FIXTURES.branch)
+  await expect(groupLabels.first()).toContainText('same branch')
+  await expect(groupLabels.nth(1)).toContainText(FIXTURES.otherBranch)
+  await expect(page.getByRole('option')).not.toHaveCount(0)
+
+  // Typing a surname narrows it — filed names put the surname first.
+  await page.keyboard.type('Dorilag')
+  await expect(page.getByRole('option')).toHaveCount(1)
+  await expect(page.getByRole('option').first()).toContainText('Dorilag')
+})
+
+/** The dialog has to fit on screen — it is used on a tablet, over the grid. */
+test('the cell editor fits without scrolling inside it', async ({ page }) => {
+  await openCutoff(page, WEEKS.dialog)
+  await openAllBranches(page)
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+
+  const dialog = await page.getByRole('dialog').boundingBox()
+  const viewport = page.viewportSize()!
+  expect(dialog!.height).toBeLessThanOrEqual(viewport.height)
+  expect(dialog!.width).toBeGreaterThan(600)
+  // Every status reachable without scrolling the dialog.
+  for (const label of ['Scheduled', 'No schedule', 'Day off', 'Frontline', 'Opener']) {
+    await expect(page.getByRole('button', { name: new RegExp(`^${label}`) })).toBeInViewport()
+  }
 })
