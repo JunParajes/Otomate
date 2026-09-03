@@ -292,7 +292,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </Group>
       </AppShell.Header>
 
+      {/*
+        One tooltip at a time, coordinated across the whole rail.
+        Each Tooltip on its own opens and closes independently, so a rail of ten
+        could show several labels at once and leave them behind — which is what
+        it did. A group shares one open state: moving between icons swaps the
+        label instantly instead of starting a fresh delay, and nothing can be
+        left showing because opening one closes the last.
+      */}
       <AppShell.Navbar p="xs">
+        <Tooltip.Group openDelay={350} closeDelay={0}>
         <AppShell.Section grow component={ScrollArea}>
           <Stack gap={2}>
             {renderNav(MAIN)}
@@ -339,6 +348,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             )}
           </AppShell.Section>
         )}
+        </Tooltip.Group>
       </AppShell.Navbar>
 
       <AppShell.Main>{children}</AppShell.Main>
