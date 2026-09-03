@@ -683,3 +683,101 @@ describe('a cover who is not working', () => {
     expect(rowA.days[THU].coverConflict).toBe(false)
   })
 })
+
+/**
+ * What a day can carry follows from whether it is worked at all.
+ *
+ * Reported: an employee set to a day off could still be sent to another branch,
+ * and a no-schedule day could still be sent elsewhere or paired with a
+ * colleague. The form hid the fields afterwards, but the rule has to hold here
+ * — the form is where it is noticed, the API is where it is true.
+ */
+describe('a day that is not worked carries nothing', () => {
+  async function oneStaff() {
+    const home = await prisma.branch.create({ data: { name: 'Bunawan' } })
+    const other = await prisma.branch.create({ data: { name: 'TRD' } })
+    const pos = await positionId('Baker')
+    const a = await prisma.employee.create({
+      data: { firstName: 'Aileen', lastName: 'Amper', positionId: pos, branchId: home.id },
+    })
+    const b = await prisma.employee.create({
+      data: { firstName: 'Bernard', lastName: 'Dela Cruz', positionId: pos, branchId: home.id },
+    })
+    const { token } = await hr()
+    const made = await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+    return { id: made.body.data.id as string, a, b, other, token }
+  }
+
+  it('drops another branch from a day off', async () => {
+    const { id, a, other, token } = await oneStaff()
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: a.id, day: THU, status: 'OFF', assignedBranchId: other.id }],
+      })
+      .expect(200)
+    expect(res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id).days[THU].assignedBranch)
+      .toBeNull()
+  })
+
+  it('drops another branch and a partner from a no-schedule day', async () => {
+    const { id, a, b, other, token } = await oneStaff()
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{
+          employeeId: a.id, day: THU, status: 'NOT_SCHEDULED',
+          assignedBranchId: other.id, pairedWithId: b.id, coveredById: b.id,
+        }],
+      })
+      .expect(200)
+    const row = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id)
+    expect(row.days[THU].assignedBranch).toBeNull()
+    expect(row.days[THU].pairedWith).toBeNull()
+    // Nor a cover: a day never rostered has no shift for anyone to take.
+    expect(row.days[THU].coveredBy).toBeNull()
+  })
+
+  it('drops a partner from a day off, but keeps the cover', async () => {
+    const { id, a, b, token } = await oneStaff()
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: a.id, day: THU, status: 'OFF', pairedWithId: b.id, coveredById: b.id }],
+      })
+      .expect(200)
+    const row = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id)
+    expect(row.days[THU].pairedWith).toBeNull()
+    expect(row.days[THU].coveredBy.name).toContain('Bernard')
+  })
+
+  it('clears what no longer applies when a working day becomes a day off', async () => {
+    const { id, a, b, other, token } = await oneStaff()
+    await as(token).patch(`/api/admin/work-schedule/${id}/entries`, {
+      entries: [{
+        employeeId: a.id, day: THU, status: 'SCHEDULED',
+        assignedBranchId: other.id, pairedWithId: b.id,
+      }],
+    }).expect(200)
+
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: a.id, day: THU, status: 'OFF' }],
+      })
+      .expect(200)
+    const row = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id)
+    expect(row.days[THU].assignedBranch).toBeNull()
+    expect(row.days[THU].pairedWith).toBeNull()
+  })
+
+  it('keeps both on a day that IS worked', async () => {
+    const { id, a, b, other, token } = await oneStaff()
+    for (const status of ['SCHEDULED', 'FRONTLINE', 'OPENER', 'CLOSER'] as const) {
+      const res = await as(token)
+        .patch(`/api/admin/work-schedule/${id}/entries`, {
+          entries: [{ employeeId: a.id, day: THU, status, assignedBranchId: other.id, pairedWithId: b.id }],
+        })
+        .expect(200)
+      const row = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id)
+      expect(row.days[THU].assignedBranch.name, status).toBe('TRD')
+      expect(row.days[THU].pairedWith, status).not.toBeNull()
+    }
+  })
+})

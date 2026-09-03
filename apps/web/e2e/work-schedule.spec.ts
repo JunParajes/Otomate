@@ -35,6 +35,8 @@ const WEEKS = {
   closer: '2026-12-31',
   coverOff: '2027-01-07',
   conflictBanner: '2027-01-14',
+  statusRules: '2027-01-21',
+  statusClear: '2027-01-28',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -492,4 +494,52 @@ test('a conflict already in the plan is flagged red and listed at the top', asyn
   // That path clears the cover, so the plan is consistent again.
   await expect(page.locator('button[data-kind="conflict"]')).toHaveCount(0)
   await expect(page.getByText(/shift\(s\) with nobody on them/)).toHaveCount(0)
+})
+
+/**
+ * The reported bug, from the form's side.
+ *
+ * A day off could still be sent to another branch; a no-schedule day could be
+ * sent elsewhere AND paired with a colleague. The fields now follow the status
+ * and say why, rather than accepting a choice the save would throw away.
+ */
+test('a day that is not worked cannot be sent elsewhere or paired', async ({ page }) => {
+  await openCutoff(page, WEEKS.statusRules)
+  await openAllBranches(page)
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+
+  const branchField = page.getByRole('combobox', { name: /Working at another branch/ })
+  const partnerField = page.getByRole('combobox', { name: /Working with|Covered by/ })
+
+  // A working day takes both.
+  await expect(branchField).toBeEnabled()
+  await expect(partnerField).toBeEnabled()
+
+  // A day off: no other branch, but a cover still makes sense.
+  await page.getByRole('button', { name: /^Day off/ }).click()
+  await expect(branchField).toBeDisabled()
+  await expect(page.getByText(/Not on a day off day/)).toBeVisible()
+  await expect(page.getByRole('combobox', { name: /Covered by/ })).toBeEnabled()
+
+  // Not rostered at all: neither applies — there is no shift.
+  await page.getByRole('button', { name: /^No schedule/ }).click()
+  await expect(branchField).toBeDisabled()
+  await expect(page.getByRole('combobox', { name: /Working with/ })).toBeDisabled()
+  await expect(page.getByText(/no shift to pair or cover/)).toBeVisible()
+})
+
+test('changing to a day off drops the branch it was sent to', async ({ page }) => {
+  await openCutoff(page, WEEKS.statusClear)
+  await openAllBranches(page)
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+
+  // Send her to the other branch on a working day.
+  await page.getByRole('combobox', { name: /Working at another branch/ }).click()
+  await page.getByRole('option', { name: FIXTURES.otherBranch }).click()
+  await expect(page.getByRole('combobox', { name: /Working at another branch/ }))
+    .toHaveValue(FIXTURES.otherBranch)
+
+  // Now mark the day off: the branch goes with it, on screen and not just on save.
+  await page.getByRole('button', { name: /^Day off/ }).click()
+  await expect(page.getByRole('combobox', { name: /Working at another branch/ })).toHaveValue('')
 })

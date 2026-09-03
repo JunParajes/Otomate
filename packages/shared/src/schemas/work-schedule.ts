@@ -50,6 +50,27 @@ export const WORK_DAY_HINTS: Record<WorkDayStatus, string> = {
   CLOSER: 'Named as closer by the manager, rather than the Team Leader deciding.',
 }
 
+/**
+ * The statuses that mean the person is actually on shift.
+ *
+ * Off and no-schedule are not, and what can be recorded against a day follows
+ * from that: somebody who is not working cannot be sent to another branch and
+ * cannot be rostered alongside a colleague. Only a day OFF can name a cover —
+ * a day never rostered has no shift for anyone to cover.
+ *
+ * Kept here rather than in the form or the route because both need it, and two
+ * copies of a rule is one copy too many.
+ */
+export function isWorkingStatus(status: WorkDayStatus): boolean {
+  return status !== 'OFF' && status !== 'NOT_SCHEDULED'
+}
+
+/** Whether a colleague can be named against this day, and as what. */
+export function partnerRoleFor(status: WorkDayStatus): 'COVER' | 'WITH' | null {
+  if (status === 'OFF') return 'COVER'
+  return isWorkingStatus(status) ? 'WITH' : null
+}
+
 export const WORK_SCHEDULE_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED'] as const
 export type WorkScheduleStatus = (typeof WORK_SCHEDULE_STATUSES)[number]
 

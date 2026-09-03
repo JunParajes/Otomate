@@ -9,7 +9,8 @@ import { modals } from '@mantine/modals'
 import { IconAlertTriangle, IconArrowLeft, IconCheck, IconCircleCheck } from '@tabler/icons-react'
 import {
   WORK_DAY_HINTS, WORK_DAY_LABELS, WORK_DAY_MARKS, WORK_DAY_STATUSES,
-  WORK_SCHEDULE_STATUS_LABELS, cutoffCode, formatCutoff, formatCutoffLabel,
+  WORK_SCHEDULE_STATUS_LABELS, cutoffCode, formatCutoff, formatCutoffLabel, isWorkingStatus,
+  partnerRoleFor,
   type WorkDayStatus, type WorkSchedule, type WorkScheduleEntryInput, type WorkScheduleRow,
 } from '@otomate/shared'
 import { workScheduleApi } from '@/lib/work-schedule'
@@ -249,8 +250,20 @@ export default function WorkSchedulePage() {
       ? { employeeId: covered.employeeId, employeeName: covered.name, branchName: covered.branch?.name ?? null, conflict: false }
       : undefined)
     const leavesShiftEmpty = status === 'OFF' || status === 'NOT_SCHEDULED'
+    /*
+     * Anything the new status cannot carry goes with it. Without this the field
+     * stays filled on screen until the save quietly drops it, which reads as the
+     * app losing the entry rather than refusing it.
+     */
+    const cleared: Partial<WorkScheduleEntryInput> = {
+      status,
+      ...(isWorkingStatus(status) ? {} : { assignedBranchId: null }),
+      ...(partnerRoleFor(status) === 'COVER' ? {} : { coveredById: null }),
+      ...(partnerRoleFor(status) === 'WITH' ? {} : { pairedWithId: null }),
+    }
+
     if (!covering || !leavesShiftEmpty) {
-      setCell(row, day, { status })
+      setCell(row, day, cleared)
       return
     }
     modals.openConfirmModal({
@@ -269,7 +282,7 @@ export default function WorkSchedulePage() {
       labels: { confirm: 'Set it and clear the cover', cancel: 'Cancel' },
       confirmProps: { color: 'orange' },
       onConfirm: () => {
-        setCell(row, day, { status })
+        setCell(row, day, cleared)
         // Clearing the cover leaves the other person simply off — which is a
         // plain fact — rather than off and covered by someone who is not there.
         const covered = schedule?.rows?.find(r => r.employeeId === covering.employeeId)
@@ -780,7 +793,9 @@ export default function WorkSchedulePage() {
           const saved = editing.row.days[editing.day]
           const status = cur?.status ?? saved?.status ?? 'SCHEDULED'
           const assigned = cur?.assignedBranchId ?? saved?.assignedBranch?.id ?? null
-          const partner = status === 'OFF'
+          const working = isWorkingStatus(status)
+          const partnerRole = partnerRoleFor(status)
+          const partner = partnerRole === 'COVER'
             ? cur?.coveredById ?? saved?.coveredBy?.id ?? null
             : cur?.pairedWithId ?? saved?.pairedWith?.id ?? null
           return (
@@ -805,34 +820,48 @@ export default function WorkSchedulePage() {
               </SimpleGrid>
 
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                {/*
+                  Both of these follow the status. Somebody off, or not rostered,
+                  cannot also be sent to another branch or paired with a
+                  colleague — so the field is disabled and says why, rather than
+                  accepting a choice the save would throw away.
+                */}
                 <Select
                   label="Working at another branch"
-                  description="Leave blank for their own branch"
-                  placeholder="Their own branch"
+                  description={
+                    working
+                      ? 'Leave blank for their own branch'
+                      : `Not on a ${WORK_DAY_LABELS[status].toLowerCase()} day`
+                  }
+                  placeholder={working ? 'Their own branch' : '—'}
                   // Their own branch is not "another" one — offering it invites a
                   // choice that means nothing and reads as a transfer in the grid.
                   data={branchOptions.filter(b => b.value !== editing.row.branch?.id)}
-                  value={assigned}
+                  value={working ? assigned : null}
                   onChange={v => setCell(editing.row, editing.day, { assignedBranchId: v })}
+                  disabled={!working}
                   clearable
                   searchable
                   maxDropdownHeight={280}
                 />
 
                 <Select
-                  label={status === 'OFF' ? 'Covered by' : 'Working with'}
+                  label={partnerRole === 'COVER' ? 'Covered by' : 'Working with'}
                   description={
-                    status === 'OFF'
+                    partnerRole === 'COVER'
                       ? 'Who takes the shift while they are off'
-                      : 'A colleague rostered alongside them'
+                      : partnerRole === 'WITH'
+                        ? 'A colleague rostered alongside them'
+                        : 'Nobody is rostered, so there is no shift to pair or cover'
                   }
-                  placeholder="Type a surname"
+                  placeholder={partnerRole ? 'Type a surname' : '—'}
                   data={colleagueOptions(editing.row)}
-                  value={partner}
+                  value={partnerRole ? partner : null}
                   onChange={v =>
                     setCell(editing.row, editing.day,
-                      status === 'OFF' ? { coveredById: v } : { pairedWithId: v })
+                      partnerRole === 'COVER' ? { coveredById: v } : { pairedWithId: v })
                   }
+                  disabled={partnerRole === null}
                   clearable
                   searchable
                   // Names are filed surname-first, so typing a surname narrows

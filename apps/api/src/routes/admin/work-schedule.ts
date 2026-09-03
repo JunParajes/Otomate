@@ -4,6 +4,8 @@ import {
   cutoffDays,
   cutoffEnd,
   isUnderOneMonth,
+  isWorkingStatus,
+  partnerRoleFor,
   updateEntriesSchema,
   updateWorkScheduleSchema,
   formatEmployeeName,
@@ -341,13 +343,22 @@ router.patch(
         const assigned = e.assignedBranchId && e.assignedBranchId !== homeBranch.get(e.employeeId)
           ? e.assignedBranchId
           : null
+        /*
+         * What a day can carry follows from whether it is worked at all.
+         *
+         * Someone off, or not rostered, cannot also be sent to another branch or
+         * paired with a colleague — and only a day OFF can name a cover, since a
+         * day never rostered has no shift for anyone to cover. Enforced here as
+         * well as hidden in the form: the form is where it is noticed, the API is
+         * where the rule has to hold.
+         */
+        const working = isWorkingStatus(e.status)
+        const partnerRole = partnerRoleFor(e.status)
         const data = {
           status: e.status,
-          assignedBranchId: assigned,
-          // Only meaningful on the matching kind of day; cleared otherwise so a
-          // status change cannot leave a stale colleague attached.
-          coveredById: e.status === 'OFF' ? e.coveredById ?? null : null,
-          pairedWithId: e.status === 'OFF' ? null : e.pairedWithId ?? null,
+          assignedBranchId: working ? assigned : null,
+          coveredById: partnerRole === 'COVER' ? e.coveredById ?? null : null,
+          pairedWithId: partnerRole === 'WITH' ? e.pairedWithId ?? null : null,
           remarks: e.remarks?.trim() || null,
         }
         return prisma.workScheduleEntry.upsert({
