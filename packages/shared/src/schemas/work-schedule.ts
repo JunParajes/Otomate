@@ -71,6 +71,28 @@ export function partnerRoleFor(status: WorkDayStatus): 'COVER' | 'WITH' | null {
   return isWorkingStatus(status) ? 'WITH' : null
 }
 
+/**
+ * Whether a cutoff gives this person no day off at all.
+ *
+ * Information, not a fault: a seven-day week happens, and sometimes it is what
+ * was asked for. It is simply worth seeing while the week is being planned
+ * rather than after it is worked.
+ *
+ * Two things it deliberately does NOT count:
+ *
+ * - A no-schedule day is not a day off. They are not rostered, which is a
+ *   different thing from being given rest — and the distinction is the whole
+ *   reason both statuses exist.
+ * - Somebody who works no days at all is not flagged. They have no day off in
+ *   the same sense that they have no shifts, and saying so would be noise
+ *   against every unplanned new hire in the grid.
+ */
+export function hasNoDayOff(statuses: (WorkDayStatus | null | undefined)[]): boolean {
+  const planned = statuses.filter((s): s is WorkDayStatus => Boolean(s))
+  const worksAtAll = planned.some(isWorkingStatus)
+  return worksAtAll && !planned.includes('OFF')
+}
+
 export const WORK_SCHEDULE_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED'] as const
 export type WorkScheduleStatus = (typeof WORK_SCHEDULE_STATUSES)[number]
 

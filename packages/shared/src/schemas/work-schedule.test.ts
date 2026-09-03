@@ -4,12 +4,14 @@ import {
   cutoffCode,
   cutoffNumber,
   formatCutoffLabel,
+  hasNoDayOff,
   cutoffDays,
   cutoffEnd,
   cutoffStartFor,
   formatCutoff,
   isCutoffStart,
   isUnderOneMonth,
+  type WorkDayStatus,
 } from './work-schedule.js'
 
 /**
@@ -147,5 +149,55 @@ describe('cutoff numbering', () => {
   it('refuses to number a day that is not a Thursday', () => {
     expect(cutoffNumber('2026-08-31')).toBeNull()
     expect(cutoffCode('2026-08-31')).toBe('WS-?')
+  })
+})
+
+/**
+ * "No day off this cutoff" — an indicator while planning, not a warning.
+ */
+describe('a cutoff with no day off', () => {
+  const week = (...statuses: (WorkDayStatus | null)[]) => statuses
+
+  it('flags someone working all seven days', () => {
+    expect(hasNoDayOff(week(
+      'SCHEDULED', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED'
+    ))).toBe(true)
+  })
+
+  it('does not flag someone with a day off', () => {
+    expect(hasNoDayOff(week(
+      'SCHEDULED', 'SCHEDULED', 'OFF', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED'
+    ))).toBe(false)
+  })
+
+  it('counts every working status, not just the plain tick', () => {
+    // Six worked days across four statuses and no rest day is still no rest day.
+    expect(hasNoDayOff(week(
+      'OPENER', 'CLOSER', 'FRONTLINE', 'SCHEDULED', 'OPENER', 'CLOSER', 'NOT_SCHEDULED'
+    ))).toBe(true)
+  })
+
+  /**
+   * A no-schedule day is not rest. The two statuses exist precisely because
+   * "not rostered" and "given the day off" are different things.
+   */
+  it('does not treat a no-schedule day as a day off', () => {
+    expect(hasNoDayOff(week(
+      'SCHEDULED', 'NOT_SCHEDULED', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED', 'SCHEDULED'
+    ))).toBe(true)
+  })
+
+  it('says nothing about someone who works no days at all', () => {
+    // Every unplanned new hire would otherwise be flagged.
+    expect(hasNoDayOff(week(
+      'NOT_SCHEDULED', 'NOT_SCHEDULED', 'NOT_SCHEDULED', 'NOT_SCHEDULED',
+      'NOT_SCHEDULED', 'NOT_SCHEDULED', 'NOT_SCHEDULED'
+    ))).toBe(false)
+    expect(hasNoDayOff(week(null, null, null, null, null, null, null))).toBe(false)
+  })
+
+  it('handles a part-planned week', () => {
+    expect(hasNoDayOff(week('SCHEDULED', 'SCHEDULED', null, null, null, null, null))).toBe(true)
+    expect(hasNoDayOff(week('SCHEDULED', 'OFF', null, null, null, null, null))).toBe(false)
   })
 })

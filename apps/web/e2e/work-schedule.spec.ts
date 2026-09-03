@@ -39,6 +39,9 @@ const WEEKS = {
   statusClear: '2027-01-28',
   abbrev: '2027-02-04',
   noAbbrev: '2027-02-11',
+  noDayOff: '2027-02-18',
+  noSchedRest: '2027-02-25',
+  noDayOffCount: '2027-03-04',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -595,4 +598,53 @@ test('a branch with no short name leaves the tick alone', async ({ page }) => {
   await expect(page.locator('[aria-label^="Ben Dorilag, "]').first()).toContainText('✓')
   // The detail is still reachable — it just is not the mark.
   await expect(page.locator('button[aria-label^="Day details for Ben"]').first()).toBeVisible()
+})
+
+/**
+ * "No day off this cutoff".
+ *
+ * An indicator, not a warning: a seven-day week happens and is sometimes what
+ * was asked for. It reads from the unsaved draft too, because its whole job is
+ * to be answered while the week is being planned — one that only updated after
+ * Save would be describing the week you had ten minutes ago.
+ */
+test('a week with no day off says so, and stops saying it once one is given', async ({ page }) => {
+  await openCutoff(page, WEEKS.noDayOff)
+  await openAllBranches(page)
+
+  // Everyone starts scheduled all seven days, so everyone is flagged.
+  const flagged = page.getByText('· no day off')
+  const before = await flagged.count()
+  expect(before).toBeGreaterThan(0)
+
+  // Give one person a day off — the indicator goes before anything is saved.
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  await expect(flagged).toHaveCount(before - 1)
+  await expect(page.locator('tbody tr').filter({ hasText: 'Cruz, Maria S.' }))
+    .not.toContainText('no day off')
+})
+
+/**
+ * A no-schedule day is not rest — that distinction is why both statuses exist.
+ */
+test('a no-schedule day does not count as a day off', async ({ page }) => {
+  await openCutoff(page, WEEKS.noSchedRest)
+  await openAllBranches(page)
+  const row = page.locator('tbody tr').filter({ hasText: 'Cruz, Maria S.' })
+  await expect(row).toContainText('no day off')
+
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+  await page.getByRole('button', { name: /^No schedule/ }).click()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  // Still flagged: not rostered is not the same as given the day off.
+  await expect(row).toContainText('no day off')
+})
+
+test('the branch list counts how many have no day off', async ({ page }) => {
+  await openCutoff(page, WEEKS.noDayOffCount)
+  await expect(page.getByText(/with no day off/).first()).toBeVisible()
 })

@@ -9,8 +9,8 @@ import { modals } from '@mantine/modals'
 import { IconAlertTriangle, IconArrowLeft, IconCheck, IconCircleCheck } from '@tabler/icons-react'
 import {
   WORK_DAY_HINTS, WORK_DAY_LABELS, WORK_DAY_MARKS, WORK_DAY_STATUSES,
-  WORK_SCHEDULE_STATUS_LABELS, cutoffCode, formatCutoff, formatCutoffLabel, isWorkingStatus,
-  partnerRoleFor,
+  WORK_SCHEDULE_STATUS_LABELS, cutoffCode, formatCutoff, formatCutoffLabel, hasNoDayOff,
+  isWorkingStatus, partnerRoleFor,
   type WorkDayStatus, type WorkSchedule, type WorkScheduleEntryInput, type WorkScheduleRow,
 } from '@otomate/shared'
 import { workScheduleApi } from '@/lib/work-schedule'
@@ -104,6 +104,20 @@ export default function WorkSchedulePage() {
   const approved = schedule?.status === 'APPROVED'
   const canWrite = can('schedule:write') && (!approved || can('schedule:approve'))
   const canApprove = can('schedule:approve')
+
+  /**
+   * Whether this person has no day off in the cutoff, counting unsaved edits.
+   *
+   * Reading the draft matters: the indicator's job is to be answered while
+   * planning, and one that only updated after Save would still be telling you
+   * about the week you had ten minutes ago.
+   */
+  function noDayOff(row: WorkScheduleRow): boolean {
+    const statuses = (schedule?.days ?? []).map(d =>
+      draft.get(keyOf(row.employeeId, d))?.status ?? row.days[d]?.status ?? null
+    )
+    return hasNoDayOff(statuses)
+  }
 
   /** Every day off whose named cover is not working either. */
   const coverConflicts = useMemo(() => {
@@ -504,6 +518,17 @@ export default function WorkSchedulePage() {
                   <Text fw={500}>{b.branchName}</Text>
                 </Group>
                 <Group gap="xs">
+                  {(() => {
+                    // Countable from here, so a branch worth opening says so
+                    // before it is opened.
+                    const without = (groups.find(([name]) => name === b.branchName)?.[1] ?? [])
+                      .filter(noDayOff).length
+                    return without > 0 ? (
+                      <Badge size="sm" variant="light" color="indigo">
+                        {without} with no day off
+                      </Badge>
+                    ) : null
+                  })()}
                   <Badge
                     size="sm"
                     variant="light"
@@ -617,7 +642,25 @@ export default function WorkSchedulePage() {
                                 </Tooltip>
                               )}
                             </Group>
-                            <Text size="xs" c="dimmed">{row.position}</Text>
+                            {/*
+                              On the second line, beside the position, because the
+                              name line has no room: as a badge next to the name it
+                              truncated to "NO DA…" and pushed the name to
+                              "Maglana,…", so two things were unreadable instead of
+                              none.
+
+                              Information, not a warning — stated in words in a
+                              quiet colour rather than red and shouting. A
+                              seven-day week happens, and is sometimes what was
+                              asked for; it is simply worth seeing while the week
+                              is still being planned.
+                            */}
+                            <Text size="xs" c="dimmed">
+                              {row.position}
+                              {noDayOff(row) && (
+                                <Text component="span" size="xs" c="indigo" fw={500}> · no day off</Text>
+                              )}
+                            </Text>
                           </button>
                         </Table.Td>
                         {schedule.days.map(d => {
