@@ -256,7 +256,8 @@ export interface WorkScheduleEntryRecord {
   employeeId: string
   day: string
   status: WorkDayStatus
-  assignedBranch: { id: string; name: string } | null
+  /** `abbreviation` is what the cell shows; the name is for the detail panel. */
+  assignedBranch: { id: string; name: string; abbreviation: string | null } | null
   coveredBy: { id: string; name: string } | null
   pairedWith: { id: string; name: string } | null
   remarks: string | null

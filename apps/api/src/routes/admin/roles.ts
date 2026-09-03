@@ -59,7 +59,7 @@ router.post(
       })
       res.status(201).json({ data: { ...toRoleDto(role), userCount: 0 }, error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'name', 'A role with that name already exists')
+      rethrowUniqueViolation(error, ['name', 'A role with that name already exists'])
     }
   })
 )
@@ -93,7 +93,7 @@ router.patch(
       })
       res.json({ data: { ...toRoleDto(role), userCount: role._count.users }, error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'name', 'A role with that name already exists')
+      rethrowUniqueViolation(error, ['name', 'A role with that name already exists'])
     }
   })
 )

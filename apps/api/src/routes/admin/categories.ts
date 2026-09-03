@@ -37,7 +37,7 @@ router.post(
       })
       res.status(201).json({ data: { ...toCategoryDto(category), productCount: 0 }, error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'name', 'A category with that name already exists')
+      rethrowUniqueViolation(error, ['name', 'A category with that name already exists'])
     }
   })
 )
@@ -60,7 +60,7 @@ router.patch(
       })
       res.json({ data: { ...toCategoryDto(category), productCount: category._count.products }, error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'name', 'A category with that name already exists')
+      rethrowUniqueViolation(error, ['name', 'A category with that name already exists'])
     }
   })
 )

@@ -64,7 +64,7 @@ router.post(
       })
       res.status(201).json({ data: toUserDto(user), error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'email', 'A user with that email already exists')
+      rethrowUniqueViolation(error, ['email', 'A user with that email already exists'])
     }
   })
 )
@@ -108,7 +108,7 @@ router.patch(
       })
       res.json({ data: toUserDto(user), error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'email', 'A user with that email already exists')
+      rethrowUniqueViolation(error, ['email', 'A user with that email already exists'])
     }
   })
 )

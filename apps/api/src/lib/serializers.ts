@@ -46,6 +46,7 @@ export function toBranchDto(
   const dto: BranchDto = {
     id: branch.id,
     name: branch.name,
+    abbreviation: branch.abbreviation,
     isActive: branch.isActive,
     createdAt: branch.createdAt.toISOString(),
     updatedAt: branch.updatedAt.toISOString(),

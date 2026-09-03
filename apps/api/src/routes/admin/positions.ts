@@ -60,7 +60,7 @@ router.post(
       })
       res.status(201).json({ data: toDto(position), error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'name', 'A position with that name already exists')
+      rethrowUniqueViolation(error, ['name', 'A position with that name already exists'])
       throw error
     }
   })
@@ -84,7 +84,7 @@ router.patch(
       })
       res.json({ data: toDto(position), error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'name', 'A position with that name already exists')
+      rethrowUniqueViolation(error, ['name', 'A position with that name already exists'])
       throw error
     }
   })

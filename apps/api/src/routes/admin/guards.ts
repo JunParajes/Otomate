@@ -72,11 +72,32 @@ export async function assertNotLastSuperAdmin(userId: string, action: string): P
   }
 }
 
-/** Turns Prisma's unique-constraint error into a readable 409. */
-export function rethrowUniqueViolation(error: unknown, field: string, message: string): never {
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-    throw new HttpError(409, message, 'DUPLICATE')
+/**
+ * Turns Prisma's unique-constraint error into a readable 409.
+ *
+ * Takes one rule per unique column, because a table can have more than one and
+ * the caller cannot know which was hit. The `field` argument used to be accepted
+ * and discarded, which was harmless while every table had a single unique
+ * column — and wrong the moment Branch gained a second: a duplicate short name
+ * reported "a branch with that name already exists".
+ *
+ * When Prisma does not say which constraint was violated, the FIRST rule's
+ * message is used. A slightly wrong 409 beats a 500 for something the caller
+ * plainly did.
+ */
+export function rethrowUniqueViolation(
+  error: unknown,
+  ...rules: [field: string, message: string][]
+): never {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    throw error
   }
-  void field
-  throw error
+  // Postgres reports either the column list or the index name, depending on the
+  // constraint — "abbreviation" or "Branch_abbreviation_key".
+  const target = error.meta?.target
+  const named = Array.isArray(target) ? target.join(' ') : typeof target === 'string' ? target : ''
+
+  const matched = rules.find(([field]) => named.includes(field))
+  const [, message] = matched ?? rules[0]!
+  throw new HttpError(409, message, 'DUPLICATE')
 }

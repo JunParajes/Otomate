@@ -95,10 +95,18 @@ router.post(
     const parsed = createBranchSchema.safeParse(req.body)
     if (!parsed.success) throw new HttpError(400, firstIssue(parsed.error), 'VALIDATION_ERROR')
     try {
-      const branch = await prisma.branch.create({ data: parsed.data })
+      const branch = await prisma.branch.create({
+        data: { ...parsed.data, abbreviation: parsed.data.abbreviation?.trim() || null },
+      })
       res.status(201).json({ data: { ...toBranchDto(branch), userCount: 0 }, error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'name', 'A branch with that name already exists')
+      // Two rules: a branch has two unique columns, and which one was hit
+      // decides which message is true.
+      rethrowUniqueViolation(
+        error,
+        ['name', 'A branch with that name already exists'],
+        ['abbreviation', 'Another branch already uses that short name']
+      )
     }
   })
 )
@@ -116,12 +124,21 @@ router.patch(
     try {
       const branch = await prisma.branch.update({
         where: { id: existing.id },
-        data: parsed.data,
+        data: {
+          ...parsed.data,
+          ...(parsed.data.abbreviation !== undefined && {
+            abbreviation: parsed.data.abbreviation?.trim() || null,
+          }),
+        },
         include: { _count: { select: { users: true } } },
       })
       res.json({ data: { ...toBranchDto(branch), userCount: branch._count.users }, error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'name', 'A branch with that name already exists')
+      rethrowUniqueViolation(
+        error,
+        ['name', 'A branch with that name already exists'],
+        ['abbreviation', 'Another branch already uses that short name']
+      )
     }
   })
 )

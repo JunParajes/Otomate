@@ -156,11 +156,13 @@ export default function WorkSchedulePage() {
         : null
 
     if (pending) {
+      const pendingBranch = pending.assignedBranchId
+        ? branches.data?.find(b => b.id === pending.assignedBranchId) ?? null
+        : null
       return {
         status: pending.status,
-        branchName: pending.assignedBranchId
-          ? branches.data?.find(b => b.id === pending.assignedBranchId)?.name ?? null
-          : null,
+        branchName: pendingBranch?.name ?? null,
+        branchShort: pendingBranch?.abbreviation ?? null,
         partner: pending.status === 'OFF' ? nameOf(pending.coveredById) : nameOf(pending.pairedWithId),
         partnerLabel: pending.status === 'OFF' ? 'Cover' : 'With',
         cover,
@@ -182,13 +184,14 @@ export default function WorkSchedulePage() {
     if (!saved) {
       return {
         status: null, branchName: null, partner: null, partnerLabel: '',
-        cover, remarks: null, coverConflict: false,
+        cover, remarks: null, coverConflict: false, branchShort: null,
         detailKind: kindOf(null, null, null, Boolean(cover?.conflict)), pending: false,
       }
     }
     return {
       status: saved.status,
       branchName: saved.assignedBranch?.name ?? null,
+      branchShort: saved.assignedBranch?.abbreviation ?? null,
       partner: saved.status === 'OFF' ? saved.coveredBy?.name ?? null : saved.pairedWith?.name ?? null,
       partnerLabel: saved.status === 'OFF' ? 'Cover' : 'With',
       cover,
@@ -634,8 +637,20 @@ export default function WorkSchedulePage() {
                                   aria-label={`${row.name}, ${d}: ${cell.status ? WORK_DAY_LABELS[cell.status] : 'not set'}`}
                                   onClick={() => setEditing({ row, day: d })}
                                 >
-                                  <span className={classes.mark}>
-                                    {cell.status ? WORK_DAY_MARKS[cell.status] : '·'}
+                                  {/*
+                                    Someone sent to another branch shows THAT
+                                    branch, not a tick — which is what the
+                                    spreadsheet did, and the only thing anyone
+                                    scanning the row wants to know. The short
+                                    name exists because the cell is under a
+                                    hundred pixels wide; without one set, the
+                                    tick stands and the "i" carries the detail.
+                                  */}
+                                  <span
+                                    className={classes.mark}
+                                    data-branch={cell.branchShort ? 'yes' : undefined}
+                                  >
+                                    {cell.branchShort ?? (cell.status ? WORK_DAY_MARKS[cell.status] : '·')}
                                   </span>
                                 </button>
                                 {/*

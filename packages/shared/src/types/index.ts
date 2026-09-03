@@ -21,6 +21,8 @@ export interface BranchLease {
 export interface Branch {
   id: string
   name: string
+  /** Short form for the schedule grid — "TRD", "Km11". Null until someone sets it. */
+  abbreviation: string | null
   isActive: boolean
   permits?: BranchPermitRecord[]
   /** Requires `branches:utilities:read`. */

@@ -37,6 +37,8 @@ const WEEKS = {
   conflictBanner: '2027-01-14',
   statusRules: '2027-01-21',
   statusClear: '2027-01-28',
+  abbrev: '2027-02-04',
+  noAbbrev: '2027-02-11',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -542,4 +544,55 @@ test('changing to a day off drops the branch it was sent to', async ({ page }) =
   // Now mark the day off: the branch goes with it, on screen and not just on save.
   await page.getByRole('button', { name: /^Day off/ }).click()
   await expect(page.getByRole('combobox', { name: /Working at another branch/ })).toHaveValue('')
+})
+
+/**
+ * A branch's short name, and where it shows up.
+ *
+ * Someone rostered at a branch other than their own shows THAT branch in the
+ * cell — which is what the spreadsheet did, and the only thing anyone scanning
+ * the row wants to know. The cell is under a hundred pixels wide, so it has to
+ * be the short form.
+ */
+test('a branch short name becomes the mark when staff are sent there', async ({ page }) => {
+  await signIn(page, FIXTURES.owner)
+
+  // Give the second branch a short name.
+  await page.goto('/admin/branches')
+  await page.getByText(FIXTURES.otherBranch, { exact: true }).first().click()
+  await page.getByRole('button', { name: 'Edit' }).click()
+  await page.getByLabel('Short name').fill('TOR')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  // exact: "TOR" is a substring of "Toril", and getByText is case-insensitive.
+  await expect(page.getByText('TOR', { exact: true })).toBeVisible()
+
+  // Send Maria there for a day.
+  await openCutoff(page, WEEKS.abbrev)
+  await openAllBranches(page)
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+  await page.getByRole('combobox', { name: /Working at another branch/ }).click()
+  await page.getByRole('option', { name: FIXTURES.otherBranch }).click()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  // The cell reads TOR rather than a tick.
+  const cell = page.locator('[aria-label^="Maria Santos Cruz, "]').first()
+  await expect(cell).toContainText('TOR')
+  await expect(cell).not.toContainText('✓')
+})
+
+/** Without a short name there is nothing to show, so the tick stands. */
+test('a branch with no short name leaves the tick alone', async ({ page }) => {
+  await openCutoff(page, WEEKS.noAbbrev)
+  await openAllBranches(page)
+
+  // Ana is at Matina, which has no short name set in the fixtures.
+  const cell = page.locator('[aria-label^="Ben Dorilag, "]').first()
+  await cell.click()
+  await page.getByRole('combobox', { name: /Working at another branch/ }).click()
+  await page.getByRole('option', { name: FIXTURES.branch }).click()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  await expect(page.locator('[aria-label^="Ben Dorilag, "]').first()).toContainText('✓')
+  // The detail is still reachable — it just is not the mark.
+  await expect(page.locator('button[aria-label^="Day details for Ben"]').first()).toBeVisible()
 })

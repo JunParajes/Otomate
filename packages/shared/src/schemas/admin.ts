@@ -72,13 +72,31 @@ export const deleteRoleSchema = z.object({
 })
 
 // ─── Branches ─────────────────────────────────────────────────────────────
+/**
+ * The short form shown in a work-schedule cell.
+ *
+ * Capped hard at six characters: the grid cell it has to fit is under a hundred
+ * pixels wide, and an abbreviation that needs truncating is not an abbreviation.
+ * Letters and digits only — "Km11", "TRD", "Pan".
+ */
+const abbreviation = z
+  .string()
+  .trim()
+  .min(1, 'Give it at least one character')
+  .max(6, 'Six characters at most — it has to fit a schedule cell')
+  .regex(/^[A-Za-z0-9]+$/, 'Letters and numbers only')
+  .nullable()
+  .optional()
+
 export const createBranchSchema = z.object({
   name: name,
+  abbreviation,
   isActive: z.boolean().optional().default(true),
 })
 
 export const updateBranchSchema = z.object({
   name: name.optional(),
+  abbreviation,
   isActive: z.boolean().optional(),
 })
 

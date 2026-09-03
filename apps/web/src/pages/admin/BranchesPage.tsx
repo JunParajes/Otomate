@@ -30,7 +30,7 @@ export default function BranchesPage() {
 
   const canWrite = can('branches:write')
   const form = useForm({
-    initialValues: { name: '', isActive: true },
+    initialValues: { name: '', abbreviation: '', isActive: true },
     validate: zodResolver(createBranchSchema),
   })
 
@@ -81,7 +81,7 @@ export default function BranchesPage() {
           canWrite && (
             <Button
               leftSection={<IconPlus size={16} />}
-              onClick={() => { form.setValues({ name: '', isActive: true }); form.clearErrors(); setCreating(true) }}
+              onClick={() => { form.setValues({ name: '', abbreviation: '', isActive: true }); form.clearErrors(); setCreating(true) }}
             >
               Add branch
             </Button>
@@ -95,6 +95,7 @@ export default function BranchesPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Branch</Table.Th>
+                <Table.Th w={110}>Short name</Table.Th>
                 <Table.Th w={110}>Users</Table.Th>
                 <Table.Th w={150}>Permits</Table.Th>
                 <Table.Th w={120}>Status</Table.Th>
@@ -108,6 +109,11 @@ export default function BranchesPage() {
                   {...rowActionProps(canWrite, () => setActing(branch))}
                 >
                   <Table.Td><Text fw={500}>{branch.name}</Text></Table.Td>
+                  <Table.Td>
+                    {branch.abbreviation
+                      ? <Badge variant="light" color="violet">{branch.abbreviation}</Badge>
+                      : <Text size="sm" c="dimmed">not set</Text>}
+                  </Table.Td>
                   <Table.Td>
                     <Badge variant="light" color={branch.userCount > 0 ? 'blue' : 'gray'}>{branch.userCount}</Badge>
                   </Table.Td>
@@ -152,7 +158,7 @@ export default function BranchesPage() {
                   label: 'Edit',
                   icon: <IconPencil size={18} />,
                   onClick: () => {
-                    form.setValues({ name: acting.name, isActive: acting.isActive })
+                    form.setValues({ name: acting.name, abbreviation: acting.abbreviation ?? '', isActive: acting.isActive })
                     form.clearErrors()
                     setEditing(acting)
                   },
@@ -179,7 +185,12 @@ export default function BranchesPage() {
         <form
           onSubmit={form.onSubmit(values =>
             run(
-              () => (isEditing ? adminApi.updateBranch(editing!.id, values) : adminApi.createBranch(values)),
+              () => {
+                const payload = { ...values, abbreviation: values.abbreviation.trim() || null }
+                return isEditing
+                  ? adminApi.updateBranch(editing!.id, payload)
+                  : adminApi.createBranch(payload)
+              },
               isEditing ? 'Branch updated' : `${values.name} added`,
               () => { setCreating(false); setEditing(null) }
             )
@@ -187,6 +198,18 @@ export default function BranchesPage() {
         >
           <Stack gap="md">
             <TextInput label="Branch name" placeholder="Malolos" withAsterisk {...form.getInputProps('name')} />
+            {/*
+              What a work-schedule cell shows when someone from another branch is
+              rostered here. The cell is under a hundred pixels wide, so it has to
+              be the short form — "Bangkerohan" simply does not fit.
+            */}
+            <TextInput
+              label="Short name"
+              description="Shown on the work schedule when staff are sent here — TRD, Km11, Pan"
+              placeholder="TRD"
+              maxLength={6}
+              {...form.getInputProps('abbreviation')}
+            />
             <Switch
               label="Active"
               description="Inactive branches stay on record but are marked closed."

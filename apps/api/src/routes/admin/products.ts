@@ -85,7 +85,7 @@ router.post(
       })
       res.status(201).json({ data: toProductDto(product, canSeeCost(req)), error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'sku', 'A product with that code already exists')
+      rethrowUniqueViolation(error, ['sku', 'A product with that code already exists'])
     }
   })
 )
@@ -117,7 +117,7 @@ router.patch(
       })
       res.json({ data: toProductDto(product, canSeeCost(req)), error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'sku', 'A product with that code already exists')
+      rethrowUniqueViolation(error, ['sku', 'A product with that code already exists'])
     }
   })
 )

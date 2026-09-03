@@ -73,10 +73,17 @@ enum PermitType {
 }
 
 model Branch {
-  id       String  @id @default(cuid())
-  name     String  @unique
-  isActive Boolean @default(true)
-  address  String?
+  id           String  @id @default(cuid())
+  name         String  @unique
+  /// Short form for the work-schedule grid — "TRD", "Pan", "Km11".
+  ///
+  /// A cell is under a hundred pixels wide, so a staff member sent to another
+  /// branch cannot be shown as "Bangkerohan" there. Unique, because two branches
+  /// abbreviating the same way would make the grid say the wrong thing rather
+  /// than an ambiguous thing. Nullable-unique works in Postgres: many NULLs.
+  abbreviation String? @unique
+  isActive     Boolean @default(true)
+  address      String?
 
   // ─── The lease ───────────────────────────────────────────────────────────
   /// The CURRENT lease. A branch that re-signs with a new lessor overwrites

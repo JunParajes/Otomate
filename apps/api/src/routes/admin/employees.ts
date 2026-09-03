@@ -132,7 +132,7 @@ router.post(
       })
       res.status(201).json({ data: toEmployeeDto(employee, access(req)), error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'employeeCode', 'An employee with that code already exists')
+      rethrowUniqueViolation(error, ['employeeCode', 'An employee with that code already exists'])
     }
   })
 )
@@ -170,7 +170,7 @@ router.patch(
       })
       res.json({ data: toEmployeeDto(employee, access(req)), error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'employeeCode', 'An employee with that code already exists')
+      rethrowUniqueViolation(error, ['employeeCode', 'An employee with that code already exists'])
     }
   })
 )

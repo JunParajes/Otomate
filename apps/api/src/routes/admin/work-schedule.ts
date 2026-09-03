@@ -34,7 +34,7 @@ const day = (d: Date) => d.toISOString().slice(0, 10)
 const asDate = (iso: string) => new Date(`${iso}T00:00:00.000Z`)
 
 const entryInclude = {
-  assignedBranch: { select: { id: true, name: true } },
+  assignedBranch: { select: { id: true, name: true, abbreviation: true } },
   coveredBy: { select: { id: true, firstName: true, middleName: true, lastName: true, suffix: true } },
   pairedWith: { select: { id: true, firstName: true, middleName: true, lastName: true, suffix: true } },
 } as const
@@ -286,7 +286,7 @@ router.post(
       const schedule = await loadSchedule(created.id, can(req, 'hr:read'))
       res.status(201).json({ data: schedule, error: null })
     } catch (error) {
-      rethrowUniqueViolation(error, 'weekStart', 'That cutoff already has a schedule')
+      rethrowUniqueViolation(error, ['weekStart', 'That cutoff already has a schedule'])
       throw error
     }
   })
