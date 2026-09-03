@@ -93,3 +93,38 @@
 
 .branchCard { cursor: pointer; }
 .branchCard:hover { border-color: var(--mantine-color-blue-5); }
+
+/* The cell fills the wrapper; the "i" sits over its top-right corner. */
+.cellWrap { position: relative; }
+
+/*
+ * The information button.
+ *
+ * Small on screen but with a real touch target — this is used on a tablet, and
+ * a 12px dot is not something a thumb can hit. Colour says what sort of detail
+ * is behind it, so a column can still be scanned without opening every one.
+ */
+.info {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  font: 700 11px/1 var(--mantine-font-family);
+  font-style: italic;
+  cursor: pointer;
+  color: var(--mantine-color-dimmed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.info:hover { transform: scale(1.12); }
+.info:focus-visible { outline: 2px solid var(--mantine-color-blue-5); }
+.info[data-kind='branch'] { color: var(--mantine-color-violet-7); border-color: var(--mantine-color-violet-4); }
+.info[data-kind='cover']  { color: var(--mantine-color-teal-7); border-color: var(--mantine-color-teal-4); }
+
+.cell[data-status='CLOSER'] { background: var(--mantine-color-cyan-light); }

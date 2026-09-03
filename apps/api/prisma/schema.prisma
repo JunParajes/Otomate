@@ -291,6 +291,8 @@ enum WorkDayStatus {
   FRONTLINE
   /// The manager naming the opener directly instead of leaving it to the Team Leader.
   OPENER
+  /// The same, for the close. The Team Leader decides both unless told otherwise.
+  CLOSER
 }
 
 enum WorkScheduleStatus {
@@ -366,6 +368,12 @@ model WorkScheduleEntry {
   /// "w/ Dorilag" — rostered alongside someone. Only meaningful on a working day.
   pairedWithId String?
   pairedWith   Employee? @relation("SchedulePairedWith", fields: [pairedWithId], references: [id])
+
+  /// Why this day is the way it is — written by whoever drafted it or by the
+  /// approver. Belongs to the PLAN, not to what happened: "asked for the
+  /// morning, clinic in the afternoon" is a reason for the roster, not a record
+  /// of the day.
+  remarks String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

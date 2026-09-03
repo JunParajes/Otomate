@@ -10,13 +10,14 @@ import { z } from 'zod'
  * actuals will point back at it rather than overwrite it.
  */
 
-/** The five the branches use. Nothing here describes an outcome. */
+/** What the branches use. Nothing here describes an outcome. */
 export const WORK_DAY_STATUSES = [
   'SCHEDULED',
   'NOT_SCHEDULED',
   'OFF',
   'FRONTLINE',
   'OPENER',
+  'CLOSER',
 ] as const
 export type WorkDayStatus = (typeof WORK_DAY_STATUSES)[number]
 
@@ -27,6 +28,7 @@ export const WORK_DAY_LABELS: Record<WorkDayStatus, string> = {
   OFF: 'Day off',
   FRONTLINE: 'Frontline',
   OPENER: 'Opener',
+  CLOSER: 'Closer',
 }
 
 /** The mark in the grid — kept short, because the grid is scanned, not read. */
@@ -36,6 +38,7 @@ export const WORK_DAY_MARKS: Record<WorkDayStatus, string> = {
   OFF: 'Off',
   FRONTLINE: 'FL',
   OPENER: 'Op',
+  CLOSER: 'Cl',
 }
 
 export const WORK_DAY_HINTS: Record<WorkDayStatus, string> = {
@@ -44,6 +47,7 @@ export const WORK_DAY_HINTS: Record<WorkDayStatus, string> = {
   OFF: 'Their day off.',
   FRONTLINE: 'Commissary staff sent to the bakery counter.',
   OPENER: 'Named as opener by the manager, rather than the Team Leader deciding.',
+  CLOSER: 'Named as closer by the manager, rather than the Team Leader deciding.',
 }
 
 export const WORK_SCHEDULE_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED'] as const
@@ -210,6 +214,8 @@ export const workScheduleEntrySchema = z.object({
   coveredById: z.string().nullable().optional(),
   /** Rostered alongside this colleague. */
   pairedWithId: z.string().nullable().optional(),
+  /** Why the day is planned this way — from the drafter or the approver. */
+  remarks: z.string().trim().max(500, 'That note is too long').nullable().optional(),
 })
 export type WorkScheduleEntryInput = z.infer<typeof workScheduleEntrySchema>
 
@@ -232,6 +238,7 @@ export interface WorkScheduleEntryRecord {
   assignedBranch: { id: string; name: string } | null
   coveredBy: { id: string; name: string } | null
   pairedWith: { id: string; name: string } | null
+  remarks: string | null
 }
 
 /**

@@ -537,3 +537,58 @@ describe('branch planning progress', () => {
     await as(token).put(`/api/admin/work-schedule/${id}/branches/${a.id}/planned`, { planned: true }).expect(409)
   })
 })
+
+describe('closer, and a note against the day', () => {
+  async function draftOne() {
+    const branch = await prisma.branch.create({ data: { name: 'Bankerohan' } })
+    const employee = await prisma.employee.create({
+      data: { firstName: 'Maria', lastName: 'Cruz', positionId: await positionId('Baker'), branchId: branch.id },
+    })
+    const { token } = await hr()
+    const made = await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+    return { id: made.body.data.id as string, employee, token }
+  }
+
+  /** The counterpart to Opener — the manager naming who closes. */
+  it('stores CLOSER alongside the other statuses', async () => {
+    const { id, employee, token } = await draftOne()
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: employee.id, day: THU, status: 'CLOSER' }],
+      })
+      .expect(200)
+    expect(res.body.data.rows[0].days[THU].status).toBe('CLOSER')
+  })
+
+  it('keeps a remark against the day it was written on', async () => {
+    const { id, employee, token } = await draftOne()
+    const note = 'Asked for the morning — clinic in the afternoon.'
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: employee.id, day: THU, status: 'OFF', remarks: note }],
+      })
+      .expect(200)
+    expect(res.body.data.rows[0].days[THU].remarks).toBe(note)
+  })
+
+  it('treats a blank remark as no remark, rather than an empty note', async () => {
+    const { id, employee, token } = await draftOne()
+    await as(token).patch(`/api/admin/work-schedule/${id}/entries`, {
+      entries: [{ employeeId: employee.id, day: THU, status: 'OFF', remarks: 'something' }],
+    }).expect(200)
+
+    const res = await as(token).patch(`/api/admin/work-schedule/${id}/entries`, {
+      entries: [{ employeeId: employee.id, day: THU, status: 'OFF', remarks: '   ' }],
+    }).expect(200)
+    expect(res.body.data.rows[0].days[THU].remarks).toBeNull()
+  })
+
+  it('refuses a remark longer than the field allows', async () => {
+    const { id, employee, token } = await draftOne()
+    await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: employee.id, day: THU, status: 'OFF', remarks: 'x'.repeat(501) }],
+      })
+      .expect(400)
+  })
+})

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ActionIcon, Alert, Badge, Button, Card, Center, Group, Loader, Modal, Select, SimpleGrid, Stack,
-  Table, Text, Title, Tooltip,
+  Table, Text, Textarea, Title, Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
@@ -55,6 +55,7 @@ export default function WorkSchedulePage() {
   const [draft, setDraft] = useState<Draft>(new Map())
   const [editing, setEditing] = useState<{ row: WorkScheduleRow; day: string } | null>(null)
   const [viewing, setViewing] = useState<WorkScheduleRow | null>(null)
+  const [info, setInfo] = useState<{ row: WorkScheduleRow; day: string } | null>(null)
   /**
    * Which branch's grid is open. null shows the branch list instead — eighty
    * staff in one table is a scroll, and a branch manager only ever wants their
@@ -123,6 +124,14 @@ export default function WorkSchedulePage() {
     const nameOf = (id: string | null | undefined) =>
       id ? schedule?.rows?.find(r => r.employeeId === id)?.name ?? null : null
 
+    /**
+     * Whether there is an "i" at all, and what colour it takes. Sent elsewhere
+     * and covering for someone are the two a planner scans for, so each keeps a
+     * colour; anything else is a neutral note.
+     */
+    const kindOf = (branchName: string | null, partner: string | null, remarks: string | null) =>
+      branchName ? 'branch' : cover ? 'cover' : partner || remarks ? 'note' : null
+
     if (pending) {
       return {
         status: pending.status,
@@ -132,11 +141,22 @@ export default function WorkSchedulePage() {
         partner: pending.status === 'OFF' ? nameOf(pending.coveredById) : nameOf(pending.pairedWithId),
         partnerLabel: pending.status === 'OFF' ? 'Cover' : 'With',
         cover,
+        remarks: pending.remarks ?? null,
+        detailKind: kindOf(
+          pending.assignedBranchId
+            ? branches.data?.find(b => b.id === pending.assignedBranchId)?.name ?? null
+            : null,
+          pending.status === 'OFF' ? nameOf(pending.coveredById) : nameOf(pending.pairedWithId),
+          pending.remarks ?? null
+        ),
         pending: true,
       }
     }
     if (!saved) {
-      return { status: null, branchName: null, partner: null, partnerLabel: '', cover, pending: false }
+      return {
+        status: null, branchName: null, partner: null, partnerLabel: '',
+        cover, remarks: null, detailKind: kindOf(null, null, null), pending: false,
+      }
     }
     return {
       status: saved.status,
@@ -144,6 +164,12 @@ export default function WorkSchedulePage() {
       partner: saved.status === 'OFF' ? saved.coveredBy?.name ?? null : saved.pairedWith?.name ?? null,
       partnerLabel: saved.status === 'OFF' ? 'Cover' : 'With',
       cover,
+      remarks: saved.remarks,
+      detailKind: kindOf(
+        saved.assignedBranch?.name ?? null,
+        saved.status === 'OFF' ? saved.coveredBy?.name ?? null : saved.pairedWith?.name ?? null,
+        saved.remarks
+      ),
       pending: false,
     }
   }
@@ -477,38 +503,41 @@ export default function WorkSchedulePage() {
                           const cell = cellOf(row, d)
                           return (
                             <Table.Td key={d} p={2}>
-                              <button
-                                type="button"
-                                className={`${classes.cell} ${cell.pending ? classes.pending : ''}`}
-                                data-status={cell.status ?? 'NONE'}
-                                disabled={!canWrite}
-                                aria-label={`${row.name}, ${d}: ${cell.status ? WORK_DAY_LABELS[cell.status] : 'not set'}`}
-                                onClick={() => setEditing({ row, day: d })}
-                              >
-                                <span className={classes.mark}>
-                                  {cell.status ? WORK_DAY_MARKS[cell.status] : '·'}
-                                </span>
-                                {/*
-                                  Spelled out rather than left as a bare name. "Ben"
-                                  under an Off could mean covering, covered by, or
-                                  working alongside — the word removes the guess, and
-                                  there is room for it.
-                                */}
-                                {cell.branchName && (
-                                  <span className={`${classes.sub} ${classes.subBranch}`}>@ {cell.branchName}</span>
-                                )}
-                                {cell.partner && (
-                                  <span className={classes.sub}>{cell.partnerLabel} {firstName(cell.partner)}</span>
-                                )}
-                                {cell.cover && (
-                                  <span className={`${classes.sub} ${classes.subCover}`}>
-                                    Covers {firstName(cell.cover.employeeName)}
-                                    {cell.cover.branchName && cell.cover.branchName !== row.branch?.name
-                                      ? ` @ ${cell.cover.branchName}`
-                                      : ''}
+                              {/*
+                                The "i" is a SIBLING of the cell button, not inside it — a button
+                                within a button is invalid and the browser drops the inner one.
+                              */}
+                              <div className={classes.cellWrap}>
+                                <button
+                                  type="button"
+                                  className={`${classes.cell} ${cell.pending ? classes.pending : ''}`}
+                                  data-status={cell.status ?? 'NONE'}
+                                  disabled={!canWrite}
+                                  aria-label={`${row.name}, ${d}: ${cell.status ? WORK_DAY_LABELS[cell.status] : 'not set'}`}
+                                  onClick={() => setEditing({ row, day: d })}
+                                >
+                                  <span className={classes.mark}>
+                                    {cell.status ? WORK_DAY_MARKS[cell.status] : '·'}
                                   </span>
+                                </button>
+                                {/*
+                                  Everything else moved behind this. As three lines of 10px text
+                                  inside a 96px cell the detail was present but not readable, which
+                                  is the worst of both — it took the space and still had to be
+                                  squinted at.
+                                */}
+                                {cell.detailKind && (
+                                  <button
+                                    type="button"
+                                    className={classes.info}
+                                    data-kind={cell.detailKind}
+                                    aria-label={`Day details for ${row.name}, ${formatDayLabel(d)}`}
+                                    onClick={e => { e.stopPropagation(); setInfo({ row, day: d }) }}
+                                  >
+                                    i
+                                  </button>
                                 )}
-                              </button>
+                              </div>
                             </Table.Td>
                           )
                         })}
@@ -628,7 +657,7 @@ export default function WorkSchedulePage() {
       <Modal
         opened={editing !== null}
         onClose={() => setEditing(null)}
-        size={760}
+        size={900}
         title={
           editing ? (
             <Group gap="xs">
@@ -651,7 +680,7 @@ export default function WorkSchedulePage() {
             : cur?.pairedWithId ?? saved?.pairedWith?.id ?? null
           return (
             <Stack gap="lg">
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
                 {WORK_DAY_STATUSES.map(s => (
                   <Button
                     key={s}
@@ -709,8 +738,83 @@ export default function WorkSchedulePage() {
                 />
               </SimpleGrid>
 
+              {/*
+                A note against the day itself, from whoever drafted it or the
+                approver. It is part of the PLAN — "asked for the morning,
+                clinic after" is a reason for the roster, not a record of what
+                happened.
+              */}
+              <Textarea
+                label="Remarks"
+                description="Why this day is planned this way — visible to the approver"
+                placeholder="Optional"
+                autosize
+                minRows={2}
+                maxRows={4}
+                value={cur?.remarks ?? saved?.remarks ?? ''}
+                onChange={e => setCell(editing.row, editing.day, { remarks: e.currentTarget.value })}
+              />
+
               <Group justify="flex-end">
                 <Button onClick={() => setEditing(null)}>Done</Button>
+              </Group>
+            </Stack>
+          )
+        })()}
+      </Modal>
+
+      {/*
+        What the "i" opens: the day's detail in a size that can be read, rather
+        than three lines of 10px text crammed into a 96px cell.
+      */}
+      <Modal
+        opened={info !== null}
+        onClose={() => setInfo(null)}
+        size={520}
+        title={
+          info ? (
+            <Group gap="xs">
+              <Text fw={600}>{info.row.name}</Text>
+              <Text c="dimmed">·</Text>
+              <Text fw={500}>{formatDayLabel(info.day)}</Text>
+            </Group>
+          ) : ''
+        }
+        centered
+      >
+        {info && (() => {
+          const cell = cellOf(info.row, info.day)
+          const rowOf = (label: string, value: React.ReactNode) => (
+            <Group gap="sm" wrap="nowrap" align="flex-start">
+              <Text size="sm" c="dimmed" w={130} style={{ flexShrink: 0 }}>{label}</Text>
+              <Text size="sm" fw={500}>{value}</Text>
+            </Group>
+          )
+          return (
+            <Stack gap="sm">
+              {rowOf('Planned as', cell.status ? WORK_DAY_LABELS[cell.status] : 'Not set')}
+              {cell.branchName && rowOf('Working at', cell.branchName)}
+              {cell.partner && rowOf(cell.partnerLabel === 'Cover' ? 'Covered by' : 'Working with', cell.partner)}
+              {cell.cover && rowOf(
+                'Covering for',
+                `${cell.cover.employeeName}${cell.cover.branchName ? ` at ${cell.cover.branchName}` : ''}`
+              )}
+              {cell.remarks && (
+                <Stack gap={2} mt="xs">
+                  <Text size="sm" c="dimmed">Remarks</Text>
+                  <Text size="sm">{cell.remarks}</Text>
+                </Stack>
+              )}
+              <Group justify="flex-end" mt="sm">
+                {canWrite && (
+                  <Button
+                    variant="default"
+                    onClick={() => { const target = info; setInfo(null); setEditing(target) }}
+                  >
+                    Edit this day
+                  </Button>
+                )}
+                <Button onClick={() => setInfo(null)}>Close</Button>
               </Group>
             </Stack>
           )

@@ -31,6 +31,8 @@ const WEEKS = {
   ownBranch: '2026-12-03',
   picker: '2026-12-10',
   dialog: '2026-12-17',
+  info: '2026-12-24',
+  closer: '2026-12-31',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -373,4 +375,53 @@ test('the cell editor fits without scrolling inside it', async ({ page }) => {
   for (const label of ['Scheduled', 'No schedule', 'Day off', 'Frontline', 'Opener']) {
     await expect(page.getByRole('button', { name: new RegExp(`^${label}`) })).toBeInViewport()
   }
+})
+
+/**
+ * The "i" on a cell.
+ *
+ * The branch someone is sent to, who covers them, who they are paired with and
+ * any remark used to sit in the cell as three lines of 10px text — present, but
+ * not readable, which is the worst of both. It moved behind an information
+ * button that opens it at a size that can be read.
+ */
+test('a day with detail carries an "i" that opens it readably', async ({ page }) => {
+  await openCutoff(page, WEEKS.info)
+  await openAllBranches(page)
+
+  const cell = page.locator('[aria-label^="Maria Santos Cruz, "]').first()
+  // A plain scheduled day has nothing behind it, so there is no "i" to press.
+  await expect(page.locator('button[aria-label^="Day details for Maria"]')).toHaveCount(0)
+
+  await cell.click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
+  await page.getByLabel('Remarks').fill('Clinic appointment — asked in advance.')
+  await page.getByRole('button', { name: 'Done' }).click()
+  await clearToasts(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('No changes')).toBeVisible()
+
+  // Now there is something to say, so the button appears.
+  const infoButton = page.locator('button[aria-label^="Day details for Maria"]').first()
+  await expect(infoButton).toBeVisible()
+  await infoButton.click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Planned as')).toBeVisible()
+  await expect(dialog.getByText('Day off', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Clinic appointment — asked in advance.')).toBeVisible()
+})
+
+/** Closer is the counterpart to Opener — the manager naming who closes. */
+test('closer can be planned like any other status', async ({ page }) => {
+  await openCutoff(page, WEEKS.closer)
+  await openAllBranches(page)
+
+  await page.locator('[aria-label^="Maria Santos Cruz, "]').first().click()
+  await expect(page.getByRole('button', { name: /^Closer/ })).toBeVisible()
+  await page.getByRole('button', { name: /^Closer/ }).click()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  await expect(page.locator('[aria-label^="Maria Santos Cruz, "]').first())
+    .toHaveAttribute('aria-label', /Closer/)
 })

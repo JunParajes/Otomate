@@ -110,6 +110,7 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
         assignedBranch: e.assignedBranch,
         coveredBy: named(e.coveredBy),
         pairedWith: named(e.pairedWith),
+        remarks: e.remarks,
       }
     }
     return {
@@ -327,6 +328,7 @@ router.patch(
           // status change cannot leave a stale colleague attached.
           coveredById: e.status === 'OFF' ? e.coveredById ?? null : null,
           pairedWithId: e.status === 'OFF' ? null : e.pairedWithId ?? null,
+          remarks: e.remarks?.trim() || null,
         }
         return prisma.workScheduleEntry.upsert({
           where: {
