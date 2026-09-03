@@ -104,6 +104,19 @@ export default function WorkSchedulePage() {
   const canWrite = can('schedule:write') && (!approved || can('schedule:approve'))
   const canApprove = can('schedule:approve')
 
+  /** Every day off whose named cover is not working either. */
+  const coverConflicts = useMemo(() => {
+    const out: { employeeId: string; day: string; offName: string; coverName: string }[] = []
+    for (const row of schedule?.rows ?? []) {
+      for (const [day, entry] of Object.entries(row.days)) {
+        if (entry.coverConflict && entry.coveredBy) {
+          out.push({ employeeId: row.employeeId, day, offName: row.name, coverName: entry.coveredBy.name })
+        }
+      }
+    }
+    return out.sort((a, b) => a.day.localeCompare(b.day))
+  }, [schedule])
+
   /** Rows grouped by branch, the way the spreadsheet reads. */
   const groups = useMemo(() => {
     const out = new Map<string, WorkScheduleRow[]>()
@@ -129,8 +142,17 @@ export default function WorkSchedulePage() {
      * and covering for someone are the two a planner scans for, so each keeps a
      * colour; anything else is a neutral note.
      */
-    const kindOf = (branchName: string | null, partner: string | null, remarks: string | null) =>
-      branchName ? 'branch' : cover ? 'cover' : partner || remarks ? 'note' : null
+    const kindOf = (
+      branchName: string | null,
+      partner: string | null,
+      remarks: string | null,
+      conflict: boolean
+    ) =>
+      conflict ? 'conflict'
+        : branchName ? 'branch'
+        : cover ? 'cover'
+        : partner || remarks ? 'note'
+        : null
 
     if (pending) {
       return {
@@ -142,12 +164,16 @@ export default function WorkSchedulePage() {
         partnerLabel: pending.status === 'OFF' ? 'Cover' : 'With',
         cover,
         remarks: pending.remarks ?? null,
+        coverConflict: Boolean(saved?.coverConflict),
         detailKind: kindOf(
           pending.assignedBranchId
             ? branches.data?.find(b => b.id === pending.assignedBranchId)?.name ?? null
             : null,
           pending.status === 'OFF' ? nameOf(pending.coveredById) : nameOf(pending.pairedWithId),
-          pending.remarks ?? null
+          pending.remarks ?? null,
+          // An unsaved edit cannot be checked against the server's view, so it
+          // carries the conflict the saved row already knows about.
+          Boolean(cover?.conflict) || Boolean(saved?.coverConflict)
         ),
         pending: true,
       }
@@ -155,7 +181,8 @@ export default function WorkSchedulePage() {
     if (!saved) {
       return {
         status: null, branchName: null, partner: null, partnerLabel: '',
-        cover, remarks: null, detailKind: kindOf(null, null, null), pending: false,
+        cover, remarks: null, coverConflict: false,
+        detailKind: kindOf(null, null, null, Boolean(cover?.conflict)), pending: false,
       }
     }
     return {
@@ -165,10 +192,12 @@ export default function WorkSchedulePage() {
       partnerLabel: saved.status === 'OFF' ? 'Cover' : 'With',
       cover,
       remarks: saved.remarks,
+      coverConflict: saved.coverConflict,
       detailKind: kindOf(
         saved.assignedBranch?.name ?? null,
         saved.status === 'OFF' ? saved.coveredBy?.name ?? null : saved.pairedWith?.name ?? null,
-        saved.remarks
+        saved.remarks,
+        saved.coverConflict || Boolean(cover?.conflict)
       ),
       pending: false,
     }
@@ -191,6 +220,61 @@ export default function WorkSchedulePage() {
       }
       next.set(key, { ...base, ...patch })
       return next
+    })
+  }
+
+  /**
+   * Setting a named cover to a non-working day leaves a shift with nobody on it.
+   *
+   * Asked at the moment it happens, because that is when it is cheap to fix and
+   * when the person doing it has the context. Not refused: planning runs through
+   * half-finished states, and being blocked from marking someone off until the
+   * cover is sorted is worse than being told. Whichever way they answer, the
+   * conflict stays flagged on both cells until it is resolved.
+   */
+  function setStatusWithCoverCheck(row: WorkScheduleRow, day: string, status: WorkDayStatus) {
+    /*
+     * Unsaved covers count too. `covering` is derived by the server, so a cover
+     * named a moment ago is not in it yet — and naming a cover then marking that
+     * person off, without saving in between, is the easiest way to reach exactly
+     * the state this warns about.
+     */
+    const pendingCover = [...draft.values()].find(
+      e => e.day === day && e.status === 'OFF' && e.coveredById === row.employeeId
+    )
+    const covered = pendingCover
+      ? schedule?.rows?.find(r => r.employeeId === pendingCover.employeeId)
+      : null
+    const covering = row.covering[day] ?? (covered
+      ? { employeeId: covered.employeeId, employeeName: covered.name, branchName: covered.branch?.name ?? null, conflict: false }
+      : undefined)
+    const leavesShiftEmpty = status === 'OFF' || status === 'NOT_SCHEDULED'
+    if (!covering || !leavesShiftEmpty) {
+      setCell(row, day, { status })
+      return
+    }
+    modals.openConfirmModal({
+      title: 'This leaves a shift with nobody on it',
+      children: (
+        <Stack gap="xs">
+          <Text size="sm">
+            {row.name} is covering {covering.employeeName}&apos;s day off on {formatDayLabel(day)}
+            {covering.branchName ? ` at ${covering.branchName}` : ''}.
+          </Text>
+          <Text size="sm">
+            Marking them {WORK_DAY_LABELS[status].toLowerCase()} means that shift has no one on it.
+          </Text>
+        </Stack>
+      ),
+      labels: { confirm: 'Set it and clear the cover', cancel: 'Cancel' },
+      confirmProps: { color: 'orange' },
+      onConfirm: () => {
+        setCell(row, day, { status })
+        // Clearing the cover leaves the other person simply off — which is a
+        // plain fact — rather than off and covered by someone who is not there.
+        const covered = schedule?.rows?.find(r => r.employeeId === covering.employeeId)
+        if (covered) setCell(covered, day, { coveredById: null })
+      },
     })
   }
 
@@ -339,6 +423,27 @@ export default function WorkSchedulePage() {
           </Text>
         </Stack>
       </Group>
+
+      {/*
+        Conflicts already in the plan. The per-cell "i" says it where it happens,
+        but a planner working branch by branch would have to open every one to
+        find them — and an uncovered shift is exactly the thing that must not be
+        found on the day.
+      */}
+      {coverConflicts.length > 0 && (
+        <Alert color="red" icon={<IconAlertTriangle size={18} />} title={`${coverConflicts.length} shift(s) with nobody on them`}>
+          <Stack gap={2}>
+            {coverConflicts.slice(0, 6).map(c => (
+              <Text key={`${c.employeeId}-${c.day}`} size="sm">
+                {c.offName} is off on {formatDayLabel(c.day)}, covered by {c.coverName} — who is not working that day.
+              </Text>
+            ))}
+            {coverConflicts.length > 6 && (
+              <Text size="sm" c="dimmed">and {coverConflicts.length - 6} more.</Text>
+            )}
+          </Stack>
+        </Alert>
+      )}
 
       {approved && (
         <Alert color="green" icon={<IconCheck size={18} />}>
@@ -689,7 +794,7 @@ export default function WorkSchedulePage() {
                     variant={status === s ? 'filled' : 'default'}
                     justify="space-between"
                     rightSection={<Text size="sm" fw={700} c={status === s ? undefined : 'dimmed'}>{WORK_DAY_MARKS[s]}</Text>}
-                    onClick={() => setCell(editing.row, editing.day, { status: s })}
+                    onClick={() => setStatusWithCoverCheck(editing.row, editing.day, s)}
                   >
                     <Stack gap={0} align="flex-start" style={{ whiteSpace: 'normal' }}>
                       <Text size="sm" fw={600}>{WORK_DAY_LABELS[s]}</Text>
@@ -798,6 +903,17 @@ export default function WorkSchedulePage() {
               {cell.cover && rowOf(
                 'Covering for',
                 `${cell.cover.employeeName}${cell.cover.branchName ? ` at ${cell.cover.branchName}` : ''}`
+              )}
+              {(cell.coverConflict || cell.cover?.conflict) && (
+                <Alert color="red" icon={<IconAlertTriangle size={16} />} p="xs" mt="xs">
+                  <Text size="sm" fw={600}>Nobody is on this shift</Text>
+                  <Text size="xs">
+                    {cell.coverConflict
+                      ? `${cell.partner} is named as the cover but is not working that day either.`
+                      : `${cell.cover?.employeeName} is down as covered by this person, who is not working that day.`}
+                    {' '}Give the day a different cover, or put one of them back on.
+                  </Text>
+                </Alert>
               )}
               {cell.remarks && (
                 <Stack gap={2} mt="xs">

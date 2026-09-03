@@ -33,6 +33,8 @@ const WEEKS = {
   dialog: '2026-12-17',
   info: '2026-12-24',
   closer: '2026-12-31',
+  coverOff: '2027-01-07',
+  conflictBanner: '2027-01-14',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -424,4 +426,70 @@ test('closer can be planned like any other status', async ({ page }) => {
 
   await expect(page.locator('[aria-label^="Maria Santos Cruz, "]').first())
     .toHaveAttribute('aria-label', /Closer/)
+})
+
+/**
+ * The reported bug, as reported.
+ *
+ * Plan A off with B covering, save, then mark B off. The "i" on B stayed and
+ * said B was covering — while B was off. Hiding the icon would have been the
+ * wrong fix: A is still recorded as covered, so a shift with nobody on it would
+ * simply have stopped saying so.
+ */
+test('marking a cover off warns, and flags the shift nobody is on', async ({ page }) => {
+  await openCutoff(page, WEEKS.coverOff)
+  await openAllBranches(page)
+  const day = sundayOf(WEEKS.coverOff)
+
+  // Maria off, covered by Ana. Then saved, exactly as reported.
+  await page.locator(`[aria-label^="Maria Santos Cruz, ${day}"]`).click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
+  await page.getByRole('combobox', { name: /Covered by/ }).click()
+  await page.keyboard.type('Reyes')
+  await page.getByRole('option').first().click()
+  await page.getByRole('button', { name: 'Done' }).click()
+  await clearToasts(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('No changes')).toBeVisible()
+  await clearToasts(page)
+
+  // Nothing wrong yet: Ana is working, so she can cover.
+  await expect(page.locator('button[data-kind="conflict"]')).toHaveCount(0)
+
+  // Now mark Ana off on the same day.
+  await page.locator(`[aria-label^="Ana Reyes, ${day}"]`).click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
+
+  // Warned at the moment it happens, while it is cheap to fix.
+  const warning = page.getByText('This leaves a shift with nobody on it')
+  await expect(warning).toBeVisible()
+  await expect(page.getByText(/is covering Maria Santos Cruz/)).toBeVisible()
+
+  // Declining leaves the plan untouched.
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await expect(warning).toHaveCount(0)
+})
+
+test('a conflict already in the plan is flagged red and listed at the top', async ({ page }) => {
+  await openCutoff(page, WEEKS.conflictBanner)
+  await openAllBranches(page)
+  const day = sundayOf(WEEKS.conflictBanner)
+
+  // Build the contradiction in one save, so nothing warns on the way in.
+  await page.locator(`[aria-label^="Maria Santos Cruz, ${day}"]`).click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
+  await page.getByRole('combobox', { name: /Covered by/ }).click()
+  await page.keyboard.type('Reyes')
+  await page.getByRole('option').first().click()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  await page.locator(`[aria-label^="Ana Reyes, ${day}"]`).click()
+  await page.getByRole('button', { name: /^Day off/ }).click()
+  // Warned, but a planner is allowed to proceed and come back to it.
+  await page.getByRole('button', { name: 'Set it and clear the cover' }).click()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  // That path clears the cover, so the plan is consistent again.
+  await expect(page.locator('button[data-kind="conflict"]')).toHaveCount(0)
+  await expect(page.getByText(/shift\(s\) with nobody on them/)).toHaveCount(0)
 })

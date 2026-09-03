@@ -592,3 +592,94 @@ describe('closer, and a note against the day', () => {
       .expect(400)
   })
 })
+
+/**
+ * A cover who is not working is not a cover.
+ *
+ * Plan A off with B covering, then mark B off too, and the plan says the shift
+ * is covered while nobody is on it. Derived rather than refused: planning runs
+ * through half-finished states, and blocking the second edit until the first is
+ * sorted is worse than reporting it. But it must not be silent.
+ */
+describe('a cover who is not working', () => {
+  async function twoStaff() {
+    const branch = await prisma.branch.create({ data: { name: 'Bunawan' } })
+    const pos = await positionId('Baker')
+    const a = await prisma.employee.create({
+      data: { firstName: 'Aileen', lastName: 'Amper', positionId: pos, branchId: branch.id },
+    })
+    const b = await prisma.employee.create({
+      data: { firstName: 'Bernard', lastName: 'Dela Cruz', positionId: pos, branchId: branch.id },
+    })
+    const { token } = await hr()
+    const made = await as(token).post('/api/admin/work-schedule', { weekStart: THU }).expect(201)
+    return { id: made.body.data.id as string, a, b, token }
+  }
+
+  it('is not flagged while the cover is still working', async () => {
+    const { id, a, b, token } = await twoStaff()
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: a.id, day: THU, status: 'OFF', coveredById: b.id }],
+      })
+      .expect(200)
+
+    const rowA = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id)
+    const rowB = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === b.id)
+    expect(rowA.days[THU].coverConflict).toBe(false)
+    expect(rowB.covering[THU].conflict).toBe(false)
+  })
+
+  it('is flagged on BOTH sides once the cover is marked off', async () => {
+    const { id, a, b, token } = await twoStaff()
+    await as(token).patch(`/api/admin/work-schedule/${id}/entries`, {
+      entries: [{ employeeId: a.id, day: THU, status: 'OFF', coveredById: b.id }],
+    }).expect(200)
+
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: b.id, day: THU, status: 'OFF' }],
+      })
+      .expect(200)
+
+    const rowA = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id)
+    const rowB = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === b.id)
+    // The person off knows their cover has evaporated...
+    expect(rowA.days[THU].coverConflict).toBe(true)
+    // ...and the cover knows they are down for a shift they cannot work.
+    expect(rowB.covering[THU].conflict).toBe(true)
+  })
+
+  it('counts a no-schedule day the same way — not rostered is not covering', async () => {
+    const { id, a, b, token } = await twoStaff()
+    await as(token).patch(`/api/admin/work-schedule/${id}/entries`, {
+      entries: [
+        { employeeId: a.id, day: THU, status: 'OFF', coveredById: b.id },
+        { employeeId: b.id, day: THU, status: 'NOT_SCHEDULED' },
+      ],
+    }).expect(200)
+
+    const res = await as(token).get(`/api/admin/work-schedule/${id}`).expect(200)
+    const rowA = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id)
+    expect(rowA.days[THU].coverConflict).toBe(true)
+  })
+
+  it('clears once the cover is put back on the shift', async () => {
+    const { id, a, b, token } = await twoStaff()
+    await as(token).patch(`/api/admin/work-schedule/${id}/entries`, {
+      entries: [
+        { employeeId: a.id, day: THU, status: 'OFF', coveredById: b.id },
+        { employeeId: b.id, day: THU, status: 'OFF' },
+      ],
+    }).expect(200)
+
+    const res = await as(token)
+      .patch(`/api/admin/work-schedule/${id}/entries`, {
+        entries: [{ employeeId: b.id, day: THU, status: 'SCHEDULED' }],
+      })
+      .expect(200)
+
+    const rowA = res.body.data.rows.find((r: { employeeId: string }) => r.employeeId === a.id)
+    expect(rowA.days[THU].coverConflict).toBe(false)
+  })
+})

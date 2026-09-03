@@ -239,6 +239,17 @@ export interface WorkScheduleEntryRecord {
   coveredBy: { id: string; name: string } | null
   pairedWith: { id: string; name: string } | null
   remarks: string | null
+  /**
+   * The named cover is not working that day either — so this day off is not
+   * actually covered.
+   *
+   * Derived rather than validated away at save time. Refusing the change would
+   * be wrong: planning is a sequence of half-finished states, and being made to
+   * fix the cover before you can mark someone off is worse than being told the
+   * plan does not add up yet. But it must not be silent either — that is how
+   * a shift ends up with nobody on it.
+   */
+  coverConflict: boolean
 }
 
 /**
@@ -295,7 +306,13 @@ export interface WorkScheduleRow {
    * the coverer still marked, and nobody would notice until the week was run.
    * Deriving it means it appears and disappears on its own.
    */
-  covering: Record<string, { employeeName: string; branchName: string | null }>
+  covering: Record<string, {
+    employeeId: string
+    employeeName: string
+    branchName: string | null
+    /** This person is named as the cover but is not working that day either. */
+    conflict: boolean
+  }>
   /** Keyed by day, so a cell lookup is not a scan of seven entries. */
   days: Record<string, WorkScheduleEntryRecord>
 }

@@ -78,7 +78,25 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
    * Built from the off days themselves rather than stored against the coverer,
    * so it cannot drift out of step with the entry it describes.
    */
-  const covering = new Map<string, { employeeName: string; branchName: string | null }>()
+  const covering = new Map<string, {
+    employeeId: string
+    employeeName: string
+    branchName: string | null
+    conflict: boolean
+  }>()
+
+  /** Everyone's planned status per day, so a cover can be checked against it. */
+  const statusOf = new Map<string, string>()
+  for (const e of schedule.entries) statusOf.set(`${e.employeeId}|${day(e.day)}`, e.status)
+  /*
+   * A cover who is themselves off or not rostered is not a cover. Missing
+   * entries are NOT counted: someone hired mid-cutoff simply has no plan yet,
+   * and flagging them would be noise rather than a finding.
+   */
+  const notWorking = (employeeId: string, d: string) => {
+    const status = statusOf.get(`${employeeId}|${d}`)
+    return status === 'OFF' || status === 'NOT_SCHEDULED'
+  }
 
   const byEmployee = new Map<string, typeof schedule.entries>()
   for (const e of schedule.entries) {
@@ -93,8 +111,10 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
     const offPerson = byId.get(e.employeeId)
     if (!offPerson) continue
     covering.set(`${e.coveredById}|${day(e.day)}`, {
+      employeeId: e.employeeId,
       employeeName: formatEmployeeName(offPerson),
       branchName: offPerson.branch?.name ?? null,
+      conflict: notWorking(e.coveredById, day(e.day)),
     })
   }
 
@@ -111,6 +131,7 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
         coveredBy: named(e.coveredBy),
         pairedWith: named(e.pairedWith),
         remarks: e.remarks,
+        coverConflict: Boolean(e.coveredById) && notWorking(e.coveredById!, day(e.day)),
       }
     }
     return {
@@ -134,12 +155,11 @@ async function loadSchedule(id: string, canSeeHr: boolean): Promise<WorkSchedule
           contacts: emp.contacts.map(c => ({ number: c.number, label: c.label })),
         },
       }),
-      covering: Object.fromEntries(
-        days
-          .map(d => [d, covering.get(`${emp.id}|${d}`)] as const)
-          .filter((pair): pair is [string, { employeeName: string; branchName: string | null }] =>
-            pair[1] !== undefined)
-      ),
+      covering: days.reduce<WorkScheduleRow['covering']>((acc, d) => {
+        const found = covering.get(`${emp.id}|${d}`)
+        if (found) acc[d] = found
+        return acc
+      }, {}),
       days: byDay,
     }
   })

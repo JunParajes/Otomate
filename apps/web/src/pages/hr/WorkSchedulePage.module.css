@@ -128,3 +128,11 @@
 .info[data-kind='cover']  { color: var(--mantine-color-teal-7); border-color: var(--mantine-color-teal-4); }
 
 .cell[data-status='CLOSER'] { background: var(--mantine-color-cyan-light); }
+
+/* A cover who is not working is not a cover. Red, and it outranks the others. */
+.info[data-kind='conflict'] {
+  color: var(--mantine-color-red-7);
+  border-color: var(--mantine-color-red-5);
+  background: var(--mantine-color-red-0);
+  font-weight: 900;
+}
