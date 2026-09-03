@@ -346,7 +346,18 @@ router.post(
       )
     }
     if (!existing.dateHired) {
-      throw new HttpError(409, 'Their original hire date is missing, so the spell cannot be filed', 'NO_HIRE_DATE')
+      /*
+       * Refused rather than worked around. Without the original hire date there
+       * is no spell to keep, and resetting would erase the separation too —
+       * leaving somebody who demonstrably worked here with no trace of either
+       * spell. Eligibility is reckoned from these dates, so the gap has to be
+       * filled rather than stepped over.
+       */
+      throw new HttpError(
+        409,
+        'Add their original hire date first, so the previous spell can be kept on the record.',
+        'NO_HIRE_DATE'
+      )
     }
     if (parsed.data.dateHired < dateOnlyString(existing.separatedAt)) {
       throw new HttpError(400, 'They cannot be rehired before the day they left', 'VALIDATION_ERROR')

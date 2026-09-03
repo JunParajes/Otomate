@@ -201,11 +201,30 @@ export default function EmployeeDetailPage() {
   const [rateNote, setRateNote] = useState('')
   const [addingRate, setAddingRate] = useState(false)
 
-  useEffect(() => {
-    setForm(employee ? toForm(employee) : null)
-    const nextContacts = (employee?.hr?.contacts ?? []).map(c => ({ number: c.number, label: c.label ?? '' }))
+  /**
+   * Loads a record into the form and resets the dirty baseline.
+   *
+   * Separation and rehire return a NEW employee with the SAME id, so the effect
+   * below — which is keyed on the id, deliberately, so an ordinary save does not
+   * discard what is being typed — never re-ran for them. The record changed
+   * underneath a form that went on showing the old employment, and the button
+   * went on offering "Record separation" to somebody already separated.
+   */
+  const loadIntoForm = useCallback((next: Employee | null) => {
+    setForm(next ? toForm(next) : null)
+    const nextContacts = (next?.hr?.contacts ?? []).map(c => ({ number: c.number, label: c.label ?? '' }))
     setContacts(nextContacts)
-    setSaved(employee ? snapshot(toForm(employee), nextContacts) : null)
+    setSaved(next ? snapshot(toForm(next), nextContacts) : null)
+  }, [])
+
+  /** After an action that changes employment: take the server's version whole. */
+  const onEmploymentChanged = useCallback((updated: Employee) => {
+    setEmployee(updated)
+    loadIntoForm(updated)
+  }, [loadIntoForm])
+
+  useEffect(() => {
+    loadIntoForm(employee ?? null)
     setBasicCents(null)
     setAllowanceCents(null)
     setRateType('DAILY')
@@ -719,13 +738,19 @@ export default function EmployeeDetailPage() {
                 week's schedule. Leaving is an event: it closes the spell and
                 takes them off, together or not at all.
               */}
+              {/*
+                The record, not the draft. These are set by the actions below and
+                are never typed into, so the saved value is the only truthful
+                source — and it is the one that changes when a separation is
+                recorded.
+              */}
               <TextInput
                 label="Separated on"
                 readOnly
                 tabIndex={-1}
                 variant="filled"
                 placeholder="Still employed"
-                value={form.separatedAt}
+                value={employee.hr?.separatedAt ?? ''}
               />
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -735,38 +760,48 @@ export default function EmployeeDetailPage() {
                 tabIndex={-1}
                 variant="filled"
                 placeholder="—"
-                value={form.separationReason}
+                value={employee.hr?.separationReason ?? ''}
               />
             </Grid.Col>
           </Grid>
 
           <Group gap="sm">
-            {form.separatedAt ? (
+            {employee.hr?.separatedAt ? (
               <>
+                {/*
+                  Both actions reload the record into the form afterwards, which
+                  would throw away anything typed and not yet saved. Rather than
+                  quietly discarding it, they wait.
+                */}
                 <Button
                   variant="light"
                   color="green"
                   leftSection={<IconArrowBackUp size={16} />}
-                  disabled={!canWriteHr}
+                  disabled={!canWriteHr || dirty}
                   onClick={() => setRehiring(true)}
                 >
                   Rehire
                 </Button>
                 <Text size="xs" c="dimmed">
-                  A rehire starts fresh — probation and eligibility run from the new hire date.
-                  This spell is kept on the record.
+                  {dirty
+                    ? 'Save your changes first.'
+                    : 'A rehire starts fresh — probation and eligibility run from the new hire date. '
+                      + 'This spell is kept on the record.'}
                 </Text>
               </>
             ) : (
-              <Button
-                variant="light"
-                color="orange"
-                leftSection={<IconLogout size={16} />}
-                disabled={!canWriteHr}
-                onClick={() => setSeparating(true)}
-              >
-                Record separation
-              </Button>
+              <>
+                <Button
+                  variant="light"
+                  color="orange"
+                  leftSection={<IconLogout size={16} />}
+                  disabled={!canWriteHr || dirty}
+                  onClick={() => setSeparating(true)}
+                >
+                  Record separation
+                </Button>
+                {dirty && <Text size="xs" c="dimmed">Save your changes first.</Text>}
+              </>
             )}
           </Group>
 
@@ -1015,7 +1050,7 @@ export default function EmployeeDetailPage() {
       <Modal opened={separating} onClose={() => setSeparating(false)} title={`Record separation — ${employee.name}`} centered>
         <SeparationForm
           employee={employee}
-          onDone={updated => { onSaved(updated); setSeparating(false) }}
+          onDone={updated => { onEmploymentChanged(updated); setSeparating(false) }}
           onCancel={() => setSeparating(false)}
         />
       </Modal>
@@ -1023,7 +1058,7 @@ export default function EmployeeDetailPage() {
       <Modal opened={rehiring} onClose={() => setRehiring(false)} title={`Rehire — ${employee.name}`} centered>
         <RehireForm
           employee={employee}
-          onDone={updated => { onSaved(updated); setRehiring(false) }}
+          onDone={updated => { onEmploymentChanged(updated); setRehiring(false) }}
           onCancel={() => setRehiring(false)}
         />
       </Modal>

@@ -191,3 +191,37 @@ describe('rehiring', () => {
     expect(JSON.stringify(res.body)).not.toContain('moved to Manila')
   })
 })
+
+/**
+ * Somebody separated whose original hire date was never recorded.
+ *
+ * Refused rather than worked around: there is no spell to keep, and resetting
+ * would erase the separation as well, leaving someone who demonstrably worked
+ * here with no trace of either spell.
+ */
+describe('a separated employee with no hire date', () => {
+  it('is refused, and told what to fix', async () => {
+    const employee = await prisma.employee.create({
+      data: {
+        firstName: 'Noel', lastName: 'Quiblat', positionId: await positionId('Helper'),
+        separatedAt: new Date('2025-06-30T00:00:00.000Z'),
+        isActive: false,
+      },
+    })
+    const { token } = await makeUser({
+      email: `hr2${Math.random()}@t.local`,
+      permissions: ['employees:read', 'hr:read', 'hr:write'],
+    })
+
+    const res = await as(token)
+      .post(`/api/admin/employees/${employee.id}/rehire`, { dateHired: '2026-09-01' })
+      .expect(409)
+    expect(res.body.error.code).toBe('NO_HIRE_DATE')
+    expect(res.body.error.message).toContain('hire date')
+
+    // Nothing changed — a refused rehire must not half-happen.
+    const after = await prisma.employee.findUniqueOrThrow({ where: { id: employee.id } })
+    expect(after.separatedAt).not.toBeNull()
+    expect(after.isActive).toBe(false)
+  })
+})
