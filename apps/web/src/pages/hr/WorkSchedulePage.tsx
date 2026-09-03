@@ -102,7 +102,12 @@ export default function WorkSchedulePage() {
   })
 
   const approved = schedule?.status === 'APPROVED'
-  const canWrite = can('schedule:write') && (!approved || can('schedule:approve'))
+  /*
+   * An approved plan is closed to everyone, the approver included. The record
+   * says "approved by X at T"; content edited after that stamp makes the stamp
+   * untrue. Reopening is the way through, and it clears the approval.
+   */
+  const canWrite = can('schedule:write') && !approved
   const canApprove = can('schedule:approve')
 
   /**
@@ -479,6 +484,9 @@ export default function WorkSchedulePage() {
         <Alert color="green" icon={<IconCheck size={18} />}>
           This plan is approved and is now a record of what was intended. Changes to what actually
           happens during the cutoff belong in the actuals, not here.
+          {canApprove
+            ? ' If the plan itself needs to change, reopen it — that clears the approval, and approving again re-stamps it.'
+            : ' If the plan itself needs to change, ask the approver to reopen it.'}
         </Alert>
       )}
 
@@ -1024,7 +1032,7 @@ export default function WorkSchedulePage() {
         })()}
       </Modal>
 
-      {canWrite && (
+      {(canWrite || canApprove) && (
         <StickyActionBar
           status={
             dirty
@@ -1033,7 +1041,7 @@ export default function WorkSchedulePage() {
           }
         >
           <Button variant="default" onClick={() => navigate('/hr/work-schedule')}>Back</Button>
-          {schedule.status === 'DRAFT' && !dirty && (
+          {canWrite && schedule.status === 'DRAFT' && !dirty && (
             <Button variant="light" onClick={submitForApproval} loading={saving}>
               Submit
             </Button>
@@ -1060,7 +1068,14 @@ export default function WorkSchedulePage() {
               Reopen
             </Button>
           )}
-          <Button onClick={() => void save()} loading={saving} disabled={!dirty}>Save</Button>
+          {/*
+            The bar itself stays up for an approver on an approved plan, so
+            Reopen is reachable — but Save must not be, or the lock is only a
+            colour change.
+          */}
+          {canWrite && (
+            <Button onClick={() => void save()} loading={saving} disabled={!dirty}>Save</Button>
+          )}
         </StickyActionBar>
       )}
     </Stack>

@@ -293,14 +293,21 @@ router.post(
 )
 
 /**
- * An approved plan is a record, so changing it is deliberately harder than
- * drafting one: it takes the approver's permission, not the drafter's.
+ * An approved plan is closed to everyone, the approver included.
+ *
+ * The approver used to be allowed to edit in place, which was wrong: the record
+ * carries "approved by X at T", and content changed after that stamp makes the
+ * stamp a lie — it claims approval of a plan that no longer exists. That is the
+ * exact quiet falsification this feature was built to stop.
+ *
+ * Reopening is the way through. It clears the approval, so the plan is honestly
+ * a draft again, and approving it afterwards stamps what was actually approved.
  */
-function assertEditable(status: string, req: Parameters<typeof can>[0]): void {
-  if (status === 'APPROVED' && !can(req, 'schedule:approve')) {
+function assertEditable(status: string, _req: Parameters<typeof can>[0]): void {
+  if (status === 'APPROVED') {
     throw new HttpError(
       409,
-      'This schedule is approved. Ask the approver to reopen it before changing the plan.',
+      'This schedule is approved. Reopen it before changing the plan — approving again will re-stamp it.',
       'SCHEDULE_APPROVED'
     )
   }
@@ -462,8 +469,14 @@ router.delete(
   asyncHandler(async (req, res) => {
     const existing = await prisma.workSchedule.findUnique({ where: { id: pathParam(req, 'id') } })
     if (!existing) throw new HttpError(404, 'Schedule not found', 'NOT_FOUND')
-    if (existing.status === 'APPROVED' && !can(req, 'schedule:approve')) {
-      throw new HttpError(409, 'An approved schedule cannot be deleted', 'SCHEDULE_APPROVED')
+    // Same rule as editing: reopen first. Deleting an approved plan outright
+    // would take the record and its approval with it in one unremarkable click.
+    if (existing.status === 'APPROVED') {
+      throw new HttpError(
+        409,
+        'This schedule is approved. Reopen it before deleting it.',
+        'SCHEDULE_APPROVED'
+      )
     }
     // Entries cascade.
     await prisma.workSchedule.delete({ where: { id: existing.id } })

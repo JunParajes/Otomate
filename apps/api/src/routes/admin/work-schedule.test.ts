@@ -331,27 +331,76 @@ describe('draft, submit, approve', () => {
    * The whole point of splitting plan from actual: once approved, the plan is a
    * record. Editing it takes the approver, not the drafter.
    */
-  it('locks an approved plan against HR edits', async () => {
+  /**
+   * Closed to EVERYONE, the approver included.
+   *
+   * The record carries "approved by X at T". Content edited after that stamp
+   * makes the stamp a lie — it claims approval of a plan that no longer exists,
+   * which is the quiet falsification this whole split was built to stop.
+   */
+  it('locks an approved plan against everybody, approver included', async () => {
     const { token: hrToken } = await hr()
     const { token: gmToken } = await gm()
     const id = await draft(hrToken)
     const employee = await prisma.employee.findFirstOrThrow()
+    const edit = { entries: [{ employeeId: employee.id, day: THU, status: 'OFF' as const }] }
 
     await as(gmToken).patch(`/api/admin/work-schedule/${id}`, { status: 'APPROVED' }).expect(200)
 
-    const res = await as(hrToken)
-      .patch(`/api/admin/work-schedule/${id}/entries`, {
-        entries: [{ employeeId: employee.id, day: THU, status: 'OFF' }],
-      })
-      .expect(409)
-    expect(res.body.error.code).toBe('SCHEDULE_APPROVED')
+    const asHr = await as(hrToken).patch(`/api/admin/work-schedule/${id}/entries`, edit).expect(409)
+    expect(asHr.body.error.code).toBe('SCHEDULE_APPROVED')
 
-    // The approver can still correct it.
-    await as(gmToken)
-      .patch(`/api/admin/work-schedule/${id}/entries`, {
-        entries: [{ employeeId: employee.id, day: THU, status: 'OFF' }],
-      })
+    const asGm = await as(gmToken).patch(`/api/admin/work-schedule/${id}/entries`, edit).expect(409)
+    expect(asGm.body.error.code).toBe('SCHEDULE_APPROVED')
+    expect(asGm.body.error.message).toContain('Reopen')
+  })
+
+  it('lets the plan change once it is reopened, and re-stamps on approval', async () => {
+    const { token: gmToken } = await gm()
+    const id = await draft(gmToken)
+    const employee = await prisma.employee.findFirstOrThrow()
+    const edit = { entries: [{ employeeId: employee.id, day: THU, status: 'OFF' as const }] }
+
+    await as(gmToken).patch(`/api/admin/work-schedule/${id}`, { status: 'APPROVED' }).expect(200)
+    await as(gmToken).patch(`/api/admin/work-schedule/${id}/entries`, edit).expect(409)
+
+    // Reopen clears the approval, so the plan is honestly a draft again.
+    const reopened = await as(gmToken)
+      .patch(`/api/admin/work-schedule/${id}`, { status: 'DRAFT' })
       .expect(200)
+    expect(reopened.body.data.approvedAt).toBeNull()
+
+    await as(gmToken).patch(`/api/admin/work-schedule/${id}/entries`, edit).expect(200)
+
+    // Approving again stamps what was actually approved.
+    const again = await as(gmToken)
+      .patch(`/api/admin/work-schedule/${id}`, { status: 'APPROVED' })
+      .expect(200)
+    expect(again.body.data.approvedAt).not.toBeNull()
+    expect(again.body.data.rows.find((r: { employeeId: string }) => r.employeeId === employee.id)
+      .days[THU].status).toBe('OFF')
+  })
+
+  it('refuses to mark a branch planned on an approved schedule', async () => {
+    const { token: gmToken } = await gm()
+    const id = await draft(gmToken)
+    const branch = await prisma.branch.findFirstOrThrow()
+    await as(gmToken).patch(`/api/admin/work-schedule/${id}`, { status: 'APPROVED' }).expect(200)
+    await as(gmToken)
+      .put(`/api/admin/work-schedule/${id}/branches/${branch.id}/planned`, { planned: true })
+      .expect(409)
+  })
+
+  it('refuses to delete an approved schedule until it is reopened', async () => {
+    const { token: gmToken } = await gm()
+    const id = await draft(gmToken)
+    await as(gmToken).patch(`/api/admin/work-schedule/${id}`, { status: 'APPROVED' }).expect(200)
+
+    const refused = await as(gmToken).delete(`/api/admin/work-schedule/${id}`).expect(409)
+    expect(refused.body.error.message).toContain('Reopen')
+
+    await as(gmToken).patch(`/api/admin/work-schedule/${id}`, { status: 'DRAFT' }).expect(200)
+    await as(gmToken).delete(`/api/admin/work-schedule/${id}`).expect(200)
   })
 
   it('clears the approval when the schedule is reopened', async () => {

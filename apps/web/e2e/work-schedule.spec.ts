@@ -44,6 +44,7 @@ const WEEKS = {
   noDayOffCount: '2027-03-04',
   colourLight: '2027-03-11',
   colourDark: '2027-03-18',
+  reopen: '2027-03-25',
 }
 
 async function signIn(page: Page, who: typeof FIXTURES.owner) {
@@ -185,6 +186,37 @@ test('an approved plan stops being editable', async ({ page }) => {
   await expect(page.getByText(/approved and is now a record/)).toBeVisible()
   // Reopening is offered, because the owner holds the approve permission.
   await expect(page.getByRole('button', { name: 'Reopen' })).toBeVisible()
+
+  // And the grid is closed — to the approver too. The record says approved by
+  // whom and when; editing past that stamp would make it untrue.
+  await openAllBranches(page)
+  await expect(page.locator('[aria-label^="Maria Santos Cruz, "]').first()).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Mark as planned' })).toHaveCount(0)
+})
+
+/**
+ * Reopening is the way through: it clears the approval, so the plan is honestly
+ * a draft again and approving afterwards stamps what was actually approved.
+ */
+test('reopening an approved plan makes it editable again', async ({ page }) => {
+  await openCutoff(page, WEEKS.reopen)
+  await submitForApproval(page)
+  await clearToasts(page)
+  await page.getByRole('button', { name: 'Approve' }).click()
+  await clearToasts(page)
+
+  await openAllBranches(page)
+  await expect(page.locator('[aria-label^="Maria Santos Cruz, "]').first()).toBeDisabled()
+
+  await page.getByRole('button', { name: 'Reopen' }).click()
+  await clearToasts(page)
+
+  await expect(page.getByText(/approved and is now a record/)).toHaveCount(0)
+  // The branch choice lives in the URL, so the grid is still open — clicking
+  // "All branches" again would go BACK to the branch list.
+  await expect(page.locator('[aria-label^="Maria Santos Cruz, "]').first()).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
 })
 
 /**
