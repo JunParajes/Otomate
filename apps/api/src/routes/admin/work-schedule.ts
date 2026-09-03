@@ -19,6 +19,7 @@ import { asyncHandler } from '../../middleware/async-handler'
 import { HttpError } from '../../middleware/error-handler'
 import { firstIssue, pathParam } from '../../lib/http'
 import { rethrowUniqueViolation } from './guards'
+import { buildWorkScheduleWorkbook, workbookFilename } from '../../lib/work-schedule-workbook'
 
 /**
  * The work schedule — the PLAN for one Thursday-to-Wednesday cutoff.
@@ -247,6 +248,54 @@ router.get(
     const schedule = await loadSchedule(pathParam(req, 'id'), can(req, 'hr:read'))
     if (!schedule) throw new HttpError(404, 'Schedule not found', 'NOT_FOUND')
     res.json({ data: schedule, error: null })
+  })
+)
+
+/**
+ * The workbook — one sheet per branch, or one sheet for the branch asked for.
+ *
+ * Generated here rather than in the browser: the rows are already assembled and
+ * already permission-filtered, so the file cannot contain anything the caller
+ * could not see, and the frontend carries no spreadsheet library.
+ *
+ * Reading, not editing — so an approved schedule exports exactly like a draft.
+ */
+router.get(
+  '/:id/export',
+  requirePermission('schedule:read'),
+  asyncHandler(async (req, res) => {
+    const schedule = await loadSchedule(pathParam(req, 'id'), can(req, 'hr:read'))
+    if (!schedule) throw new HttpError(404, 'Schedule not found', 'NOT_FOUND')
+
+    const wanted = typeof req.query.branch === 'string' ? req.query.branch : 'ALL'
+
+    // Grouped in the grid's own order, so the file reads like the screen.
+    const byBranch = new Map<string, typeof schedule.rows>()
+    for (const row of schedule.rows ?? []) {
+      const key = row.branch?.name ?? 'Unassigned'
+      byBranch.set(key, [...(byBranch.get(key) ?? []), row])
+    }
+    let groups = [...byBranch.entries()].sort(([a], [b]) => a.localeCompare(b))
+
+    let branchName: string | null = null
+    if (wanted !== 'ALL') {
+      const branch = (schedule.branches ?? []).find(b => b.branchId === wanted)
+      if (!branch) throw new HttpError(404, 'That branch is not in this schedule', 'NOT_FOUND')
+      branchName = branch.branchName
+      groups = groups.filter(([name]) => name === branch.branchName)
+    }
+
+    const workbook = buildWorkScheduleWorkbook(
+      schedule,
+      groups as [string, NonNullable<typeof schedule.rows>][],
+      new Date()
+    )
+    const filename = workbookFilename(schedule, branchName)
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    await workbook.xlsx.write(res)
+    res.end()
   })
 )
 

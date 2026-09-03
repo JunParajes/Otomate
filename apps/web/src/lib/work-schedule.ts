@@ -24,4 +24,33 @@ export const workScheduleApi = {
   /** Marks a branch as finished planning for this cutoff, or unmarks it. */
   setBranchPlanned: (id: string, branchId: string, planned: boolean) =>
     unwrap<WorkSchedule>(api.put(`/api/admin/work-schedule/${id}/branches/${branchId}/planned`, { planned })),
+
+  /**
+   * Downloads the workbook.
+   *
+   * Bypasses unwrap(): the response is a file, not the {data, error} envelope.
+   * And it cannot be a plain link — auth is a Bearer token in localStorage, not
+   * a cookie, so the browser would fetch it logged out and get a 401.
+   */
+  async download(id: string, branch: string, filenameHint: string) {
+    const res = await api.get(`/api/admin/work-schedule/${id}/export`, {
+      params: { branch },
+      responseType: 'blob',
+    })
+    // The server names the file; the hint is only for the case where a proxy
+    // strips the header.
+    const disposition = String(res.headers['content-disposition'] ?? '')
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1]
+
+    const url = URL.createObjectURL(res.data as Blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = named ?? filenameHint
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    // Revoked on the next tick: revoking immediately can cancel the download in
+    // some browsers before it has started reading the blob.
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  },
 }

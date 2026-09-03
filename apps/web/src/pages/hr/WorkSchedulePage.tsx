@@ -6,7 +6,9 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconAlertTriangle, IconArrowLeft, IconCheck, IconCircleCheck, IconPrinter } from '@tabler/icons-react'
+import {
+  IconAlertTriangle, IconArrowLeft, IconCheck, IconCircleCheck, IconFileSpreadsheet, IconPrinter,
+} from '@tabler/icons-react'
 import {
   WORK_DAY_HINTS, WORK_DAY_LABELS, WORK_DAY_MARKS, WORK_DAY_STATUSES,
   WORK_SCHEDULE_STATUS_LABELS, cellMark, cutoffCode, formatCutoff, formatCutoffLabel, hasNoDayOff,
@@ -333,6 +335,30 @@ export default function WorkSchedulePage() {
     }
   }
 
+  /** The same branch that is on screen — one branch, or every branch. */
+  async function exportWorkbook() {
+    if (!schedule) return
+    const branchId = openBranch && openBranch !== 'ALL'
+      ? (schedule.branches ?? []).find(b => b.branchName === openBranch)?.branchId ?? 'ALL'
+      : 'ALL'
+    setSaving(true)
+    try {
+      await workScheduleApi.download(
+        schedule.id,
+        branchId,
+        `${cutoffCode(schedule.weekStart)} ${openBranch ?? 'All branches'}.xlsx`
+      )
+    } catch (e) {
+      notifications.show({
+        color: 'red',
+        title: 'Could not export',
+        message: e instanceof Error ? e.message : 'Something went wrong',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function setBranchPlanned(branchId: string, planned: boolean) {
     if (!schedule) return
     setSaving(true)
@@ -466,13 +492,23 @@ export default function WorkSchedulePage() {
           In the header rather than the action bar: that bar exists for people who
           can change the plan, and printing one is not changing it.
         */}
-        <Button
-          variant="default"
-          leftSection={<IconPrinter size={16} />}
-          onClick={() => window.print()}
-        >
-          Print
-        </Button>
+        <Group gap="xs" wrap="nowrap">
+          <Button
+            variant="default"
+            leftSection={<IconFileSpreadsheet size={16} />}
+            onClick={() => void exportWorkbook()}
+            loading={saving}
+          >
+            Excel
+          </Button>
+          <Button
+            variant="default"
+            leftSection={<IconPrinter size={16} />}
+            onClick={() => window.print()}
+          >
+            Print
+          </Button>
+        </Group>
       </Group>
 
       {/*

@@ -97,6 +97,11 @@ revisit this "when real staff data accumulates"; that has happened.
       only the exceptions; five statuses, cross-branch assignment, and who
       covers a day off. Drafted by HR, approved by the General Manager, and
       locked once approved.
+- [x] **5g addendum — print and Excel.** Live. A branch's paper copy prints
+      from the browser (no install, works from the iPad), and the same schedule
+      exports as .xlsx, one sheet per branch. Both carry the marks only — no
+      remarks, covers or pairings — and both take their marks from one shared
+      helper so the screen, the sheet and the file cannot drift.
 - [ ] **5h — the actual of what happened.** The other half of the split above:
       absences, half days, suspensions and late changes recorded AGAINST an
       approved plan rather than overwriting it. This is why the plan is frozen
