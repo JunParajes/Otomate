@@ -7,7 +7,7 @@ import { useForm } from '@mantine/form'
 import { zod4Resolver as zodResolver } from 'mantine-form-zod-resolver'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconId, IconLink, IconPencil, IconPlus, IconSearch, IconUserCheck, IconUserOff } from '@tabler/icons-react'
+import { IconId, IconLink, IconPlus, IconSearch, IconUserCheck, IconUserOff } from '@tabler/icons-react'
 import {
   createEmployeeSchema, formatEmployeeName, type Employee,
 } from '@otomate/shared'
@@ -29,7 +29,6 @@ export default function EmployeesPage() {
   const canLinkLogins = can('users:read')
   const users = useResource(() => (canLinkLogins ? adminApi.listUsers() : Promise.resolve([])), [canLinkLogins])
 
-  const [editing, setEditing] = useState<Employee | null>(null)
   const [creating, setCreating] = useState(false)
   const [acting, setActing] = useState<Employee | null>(null)
   const [saving, setSaving] = useState(false)
@@ -48,7 +47,6 @@ export default function EmployeesPage() {
   }
 
   const canWrite = can('employees:write')
-  const canReadHr = can('hr:read')
   const branchOptions = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }))
   /*
    * Positions are rows now, so the picker is loaded rather than compiled in.
@@ -63,18 +61,18 @@ export default function EmployeesPage() {
   const userOptions = useMemo(() => {
     const takenByOthers = new Set(
       (employees.data ?? [])
-        .filter(e => e.linkedUser && e.id !== editing?.id)
+        .filter(e => e.linkedUser)
         .map(e => e.linkedUser!.id)
     )
     return (users.data ?? [])
       .filter(u => !takenByOthers.has(u.id))
       .map(u => ({ value: u.id, label: `${u.name} — ${u.email}` }))
-  }, [users.data, employees.data, editing])
+  }, [users.data, employees.data])
 
   const form = useForm({
     initialValues: {
       firstName: '', middleName: '', lastName: '', suffix: '',
-      employeeCode: '', positionId: '',
+      positionId: '',
       branchId: null as string | null, userId: null as string | null, isActive: true,
     },
     validate: zodResolver(createEmployeeSchema),
@@ -86,7 +84,7 @@ export default function EmployeesPage() {
       if (branchFilter && e.branch?.id !== branchFilter) return false
       if (positionFilter && e.position.id !== positionFilter) return false
       if (!q) return true
-      const haystack = [e.name, e.firstName, e.middleName, e.lastName, e.suffix, e.employeeCode]
+      const haystack = [e.name, e.firstName, e.middleName, e.lastName, e.suffix]
         .filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(q)
     })
@@ -109,21 +107,9 @@ export default function EmployeesPage() {
   function openCreate() {
     form.setValues({
       firstName: '', middleName: '', lastName: '', suffix: '',
-      employeeCode: '', positionId: defaultPositionId(), branchId: null, userId: null, isActive: true,
+      positionId: defaultPositionId(), branchId: null, userId: null, isActive: true,
     })
     form.clearErrors(); setCreating(true)
-  }
-
-  function openEdit(e: Employee) {
-    form.setValues({
-      firstName: e.firstName,
-      middleName: e.middleName ?? '',
-      lastName: e.lastName,
-      suffix: e.suffix ?? '',
-      employeeCode: e.employeeCode ?? '', positionId: e.position.id,
-      branchId: e.branch?.id ?? null, userId: e.linkedUser?.id ?? null, isActive: e.isActive,
-    })
-    form.clearErrors(); setEditing(e)
   }
 
   function confirmToggle(e: Employee) {
@@ -146,7 +132,6 @@ export default function EmployeesPage() {
     })
   }
 
-  const isEditing = editing !== null
 
   return (
     <>
@@ -198,7 +183,6 @@ export default function EmployeesPage() {
                   <Table.Td>
                     <Stack gap={2}>
                       <Text fw={500}>{e.name}</Text>
-                      {e.employeeCode && <Text size="xs" c="dimmed" ff="monospace">{e.employeeCode}</Text>}
                     </Stack>
                   </Table.Td>
                   <Table.Td><Badge variant="light" color="gray">{e.position.name}</Badge></Table.Td>
@@ -232,14 +216,18 @@ export default function EmployeesPage() {
         actions={
           acting
             ? ([
-                { label: 'Edit', icon: <IconPencil size={18} />, onClick: () => openEdit(acting) },
-                ...(canReadHr
-                  ? [{
-                      label: 'HR record',
-                      icon: <IconId size={18} />,
-                      onClick: () => navigate(`/admin/employees/${acting.id}`),
-                    }]
-                  : []),
+                /*
+                 * One action, not two. "Edit" opened a modal with the name and
+                 * posting; "HR record" opened the page with everything else. So
+                 * correcting a spelling you were looking at on the record page
+                 * meant going back to the list and reopening a dialog — and
+                 * there were two different Saves. The record page holds both now.
+                 */
+                {
+                  label: 'Open record',
+                  icon: <IconId size={18} />,
+                  onClick: () => navigate(`/admin/employees/${acting.id}`),
+                },
                 {
                   label: acting.isActive ? 'Deactivate' : 'Reactivate',
                   icon: acting.isActive ? <IconUserOff size={18} /> : <IconUserCheck size={18} />,
@@ -252,9 +240,9 @@ export default function EmployeesPage() {
       />
 
       <Modal
-        opened={creating || isEditing}
-        onClose={() => { setCreating(false); setEditing(null) }}
-        title={isEditing ? `Edit ${editing?.name}` : 'Add employee'}
+        opened={creating}
+        onClose={() => setCreating(false)}
+        title="Add employee"
         size="xl"
         centered
       >
@@ -263,13 +251,12 @@ export default function EmployeesPage() {
             () => {
               const payload = {
                 ...values,
-                employeeCode: values.employeeCode.trim() || null,
                 positionId: values.positionId,
               }
-              return isEditing ? employeeApi.update(editing!.id, payload) : employeeApi.create(payload)
+              return employeeApi.create(payload)
             },
-            isEditing ? 'Changes saved' : `${formatEmployeeName(values)} added`,
-            () => { setCreating(false); setEditing(null) }
+            `${formatEmployeeName(values)} added`,
+            () => setCreating(false)
           )
         )}>
           <Stack gap="md">
@@ -292,13 +279,7 @@ export default function EmployeesPage() {
               </Grid.Col>
             </Grid>
 
-            {/* flex-end, not flex-start: the description under Employee code
-                makes its label block taller, and aligning tops would leave the
-                two inputs on different lines. */}
-            <Group grow align="flex-end">
-              <TextInput label="Employee code" placeholder="EMP-001" description="Optional, must be unique" {...form.getInputProps('employeeCode')} />
-              <Select label="Position" data={positionOptions} withAsterisk {...form.getInputProps('positionId')} />
-            </Group>
+            <Select label="Position" data={positionOptions} withAsterisk {...form.getInputProps('positionId')} />
 
             <Select
               label="Branch"
@@ -324,8 +305,8 @@ export default function EmployeesPage() {
             <Switch label="Active" {...form.getInputProps('isActive', { type: 'checkbox' })} />
 
             <Group justify="flex-end" mt="xs">
-              <Button variant="default" onClick={() => { setCreating(false); setEditing(null) }}>Cancel</Button>
-              <Button type="submit" loading={saving}>{isEditing ? 'Save changes' : 'Add employee'}</Button>
+              <Button variant="default" onClick={() => setCreating(false)}>Cancel</Button>
+              <Button type="submit" loading={saving}>Add employee</Button>
             </Group>
           </Stack>
         </form>

@@ -24,7 +24,9 @@ import {
   type PayoutMethod,
   type SalaryRateType, type UpdateEmployeeHrInput,
 } from '@otomate/shared'
-import { employeeApi } from '@/lib/employees'
+import { employeeApi, positionApi } from '@/lib/employees'
+import { adminApi } from '@/lib/admin'
+import { useResource } from '@/hooks/useResource'
 import { useSession } from '@/lib/session'
 import MoneyInput from '@/components/MoneyInput'
 import StickyActionBar, { pageWithActionBar } from '@/components/StickyActionBar'
@@ -56,6 +58,7 @@ const DOCUMENTS = [
  * id would scroll nowhere and look like nothing happened.
  */
 const SECTIONS = [
+  { id: 'identity', label: 'Identity' },
   { id: 'personal', label: 'Personal' },
   { id: 'contact', label: 'Contact' },
   { id: 'emergency', label: 'Emergency' },
@@ -94,9 +97,43 @@ type HrForm = {
   [K in Exclude<keyof UpdateEmployeeHrInput, 'contacts'>]-?: string
 }
 
+/**
+ * Name, position, branch and login — the fields that used to live in a modal on
+ * the list page.
+ *
+ * Kept apart from HrForm because they are a different endpoint and a different
+ * permission: renaming somebody is employees:write, their 201 file is hr:write,
+ * and a branch clerk who can add staff has no business reading a salary.
+ */
+type IdentityForm = {
+  firstName: string
+  middleName: string
+  lastName: string
+  suffix: string
+  positionId: string
+  branchId: string | null
+  userId: string | null
+}
+
+function toIdentity(e: Employee): IdentityForm {
+  return {
+    firstName: e.firstName,
+    middleName: e.middleName ?? '',
+    lastName: e.lastName,
+    suffix: e.suffix ?? '',
+    positionId: e.position.id,
+    branchId: e.branch?.id ?? null,
+    userId: e.linkedUser?.id ?? null,
+  }
+}
+
 /** A stable string for "is this the same as what was saved". */
-function snapshot(form: HrForm, contacts: { number: string; label: string }[]): string {
-  return JSON.stringify([form, contacts.filter(c => c.number.trim() !== '')])
+function snapshot(
+  form: HrForm,
+  contacts: { number: string; label: string }[],
+  identity: IdentityForm | null
+): string {
+  return JSON.stringify([form, contacts.filter(c => c.number.trim() !== ''), identity])
 }
 
 function toForm(e: Employee): HrForm {
@@ -192,11 +229,36 @@ export default function EmployeeDetailPage() {
 
   const onSaved = (updated: Employee) => setEmployee(updated)
   const { can } = useSession()
+  const canReadHr = can('hr:read')
   const canWriteHr = can('hr:write')
+  const canWriteEmployee = can('employees:write')
+  const canLinkLogins = can('users:read')
+  const usersRes = useResource(
+    () => (canLinkLogins ? adminApi.listUsers() : Promise.resolve([])), [canLinkLogins])
   const canSeeSalary = can('hr:salary:read')
   const canWriteSalary = can('hr:salary:write')
 
   const [form, setForm] = useState<HrForm | null>(null)
+  const [identity, setIdentity] = useState<IdentityForm | null>(null)
+  /*
+   * Pickers for the identity section. Inactive positions are dropped from the
+   * choices but kept if somebody already holds one — retiring a role must not
+   * blank out the records of the people who had it.
+   */
+  const positionsRes = useResource(positionApi.list)
+  const branchesRes = useResource(adminApi.listBranches)
+  const positions = (positionsRes.data ?? [])
+    .filter(p => p.isActive || p.id === identity?.positionId)
+  const branches = branchesRes.data ?? []
+  const logins = (usersRes.data ?? []).map(u => ({ value: u.id, label: u.email }))
+  const setId = <K extends keyof IdentityForm>(key: K) => (value: IdentityForm[K]) =>
+    setIdentity(prev => (prev ? { ...prev, [key]: value } : prev))
+  const idField = (key: 'firstName' | 'middleName' | 'lastName' | 'suffix') => ({
+    value: identity?.[key] ?? '',
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setId(key)(e.currentTarget.value),
+    disabled: !canWriteEmployee,
+  })
+
   /**
    * Phone numbers, held apart from the flat 201 form because they are a list.
    * A blank row is how you add one — no "add" button to find, which matters on
@@ -237,9 +299,11 @@ export default function EmployeeDetailPage() {
    */
   const loadIntoForm = useCallback((next: Employee | null) => {
     setForm(next ? toForm(next) : null)
+    const nextIdentity = next ? toIdentity(next) : null
+    setIdentity(nextIdentity)
     const nextContacts = (next?.hr?.contacts ?? []).map(c => ({ number: c.number, label: c.label ?? '' }))
     setContacts(nextContacts)
-    setSaved(next ? snapshot(toForm(next), nextContacts) : null)
+    setSaved(next ? snapshot(toForm(next), nextContacts, nextIdentity) : null)
   }, [])
 
   /** After an action that changes employment: take the server's version whole. */
@@ -259,7 +323,7 @@ export default function EmployeeDetailPage() {
   }, [employee?.id])
 
   if (loading) return <Center py="xl"><Loader /></Center>
-  if (loadError || !employee || !form) {
+  if (loadError || !employee || !form || !identity) {
     return (
       <Stack gap="md">
         <Group gap="sm">
@@ -344,9 +408,40 @@ export default function EmployeeDetailPage() {
         .filter(c => c.number.trim() !== '')
         .map(c => ({ number: c.number.trim(), label: c.label.trim() || null }))
 
-      const updated = await employeeApi.updateHr(employee.id, payload)
+      /*
+       * Two endpoints, one Save. They answer to different permissions, so each
+       * is attempted only if this user holds the right one — somebody with
+       * hr:write but not employees:write can fill in a 201 file and cannot
+       * rename anybody, and the button still works for both of them.
+       *
+       * Identity first: it is the smaller write, and if it is refused the 201
+       * fields have not been sent yet, so nothing is half-applied.
+       */
+      let updated: Employee | null = null
+      /*
+       * Only when it actually changed. Most saves on this page touch the 201
+       * file and not the name, and firing a second request every time doubles
+       * the round-trip for no reason — and widens the window in which a save is
+       * half-done.
+       */
+      const identityChanged = JSON.stringify(identity) !== JSON.stringify(toIdentity(employee))
+      if (canWriteEmployee && identity && identityChanged) {
+        updated = await employeeApi.update(employee.id, {
+          firstName: identity.firstName.trim(),
+          middleName: identity.middleName.trim() || null,
+          lastName: identity.lastName.trim(),
+          suffix: identity.suffix.trim() || null,
+          positionId: identity.positionId,
+          branchId: identity.branchId,
+          userId: identity.userId,
+        })
+      }
+      if (canWriteHr) {
+        updated = await employeeApi.updateHr(employee.id, payload)
+      }
+      if (!updated) return
       onSaved(updated)
-      setSaved(snapshot(form, contacts))
+      setSaved(snapshot(form, contacts, identity))
       setSavedAt(new Date())
       notifications.show({ color: 'green', title: 'Saved', message: `${employee.name}'s record updated` })
     } catch (e) {
@@ -414,11 +509,11 @@ export default function EmployeeDetailPage() {
   const history = employee.salaryHistory ?? []
   const current = currentSalary(history)
 
-  const dirty = saved !== null && saved !== snapshot(form, contacts)
+  const dirty = saved !== null && saved !== snapshot(form, contacts, identity)
   dirtyRef.current = dirty
 
   return (
-    <Stack gap="md" className={canWriteHr ? pageWithActionBar : undefined}>
+    <Stack gap="md" className={canWriteHr || canWriteEmployee ? pageWithActionBar : undefined}>
       <Group gap="sm" wrap="nowrap">
         <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/admin/employees')} aria-label="Back to employees">
           <IconArrowLeft size={18} />
@@ -447,7 +542,7 @@ export default function EmployeeDetailPage() {
         position: sticky on everything inside it.
       */}
       <Group gap={6} className={classes.sectionNav}>
-        {SECTIONS.map(sec => (
+        {SECTIONS.filter(sec => sec.id === 'identity' || canReadHr).map(sec => (
           <Button
             key={sec.id}
             variant="default"
@@ -478,6 +573,87 @@ export default function EmployeeDetailPage() {
           numbers, their paperwork, then pay. Fields are grouped by the question
           they answer rather than by when they were added to the app.
         */}
+        {/*
+          Name, position and posting — what used to be an Edit modal on the list
+          page. Having them in two places meant going back to the list and
+          reopening a dialog to correct a spelling you were looking straight at,
+          and the modal's own "Save" was a second, different save.
+
+          Gated on employees:write rather than hr:write: renaming somebody and
+          reading their salary are different jobs with different permissions.
+        */}
+        <Section id="identity" title="Who they are">
+          <Grid gap="sm" align="flex-start">
+            <Grid.Col span={{ base: 12, sm: 4 }}>
+              <TextInput label="First name" placeholder="Maria" {...idField('firstName')} />
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
+              <TextInput label="Middle name" placeholder="Reyes" {...idField('middleName')} />
+            </Grid.Col>
+            <Grid.Col span={{ base: 8, sm: 3 }}>
+              <TextInput label="Surname" placeholder="Santos" {...idField('lastName')} />
+            </Grid.Col>
+            <Grid.Col span={{ base: 4, sm: 2 }}>
+              <TextInput label="Suffix" placeholder="Jr." {...idField('suffix')} />
+            </Grid.Col>
+          </Grid>
+
+          <Grid gap="sm">
+            <Grid.Col span={{ base: 12, sm: 4 }}>
+              <Select
+                label="Position"
+                data={positions.map(p => ({ value: p.id, label: p.name }))}
+                value={identity.positionId}
+                onChange={v => v && setId('positionId')(v)}
+                disabled={!canWriteEmployee}
+                allowDeselect={false}
+                searchable
+              />
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 4 }}>
+              <Select
+                label="Branch"
+                placeholder="Unassigned"
+                data={branches.map(b => ({ value: b.id, label: b.name }))}
+                value={identity.branchId}
+                onChange={setId('branchId')}
+                disabled={!canWriteEmployee}
+                clearable
+                searchable
+              />
+            </Grid.Col>
+            {canLinkLogins && (
+              <Grid.Col span={{ base: 12, sm: 4 }}>
+                <Select
+                  label="Linked login"
+                  placeholder="No account"
+                  data={logins}
+                  value={identity.userId}
+                  onChange={setId('userId')}
+                  disabled={!canWriteEmployee}
+                  clearable
+                  searchable
+                />
+              </Grid.Col>
+            )}
+          </Grid>
+          <Text size="xs" c="dimmed">
+            The branch is their current posting — change it when they transfer. A linked
+            login is only for staff who also sign in to Otomate.
+          </Text>
+        </Section>
+
+        {/*
+          The 201 file itself, behind hr:read.
+
+          The record page now also carries the name and posting, which a branch
+          clerk may edit without any right to see a birth date or a salary. Before
+          the merge that separation was done by hiding the whole page from them;
+          it has to be done per section instead, or merging the two would have
+          quietly widened who can read a 201 file.
+        */}
+        {canReadHr && (
+          <>
         <Section id="personal" title="Personal">
           <Grid gap="sm">
             <Grid.Col span={{ base: 8, sm: 3 }}>
@@ -1121,8 +1297,10 @@ export default function EmployeeDetailPage() {
           onCancel={() => setRehiring(false)}
         />
       </Modal>
+          </>
+        )}
 
-      {canWriteHr && (
+      {(canWriteHr || canWriteEmployee) && (
         <StickyActionBar
           status={
             dirty ? (

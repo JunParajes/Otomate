@@ -57,28 +57,35 @@ test.describe('the UI does not offer what the server would refuse', () => {
     await expect(nav).not.toContainText('Branches')
   })
 
-  test('offers no HR record action without hr:read', async ({ page }) => {
+  /*
+   * The gate moved, and had to.
+   *
+   * "Edit" and "HR record" used to be separate row actions, and hiding the
+   * second one was how a role without hr:read was kept out of a 201 file. They
+   * are one action now — a branch clerk still needs to correct a name — so the
+   * separation lives on the page instead: identity is shown, the 201 sections
+   * are not. These two tests are a mirror pair on purpose; without the second,
+   * "not visible" could just mean the whole thing was deleted.
+   */
+  test('the record page shows no 201 file without hr:read', async ({ page }) => {
     await signIn(page, FIXTURES.plain)
-    await page.goto('/admin/employees')
+    await page.goto(`/admin/employees/${employeeId}`)
 
-    const row = page.locator('tbody tr', { hasText: 'Maria' }).first()
-    await expect(row).toBeVisible()
-    await row.click()
-
-    const sheet = page.locator('.mantine-Modal-content').first()
-    await expect(sheet).toBeVisible()
-    await expect(sheet).not.toContainText('HR record')
+    // The name is theirs to fix...
+    await expect(page.getByLabel('First name', { exact: true })).toBeVisible()
+    // ...the 201 file is not theirs to read.
+    await expect(page.getByLabel('Date of birth')).toHaveCount(0)
+    await expect(page.getByLabel('SSS')).toHaveCount(0)
+    await expect(page.locator('body')).not.toContainText('Government IDs')
   })
 
-  test('shows the HR record action to a role that holds hr:read', async ({ page }) => {
-    // The mirror of the test above — otherwise "not visible" could just mean
-    // the action was removed entirely and both tests would still pass.
+  test('the record page shows the 201 file to a role that holds hr:read', async ({ page }) => {
     await signIn(page, FIXTURES.owner)
-    await page.goto('/admin/employees')
+    await page.goto(`/admin/employees/${employeeId}`)
 
-    await page.locator('tbody tr', { hasText: 'Maria' }).first().click()
-    const sheet = page.locator('.mantine-Modal-content').first()
-    await expect(sheet).toContainText('HR record')
+    await expect(page.getByLabel('First name', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Date of birth')).toBeVisible()
+    await expect(page.locator('body')).toContainText('Government IDs')
   })
 
   test('refuses a hand-typed URL to a page the role cannot see', async ({ page }) => {

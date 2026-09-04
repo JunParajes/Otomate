@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { FIXTURES, FIXTURE_FILE } from './global-setup'
+import { FIXTURES } from './global-setup'
 
 /**
  * Several phone numbers on one employee.
@@ -12,7 +11,21 @@ import { FIXTURES, FIXTURE_FILE } from './global-setup'
  * get the wrong number against the wrong network rather than an error.
  */
 
-const { employeeId } = JSON.parse(readFileSync(FIXTURE_FILE, 'utf8')) as { employeeId: string }
+/**
+ * Its OWN employee, created per test.
+ *
+ * This spec is about row arithmetic, so it needs to start from NO numbers —
+ * "the blank row becomes row 1" is meaningless if row 1 already exists. It was
+ * borrowing the shared fixture, which every other spec on this page also saves,
+ * and those saves carry the contact list along with them. The result survived
+ * between runs and made this file fail intermittently depending on what had run
+ * before it. A spec that depends on an exact starting state has to own it.
+ *
+ * ONE employee for the whole file, not one per test: the second test removes a
+ * number the first one saved, so they are deliberately a sequence. Isolating
+ * them from each other would break the very thing they check.
+ */
+let recordId: string | null = null
 
 async function openRecord(page: Page) {
   await page.goto('/login')
@@ -20,7 +33,21 @@ async function openRecord(page: Page) {
   await page.locator('input[type="password"]').fill(FIXTURES.owner.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForURL(u => !u.pathname.includes('/login'))
-  await page.goto(`/admin/employees/${employeeId}`)
+
+  const apiBase = `http://localhost:${process.env.E2E_API_PORT ?? '3994'}`
+  recordId ??= await page.evaluate(async api => {
+    const token = localStorage.getItem('token')
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+    const positions = await (await fetch(`${api}/api/admin/positions`, { headers })).json()
+    const made = await (await fetch(`${api}/api/admin/employees`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ firstName: 'Dialled', lastName: 'Numbers', positionId: positions.data[0].id }),
+    })).json()
+    return made.data.id as string
+  }, apiBase)
+
+  await page.goto(`/admin/employees/${recordId}`)
   // exact: the remove button's label contains the input's, by design.
   await expect(page.getByLabel('Add a contact number', { exact: true })).toBeVisible()
 }
@@ -34,6 +61,9 @@ test('typing in the blank row adds a number, and it survives a reload', async ({
   await page.getByLabel('Add a contact number', { exact: true }).fill('0999 111 2222')
   await page.getByLabel('Network for contact 2', { exact: true }).fill('Smart')
   await page.getByRole('button', { name: 'Save record' }).click()
+  // Reloading mid-save cancels the request, which looks identical to a value
+  // that would not persist.
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
 
   await page.reload()
   await expect(page.getByLabel('Contact number 1', { exact: true })).toHaveValue('0917 555 1234')
@@ -46,6 +76,9 @@ test('removing a row renumbers the rest instead of leaving a hole', async ({ pag
 
   await page.getByLabel('Remove contact number 1', { exact: true }).click()
   await page.getByRole('button', { name: 'Save record' }).click()
+  // Reloading mid-save cancels the request, which looks identical to a value
+  // that would not persist.
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
 
   await page.reload()
   await expect(page.getByLabel('Contact number 1', { exact: true })).toHaveValue('0999 111 2222')

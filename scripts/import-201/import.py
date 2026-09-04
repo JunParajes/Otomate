@@ -171,10 +171,9 @@ def build(person, token, positions, branches):
         'branchId': branches.get(final['branch']) if final['branch'] else None,
         'isActive': True,  # separated at the end, through the real action
     }
-    code = person.field('employeeCode')
-    if code:
-        payload['employeeCode'] = code
-
+    # The sheet's "No." column is NOT imported. It is filled on 36 of 349 rows,
+    # is not unique across them, and nobody uses it — an identifier that applies
+    # to a tenth of the roster is worse than none, because it looks like a key.
     eid = req('POST', '/api/admin/employees', payload, token=token)['id']
 
     # Walk the spells oldest first, closing each one and reopening the next.

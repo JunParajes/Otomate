@@ -65,6 +65,7 @@ blank gets filled in and the wrong one gets believed.
 | Branch | Spelling variants collapse to the 12 real branches. A cell naming two branches is left for a human |
 | Education | Level becomes the enum, the rest becomes the detail — `Senior High School (TVL)` keeps its TVL. `Km12` is a mangled `K-12`, which is Senior High |
 | Chicken and Freshness | Closed. Not imported |
+| The `No.` column | **Not imported.** Filled on 36 of 349 rows and not unique across them. An identifier that covers a tenth of the roster is worse than none, because it looks like a key |
 | `Jr.` / `Sr.` | The sheet has no suffix column, so these ride along in the Surname (9) or the First Name (2). Split into `suffix` and normalised — a stray `Jr,` becomes `Jr.` Matched against a **closed list**, never "the last word": `Dela Pena`, `San Juan` and sixty-odd second given names like `Mae` and `Joy` must survive untouched |
 | Column R / column W | Employment type from R. For active/separated the **section wins**: 16 rows below the SEPARATED header still say `Active`, and every one has a real end date after its hire date. Moving a row into the archive is deliberate; leaving a cell reading `Active` is what happens when nobody edits it. Within the active block W still decides, and it correctly catches 2 people marked AWOL/END who were never moved down |
 | A date wearing a word | `Rehired 07/24/2025`, `Offially in LDB 10/01/2025` — the date is taken and the words kept in Remarks. 14 of these, and discarding a good date for tidiness loses real information |

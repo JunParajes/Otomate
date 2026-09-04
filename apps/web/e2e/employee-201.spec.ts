@@ -28,6 +28,29 @@ async function openRecord(page: Page) {
   await expect(page.getByRole('button', { name: 'Save record' })).toBeVisible()
 }
 
+/**
+ * An employee of this test's OWN, for the one case that changes a name.
+ *
+ * These specs share a database with the work-schedule spec, which locates grid
+ * cells by the literal string "Maria Santos Cruz" — the shared fixture. Renaming
+ * that person here broke twenty-odd tests in a file that never mentions this
+ * one. Anything that edits a name has to bring its own person.
+ */
+async function freshEmployee(page: Page, firstName: string): Promise<string> {
+  const apiBase = `http://localhost:${process.env.E2E_API_PORT ?? '3994'}`
+  return page.evaluate(async ({ name, api }) => {
+    const token = localStorage.getItem('token')
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+    const positions = await (await fetch(`${api}/api/admin/positions`, { headers })).json()
+    const made = await (await fetch(`${api}/api/admin/employees`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ firstName: name, lastName: 'Renameable', positionId: positions.data[0].id }),
+    })).json()
+    return made.data.id as string
+  }, { name: firstName, api: apiBase })
+}
+
 test('age fills itself from the date of birth, and cannot be typed into', async ({ page }) => {
   await openRecord(page)
   const ageBox = page.getByLabel('Age', { exact: true })
@@ -113,20 +136,35 @@ test('the extension reason appears only once a date is set', async ({ page }) =>
 test('the new text fields accept real keystrokes and save', async ({ page }) => {
   await openRecord(page)
 
+  /*
+   * Cleared first, then typed. pressSequentially APPENDS, and this spec saves to
+   * a record that survives between runs — so on the second run the email became
+   * "maria@example.commaria@example.com", which fails validation and takes the
+   * whole save down with it. The height test below already learned this; the
+   * rule is the same for every field typed this way.
+   */
+  const typeInto = async (label: string, text: string, exact = false) => {
+    const box = page.getByLabel(label, exact ? { exact: true } : {})
+    await box.fill('')
+    await box.pressSequentially(text)
+  }
   // pressSequentially, not fill — one React event per character.
-  await page.getByLabel('Email address').pressSequentially('maria@example.com')
-  await page.getByLabel('Birth place').pressSequentially('Davao City')
-  await page.getByLabel('Religion').pressSequentially('Roman Catholic')
-  await page.getByLabel('Height', { exact: true }).pressSequentially('5')
-  await page.getByLabel('Height in inches').pressSequentially('2')
-  await page.getByLabel('Weight').pressSequentially('62.5')
-  await page.getByLabel('Course or strand').pressSequentially('BS Hotel and Restaurant Management')
-  await page.getByLabel('Remarks').pressSequentially('Transferred from Matina.')
+  await typeInto('Email address', 'maria@example.com')
+  await typeInto('Birth place', 'Davao City')
+  await typeInto('Religion', 'Roman Catholic')
+  await typeInto('Height', '5', true)
+  await typeInto('Height in inches', '2')
+  await typeInto('Weight', '62.5')
+  await typeInto('Course or strand', 'BS Hotel and Restaurant Management')
+  await typeInto('Remarks', 'Transferred from Matina.')
 
   // The page is still alive — a blanked screen loses the heading.
   await expect(page.getByRole('button', { name: 'Save record' })).toBeEnabled()
 
   await page.getByRole('button', { name: 'Save record' }).click()
+  // Wait for the save to land before reloading. Reloading mid-flight cancels
+  // the request, which reads exactly like a field that would not save.
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
   await page.reload()
 
   await expect(page.getByLabel('Email address')).toHaveValue('maria@example.com')
@@ -224,6 +262,7 @@ test('height is entered in feet and inches and survives a save', async ({ page }
   await expect(cm).toHaveAttribute('readonly', '')
 
   await page.getByRole('button', { name: 'Save record' }).click()
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
   await page.reload()
 
   await expect(feet).toHaveValue('5')
@@ -264,4 +303,43 @@ test('a document asks for a date only when it is on file', async ({ page }) => {
   await marriage.click()
   await page.getByRole('option', { name: 'Not applicable' }).click()
   await expect(page.getByLabel('Marriage contract — date received')).toHaveCount(0)
+})
+
+/**
+ * Name and posting live on the record page, not in a modal on the list.
+ *
+ * They used to be split: "Edit" opened a dialog with the name, position and
+ * branch; "HR record" opened the page with the other thirty-five fields. So
+ * correcting a spelling you were looking at meant going back to the list and
+ * reopening a dialog — and there were two different Saves to remember.
+ */
+test('the name and posting are edited on the record page, with one Save', async ({ page }) => {
+  await openRecord(page)
+  // Its own employee — see freshEmployee above. This test renames somebody, and
+  // the work-schedule spec finds people by name.
+  const id = await freshEmployee(page, 'Renamed')
+  await page.goto(`/admin/employees/${id}`)
+  await expect(page.getByRole('button', { name: 'Save record' })).toBeVisible()
+
+  await expect(page.getByLabel('First name', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Surname', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Suffix', { exact: true })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Position' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Branch' })).toBeVisible()
+
+  // One Save writes the name AND the 201 field beside it — two endpoints, one
+  // button, which is the whole point of the merge.
+  const stamp = `Sunga${Date.now() % 100000}`
+  await page.getByLabel('Surname', { exact: true }).fill(stamp)
+  await page.getByLabel('Birth place').fill('Tagum City')
+  await expect(page.getByText('Unsaved changes')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Save record' }).click()
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
+  await page.reload()
+
+  await expect(page.getByLabel('Surname', { exact: true })).toHaveValue(stamp)
+  await expect(page.getByLabel('Birth place')).toHaveValue('Tagum City')
+  // The heading is built from the parts, so it follows the rename.
+  await expect(page.getByRole('heading', { level: 2 })).toContainText(stamp)
 })

@@ -64,3 +64,28 @@ test('expanded, the labels are on the links and no tooltip is added', async ({ p
   // A tooltip over a label that is already legible is noise.
   await expect(page.locator('.mantine-Tooltip-tooltip')).toHaveCount(0)
 })
+
+/**
+ * The employees list offers ONE way into a person, not two.
+ *
+ * "Edit" and "HR record" were separate actions onto the same human. This fails
+ * if either comes back, because the split is what made correcting a name a
+ * trip back to the list.
+ */
+test('an employee row opens one combined record', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(FIXTURES.owner.email)
+  await page.locator('input[type="password"]').fill(FIXTURES.owner.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.waitForURL(u => !u.pathname.includes('/login'))
+  await page.goto('/admin/employees')
+  await page.locator('tbody tr').first().click()
+
+  await expect(page.getByRole('button', { name: 'Open record', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'HR record', exact: true })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Open record', exact: true }).click()
+  await expect(page).toHaveURL(/\/admin\/employees\/[a-z0-9]+$/)
+  await expect(page.getByLabel('First name', { exact: true })).toBeVisible()
+})

@@ -428,7 +428,6 @@ def _person(r, vals, company, section, separated_block, issues):
         'separatedAt': ended,
         'separationReason': reason,
         'branch': branch,
-        'employeeCode': _code(vals['no']),
         'remarks': ' · '.join(notes) or None,
         **ids,
         'documents': docs,
@@ -445,15 +444,6 @@ def _email(v, r, issues):
         issues.append(Issue(r, 'email', 'email-unreadable', s))
         return None
     return s.lower()
-
-
-def _code(v):
-    if v is None:
-        return None
-    if isinstance(v, float) and v.is_integer():
-        v = int(v)
-    s = _text(v)
-    return s if s and s.isdigit() else None
 
 
 def _checksum(person, vals, r, issues):
