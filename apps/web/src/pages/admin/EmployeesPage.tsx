@@ -15,7 +15,7 @@ import {
   IconUserOff, IconX,
 } from '@tabler/icons-react'
 import {
-  createEmployeeSchema, formatEmployeeName, type Employee,
+  createEmployeeSchema, formatEmployeeName, GENDERS, GENDER_LABELS, type Employee,
 } from '@otomate/shared'
 import { employeeApi, positionApi } from '@/lib/employees'
 import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
@@ -31,41 +31,6 @@ const VIEWS = ['list', 'branch'] as const
 type View = (typeof VIEWS)[number]
 
 const NO_BRANCH = '__none__'
-
-/**
- * A count that is also a filter.
- *
- * "81 unassigned" is only half useful if reaching those 81 means working out
- * which dropdown to set. Every figure on the summary row is the way in to the
- * thing it counts.
- */
-function Stat({ label, value, active, onClick, color }: {
-  label: string
-  value: number
-  active?: boolean
-  onClick?: () => void
-  color?: string
-}) {
-  const body = (
-    <Stack gap={0} align="center" px="md" py={6}>
-      <Text fw={700} size="lg" c={color}>{value}</Text>
-      <Text size="xs" c="dimmed" ta="center">{label}</Text>
-    </Stack>
-  )
-  if (!onClick) return <Card withBorder padding={0} radius="md">{body}</Card>
-  return (
-    <UnstyledButton onClick={onClick} aria-pressed={active}>
-      <Card
-        withBorder
-        padding={0}
-        radius="md"
-        style={active ? { borderColor: 'var(--mantine-color-crust-filled)', borderWidth: 2 } : undefined}
-      >
-        {body}
-      </Card>
-    </UnstyledButton>
-  )
-}
 
 export default function EmployeesPage() {
   const { can } = useSession()
@@ -83,6 +48,7 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('')
   const [branchFilter, setBranchFilter] = useState<string | null>(null)
   const [positionFilter, setPositionFilter] = useState<string | null>(null)
+  const [genderFilter, setGenderFilter] = useState<string | null>(null)
   /*
    * The archive is hidden by default and that is the single biggest thing on
    * this page: 328 records, 247 of them people who left. Opening on all of them
@@ -106,6 +72,7 @@ export default function EmployeesPage() {
   }
 
   const canWrite = can('employees:write')
+  const canReadHr = can('hr:read')
   const all = employees.data ?? []
   const branchOptions = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }))
   /*
@@ -137,13 +104,13 @@ export default function EmployeesPage() {
   /** The name of the position nobody has really been given yet. */
   const placeholderPositionId = (positions.data ?? []).find(p => p.name === 'Unassigned')?.id ?? null
 
-  const stats = useMemo(() => ({
-    total: all.length,
-    active: all.filter(e => e.isActive).length,
-    separated: all.filter(e => !e.isActive).length,
-    unplaced: all.filter(e => e.isActive && placeholderPositionId && e.position.id === placeholderPositionId).length,
-    noBranch: all.filter(e => e.isActive && !e.branch).length,
-  }), [all, placeholderPositionId])
+  /*
+   * Two figures, stated plainly. The counts that drive work — who still needs a
+   * position, who has no branch — are going on the HR dashboard as a to-do
+   * list, which is where a task belongs; a roster page should say how big the
+   * roster is and get out of the way.
+   */
+  const activeCount = useMemo(() => all.filter(e => e.isActive).length, [all])
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -151,12 +118,13 @@ export default function EmployeesPage() {
       if (showSeparated === 'no' && !e.isActive) return false
       if (branchFilter === NO_BRANCH ? e.branch : branchFilter && e.branch?.id !== branchFilter) return false
       if (positionFilter && e.position.id !== positionFilter) return false
+      if (genderFilter && e.hr?.gender !== genderFilter) return false
       if (!q) return true
       const haystack = [e.name, e.firstName, e.middleName, e.lastName, e.suffix]
         .filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(q)
     })
-  }, [all, search, branchFilter, positionFilter, showSeparated])
+  }, [all, search, branchFilter, positionFilter, genderFilter, showSeparated])
 
   /** Grouped for the card view — biggest branches first, no-branch last. */
   const byBranch = useMemo(() => {
@@ -287,7 +255,6 @@ export default function EmployeesPage() {
     })
   }
 
-  const filtered = visible.length !== all.length
 
   return (
     <>
@@ -297,74 +264,37 @@ export default function EmployeesPage() {
         action={canWrite && <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add employee</Button>}
       />
 
-      {/*
-        The roster at a glance, and the way into each group.
-
-        "Needs a position" and "No branch" are the two jobs that actually exist
-        right now — every imported record landed on the placeholder position —
-        so they are counts you can tap rather than filters you have to assemble.
-      */}
-      <Group gap="xs" mb="md" wrap="wrap">
-        <Stat label="Total" value={stats.total} />
-        <Stat
-          label="Active"
-          value={stats.active}
-          color="green"
-          active={showSeparated === 'no' && !branchFilter && !positionFilter}
-          onClick={() => { setShowSeparated('no'); setBranchFilter(null); setPositionFilter(null) }}
-        />
-        <Stat
-          label="Separated"
-          value={stats.separated}
-          active={showSeparated === 'yes'}
-          onClick={() => setShowSeparated(showSeparated === 'yes' ? 'no' : 'yes')}
-        />
-        {placeholderPositionId && stats.unplaced > 0 && (
-          <Stat
-            label="Needs a position"
-            value={stats.unplaced}
-            color="orange"
-            active={positionFilter === placeholderPositionId}
-            onClick={() => {
-              setShowSeparated('no')
-              setPositionFilter(positionFilter === placeholderPositionId ? null : placeholderPositionId)
-            }}
-          />
-        )}
-        {stats.noBranch > 0 && (
-          <Stat
-            label="No branch"
-            value={stats.noBranch}
-            color="orange"
-            active={branchFilter === NO_BRANCH}
-            onClick={() => {
-              setShowSeparated('no')
-              setBranchFilter(branchFilter === NO_BRANCH ? null : NO_BRANCH)
-            }}
-          />
-        )}
-      </Group>
-
       <Group mb="md" gap="sm" wrap="wrap" align="center">
         <TextInput
           placeholder="Search name"
           leftSection={<IconSearch size={16} />}
           value={search}
           onChange={e => setSearch(e.currentTarget.value)}
-          w={{ base: '100%', xs: 240 }}
+          w={{ base: '100%', xs: 340 }}
         />
         <Select
           placeholder="All branches"
           data={[{ value: NO_BRANCH, label: 'No branch' }, ...branchOptions]}
           value={branchFilter} onChange={setBranchFilter} clearable searchable
-          w={{ base: '100%', xs: 170 }}
+          w={{ base: '100%', xs: 165 }}
         />
         <Select
           placeholder="All positions" data={positionOptions}
           value={positionFilter} onChange={setPositionFilter} clearable searchable
-          w={{ base: '100%', xs: 170 }}
+          w={{ base: '100%', xs: 165 }}
         />
-        <Switch
+        {/* Gender lives in the 201 file, so it is only here for a role that can
+            read one — otherwise the filter would silently match nothing. */}
+        {canReadHr && (
+          <Select
+            placeholder="Any gender"
+            data={GENDERS.map(g => ({ value: g, label: GENDER_LABELS[g] }))}
+            value={genderFilter} onChange={setGenderFilter} clearable
+            w={{ base: '100%', xs: 145 }}
+            aria-label="Gender"
+          />
+        )}
+        <Checkbox
           label="Show separated"
           checked={showSeparated === 'yes'}
           onChange={e => setShowSeparated(e.currentTarget.checked ? 'yes' : 'no')}
@@ -381,22 +311,27 @@ export default function EmployeesPage() {
         />
       </Group>
 
-      {filtered && (
-        <Text size="sm" c="dimmed" mb="xs">
-          Showing {visible.length} of {all.length}
-          {canWrite && visible.length > 0 && (
-            <>
-              {' · '}
-              <UnstyledButton
-                onClick={() => setMany(visibleIds, !allVisibleSelected)}
-                style={{ font: 'inherit', color: 'var(--mantine-color-anchor)' }}
-              >
-                {allVisibleSelected ? 'Clear selection' : `Select all ${visible.length}`}
-              </UnstyledButton>
-            </>
-          )}
-        </Text>
-      )}
+      {/*
+        The size of the roster, and how much of it is on screen — but only when
+        those differ. Hiding the archive already narrows the list to the active
+        count, so saying "showing 81 · 81 active" is the same fact twice.
+      */}
+      <Text size="sm" c="dimmed" mb="xs">
+        {all.length} employees{' · '}{activeCount} active
+        {visible.length !== (showSeparated === 'yes' ? all.length : activeCount)
+          && ` · showing ${visible.length}`}
+        {canWrite && visible.length > 0 && (
+          <>
+            {' · '}
+            <UnstyledButton
+              onClick={() => setMany(visibleIds, !allVisibleSelected)}
+              style={{ font: 'inherit', color: 'var(--mantine-color-anchor)' }}
+            >
+              {allVisibleSelected ? 'Clear selection' : `Select all ${visible.length}`}
+            </UnstyledButton>
+          </>
+        )}
+      </Text>
 
       <DataState
         loading={employees.loading}

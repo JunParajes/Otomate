@@ -61,6 +61,7 @@ test('the archive is hidden until asked for, and the choice sticks', async ({ pa
   await page.reload()
 
   const rows = page.locator('tbody tr')
+  await expect(rows.first()).toBeVisible()
   const activeOnly = await rows.count()
   await expect(page.getByText(gone)).toHaveCount(0)
 
@@ -75,15 +76,44 @@ test('the archive is hidden until asked for, and the choice sticks', async ({ pa
   await expect(page.getByText(gone)).toBeVisible()
 })
 
-test('the counts are filters, not decoration', async ({ page }) => {
+/**
+ * The roster says how big it is, and nothing more.
+ *
+ * This started as five clickable count boxes — total, active, separated, needs
+ * a position, no branch. Two of those are outstanding WORK rather than facts
+ * about the roster, and they are going on HR's dashboard as a to-do list
+ * instead; the other three were a row of buttons duplicating the archive
+ * checkbox. What is left is one dimmed line.
+ */
+test('the header states the size of the roster without becoming a control panel', async ({ page }) => {
   await signIn(page)
-  const gone = await separatedEmployee(page)
-  await page.reload()
 
-  // Tapping "Separated" reveals the archive rather than merely reporting it.
-  await page.getByText('Separated', { exact: true }).click()
-  await expect(page.getByLabel('Show separated')).toBeChecked()
-  await expect(page.getByText(gone)).toBeVisible()
+  await expect(page.getByText(/\d+ employees · \d+ active/)).toBeVisible()
+  // No count is a button any more.
+  await expect(page.locator('[aria-pressed]')).toHaveCount(0)
+
+  // "showing" appears only when it differs from what the line already implies:
+  // hiding the archive narrows the list to the active count, so saying it twice
+  // would be the same fact restated.
+  await expect(page.getByText(/showing \d+/)).toHaveCount(0)
+  await page.getByPlaceholder('Search name').fill('zzzz-nobody')
+  await expect(page.getByText(/showing 0/)).toBeVisible()
+})
+
+test('staff can be narrowed to one gender', async ({ page }) => {
+  await signIn(page)
+
+  // Wait for rows before counting: count() does not retry, so reading it as the
+  // first action returns 0 whenever the list has not rendered yet — which it
+  // did once the suite ahead of this file grew long enough to slow the load.
+  await expect(page.locator('tbody tr').first()).toBeVisible()
+  const before = await page.locator('tbody tr').count()
+  await page.getByPlaceholder('Any gender').click()
+  await page.getByRole('option', { name: 'Male', exact: true }).click()
+
+  const after = await page.locator('tbody tr').count()
+  expect(after).toBeLessThan(before)
+  await expect(page.getByText(new RegExp(`showing ${after}\\b`))).toBeVisible()
 })
 
 test('the branch view groups people under the branch they work at', async ({ page }) => {

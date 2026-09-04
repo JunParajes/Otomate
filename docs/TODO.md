@@ -87,6 +87,19 @@ revisit this "when real staff data accumulates"; that has happened.
 - [x] **5f — branch records.** Live. Lease, effective-dated rent, permits with
       expiry warnings, and utility accounts with bills, unpaid warnings and
       year-on-year consumption, at `/admin/branches/:id`.
+- [ ] **5j — an HR to-do list on the dashboard.** The counts that describe
+      OUTSTANDING WORK belong on HR's dashboard as tasks, not on the roster page
+      as decoration. Wanted: how many staff still hold the placeholder position,
+      how many have no branch, and how many are missing government IDs — SSS,
+      PhilHealth, Pag-IBIG, TIN — or a document marked "not on file". Each count
+      links through to exactly those people.
+
+      This was briefly built into the employees list as five clickable counts and
+      taken back out: a roster page should say how big the roster is, and a task
+      belongs where tasks are looked for. The data is already there — the
+      placeholder position is a row like any other, and the document statuses
+      landed with the 201 import.
+
 - [ ] **5b — the charges and shortages ledger.** The one that makes this worth
       building rather than buying: DSIR charges and cash shortages already name
       the employee and already end at payroll, and nothing yet consumes them.
