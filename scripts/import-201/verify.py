@@ -35,13 +35,16 @@ def person_key(last, first, middle):
     return ((last or '').strip().lower(), (first or '').strip().lower(),
             (middle or '').strip().lower())
 
-API = 'http://localhost:3001'
+API = 'http://localhost:3001'  # overridden by --api
 
 
-def req(path, token, _tries=0):
+def req(path, token, _tries=0, api=None):
     """One read, waiting out the rate limiter — see the note in import.py."""
-    r = urllib.request.Request(f'{API}{path}',
-                               headers={'Authorization': f'Bearer {token}'})
+    r = urllib.request.Request(f'{api or API}{path}', headers={
+        'Authorization': f'Bearer {token}',
+        # See import.py — Cloudflare rejects urllib's default user-agent.
+        'User-Agent': 'otomate-import-201/1.0 (+scripts/import-201)',
+    })
     try:
         return json.load(urllib.request.urlopen(r))['data']
     except urllib.error.HTTPError as e:
@@ -49,7 +52,7 @@ def req(path, token, _tries=0):
             if _tries == 0:
                 print('  rate limited — waiting for the window to clear…', flush=True)
             time.sleep(30)
-            return req(path, token, _tries + 1)
+            return req(path, token, _tries + 1, api)
         raise
 
 
@@ -129,17 +132,20 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('sheet')
     ap.add_argument('--wave', choices=('active', 'separated', 'all'), default='active')
+    ap.add_argument('--api', default=API)
+    ap.add_argument('--token-file', default='/tmp/otomate.token')
     args = ap.parse_args()
 
-    token = open('/tmp/otomate.token').read().strip()
+    token = open(args.token_file).read().strip()
+    api = args.api
     rows, _, _ = read_sheet.read(args.sheet)
     everyone, _conflicts = people_mod.group(rows)
     wanted = [p for p in everyone
               if args.wave == 'all' or (args.wave == 'active') == bool(p.final['isActive'])]
 
     stored = {}
-    for e in req('/api/admin/employees?includeInactive=true', token):
-        full = req(f"/api/admin/employees/{e['id']}", token)
+    for e in req('/api/admin/employees?includeInactive=true', token, api=api):
+        full = req(f"/api/admin/employees/{e['id']}", token, api=api)
         stored[person_key(full['lastName'], full['firstName'], full['middleName'])] = full
 
     missing, mismatches = [], []

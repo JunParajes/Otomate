@@ -79,7 +79,14 @@ def req(method, path, body=None, token=None, _tries=0, api=None):
     """
     r = urllib.request.Request(
         f'{api or DEFAULT_API}{path}', method=method,
-        headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+        headers={
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json',
+            # Cloudflare fronts the production site and answers urllib's default
+            # user-agent with a 1010 "banned browser signature". Naming the tool
+            # is both honest and enough to get through.
+            'User-Agent': 'otomate-import-201/1.0 (+scripts/import-201)',
+        },
         data=json.dumps(body).encode() if body else None)
     try:
         return json.load(urllib.request.urlopen(r))['data']
