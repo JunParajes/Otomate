@@ -68,13 +68,61 @@ blank gets filled in and the wrong one gets believed.
 | Column R / column W | Employment type from R. For active/separated the **section wins**: 16 rows below the SEPARATED header still say `Active`, and every one has a real end date after its hire date. Moving a row into the archive is deliberate; leaving a cell reading `Active` is what happens when nobody edits it. Within the active block W still decides, and it correctly catches 2 people marked AWOL/END who were never moved down |
 | A date wearing a word | `Rehired 07/24/2025`, `Offially in LDB 10/01/2025` — the date is taken and the words kept in Remarks. 14 of these, and discarding a good date for tidiness loses real information |
 
+## 2. Import
+
+```bash
+# look, change nothing
+/tmp/201-venv/bin/python scripts/import-201/import.py "<sheet>.xlsx" --wave active
+# actually write
+/tmp/201-venv/bin/python scripts/import-201/import.py "<sheet>.xlsx" --wave active --commit
+```
+
+Everything goes through the API, so the same validation and permission checks
+apply as when a person types it. Local only — it refuses any other host.
+
+**Two waves.** `active` is the 82 people still employed: they feed work
+schedules and probation warnings, every field matters, and 82 is few enough to
+check by eye against the sheet afterwards. `separated` is the 260 who have left
+— an archive, mostly AWOL leavers already missing IDs and phones, where nobody's
+pay depends on the result. Holding both to the same standard triples the work
+for the half that matters least.
+
+**Idempotent.** Matching is on name plus hire date — the sheet's `No.` column is
+filled on only 36 of 349 rows and cannot be a key. Re-running updates rather
+than duplicates, so the loop is: fix the sheet, re-run, re-verify.
+
+Everyone imports into the `Unassigned` position with their real position kept in
+Remarks, until the naming is settled.
+
+## 3. Verify
+
+```bash
+/tmp/201-venv/bin/python scripts/import-201/verify.py "<sheet>.xlsx" --wave active
+```
+
+The import reporting success only means the API accepted every request. This
+asks the useful question instead: **does what is now stored say the same thing as
+the sheet?** It re-reads the spreadsheet from scratch and fetches every record
+back through the API, so a value that changed shape in between — a date shifted
+across midnight by a timezone, kilos stored as grams and read back wrong, a
+leading zero lost again on the way in — shows up as a mismatch rather than as
+silence.
+
+Wave 1 currently reports **82 of 82 people, 2296 field comparisons, 0
+mismatches**. That number is only worth anything because the check was
+mutation-tested: corrupting a height, a birth date and a document status in the
+database made it report exactly those three.
+
 ## Files
 
 | File | What it does |
 |---|---|
 | `mapping.py` | The vocabulary — every spreadsheet word and what it becomes |
 | `read_sheet.py` | Parsing and checking. Touches no database, so it is safe to run repeatedly |
-| `audit.py` | The report |
+| `audit.py` | The report on what will and will not import |
+| `import.py` | The import, dry by default |
+| `verify.py` | Reads the database back and compares it to the sheet |
+| `test_parsers.py` | 55 checks on the parsers, no spreadsheet needed |
 
 ## Tests
 
