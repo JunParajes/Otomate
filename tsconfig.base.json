@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "CommonJS",
-    "moduleResolution": "Node",
+    // "node10", not "Node": the old spelling is deprecated and STOPS WORKING in
+    // TypeScript 7. Same algorithm, current name — the editor flags the old one
+    // long before tsc does, and tsc 5.9 still accepts both, so this is a rename
+    // rather than a behaviour change.
+    "moduleResolution": "node10",
     "lib": ["ES2022"],
     "strict": true,
     "esModuleInterop": true,

@@ -87,7 +87,20 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       {/* bottom-right: top-right collides with each page primary action button */}
       <Notifications position="bottom-right" />
       <ModalsProvider>
-        <BrowserRouter>
+        {/*
+          Both v7 behaviours opted into now rather than at the upgrade.
+          
+          startTransition: navigations are wrapped, so moving to a route whose
+          chunk has not downloaded keeps the current screen up instead of
+          flashing the Suspense fallback. That is already how this app behaves
+          on a warm cache; the flag makes it true on a cold one too.
+
+          relativeSplatPath: fixes how a relative link resolves inside a splat
+          route. Nothing here uses one today, so it changes nothing — taking it
+          now means the first splat route added does not silently inherit v6
+          resolution and then move under everyone at the upgrade.
+        */}
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <SessionProvider>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
