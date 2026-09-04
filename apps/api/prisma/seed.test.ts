@@ -139,3 +139,58 @@ describe('the owner account', () => {
     expect(admin.isActive).toBe(false)
   })
 })
+
+/**
+ * "HQ" is a bootstrap, not a place.
+ *
+ * It exists so a brand-new install has somewhere to attach the owner account.
+ * The bakery's actual branches are Bankerohan, Panacan, Sasa and the rest.
+ *
+ * It was upserted unconditionally, and since the seed runs on every deploy it
+ * came back every time. Invisible while the branch list was scaffolding; the
+ * moment the real twelve were imported, an empty thirteenth reappeared after
+ * each deploy — in the branch picker, in the schedule's branch list, and on the
+ * page somebody had just tidied.
+ */
+describe('the default branch', () => {
+  it('is created when there are no branches at all', async () => {
+    seed()
+    const branches = await prisma.branch.findMany()
+    expect(branches.map(b => b.name)).toEqual(['HQ'])
+  })
+
+  it('is NOT re-created once real branches exist', async () => {
+    await prisma.branch.createMany({
+      data: [{ name: 'Bankerohan' }, { name: 'Panacan' }, { name: 'Sasa' }],
+    })
+
+    seed()
+
+    const names = (await prisma.branch.findMany({ orderBy: { name: 'asc' } })).map(b => b.name)
+    expect(names).toEqual(['Bankerohan', 'Panacan', 'Sasa'])
+    expect(names).not.toContain('HQ')
+  })
+
+  it('does not resurrect HQ after somebody deletes it', async () => {
+    // The real sequence: fresh install makes HQ, real branches are added, HQ is
+    // deleted as the placeholder it is — and the next deploy must respect that.
+    seed()
+    await prisma.branch.createMany({ data: [{ name: 'Bankerohan' }, { name: 'Panacan' }] })
+    await prisma.user.updateMany({ data: { branchId: null } })
+    await prisma.branch.deleteMany({ where: { name: 'HQ' } })
+
+    seed()
+
+    const names = (await prisma.branch.findMany()).map(b => b.name)
+    expect(names.sort()).toEqual(['Bankerohan', 'Panacan'])
+  })
+
+  it('still attaches the owner to a branch on a fresh install', async () => {
+    seed()
+    const admin = await prisma.user.findUnique({
+      where: { email: 'admin@otomate.local' },
+      include: { branch: true },
+    })
+    expect(admin?.branch?.name).toBe('HQ')
+  })
+})

@@ -45,12 +45,25 @@ async function main() {
   })
   console.log(`Role '${SUPER_ADMIN_ROLE}' ready with all ${allPermissions.length} permissions.`)
 
-  // ── 3. Default branch ───────────────────────────────────────────────────
-  const hq = await prisma.branch.upsert({
-    where: { name: 'HQ' },
-    update: {},
-    create: { name: 'HQ' },
-  })
+  // ── 3. Somewhere to put the first account ───────────────────────────────
+  //
+  // "HQ" exists so a brand-new install has a branch to attach the owner to. It
+  // is NOT a place — the bakery has Bankerohan, Panacan, Sasa and the rest.
+  //
+  // It used to be upserted unconditionally, and since the seed runs on EVERY
+  // deploy it came back every time. That was invisible while the branch list was
+  // scaffolding; once the real twelve were imported, an empty thirteenth branch
+  // reappeared after each deploy and had to be deleted again — and it shows up
+  // in the schedule's branch list and every branch picker in between.
+  //
+  // Bootstrap only, therefore: created when there are no branches at all, and
+  // never re-created once the real ones exist. Same shape as the super-admin
+  // guard below — the seed's job is to stop the system being unusable, not to
+  // keep asserting its opinion over what someone has since set up.
+  const branchCount = await prisma.branch.count()
+  const hq = branchCount === 0
+    ? await prisma.branch.create({ data: { name: 'HQ' } })
+    : await prisma.branch.findFirst({ orderBy: { name: 'asc' } })
 
   // ── 4. The owner account ────────────────────────────────────────────────
   const existing = await prisma.user.findUnique({
@@ -66,7 +79,8 @@ async function main() {
         password: await bcrypt.hash(seedPassword, 12),
         name: 'Admin',
         roleId: superAdmin.id,
-        branchId: hq.id,
+        // Optional on User, so a seed run against an empty branch list is fine.
+        branchId: hq?.id ?? null,
         mustChangePassword: seedPassword === 'change-me-immediately',
       },
     })
