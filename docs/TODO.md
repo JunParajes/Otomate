@@ -57,6 +57,36 @@ revisit this "when real staff data accumulates"; that has happened.
 
 ## Before this grows much further
 
+- [ ] **The browser suite runs on one worker because every spec shares one
+      database.** `playwright.config.ts` sets `workers: 1, fullyParallel: false`,
+      and `global-setup` truncates a single schema that all 11 spec files then
+      write to. Correct today — these tests assert on real cross-page state, and
+      two workers would see each other's employees — but it costs twice over.
+
+      **Wall time.** 76 tests in about 4 minutes on the M2 Air, growing roughly
+      linearly: it was ~3 minutes at 69 tests.
+
+      **Debuggability, which is the worse half.** A targeted run cannot prove a
+      fix, because interference only appears across files, so every check means
+      the whole suite. Real examples from 2026-09-04: `contacts.spec` inherited
+      the fixture's saved contact list from `employee-201`; a bulk-assign test
+      reassigned the position `positions.spec` asserts is held; a rename broke
+      twenty work-schedule locators that match on `"Maria Santos Cruz"`.
+
+      **The fix:** a schema per spec file — `search_path` set per worker, each
+      migrated and seeded independently — then raise `workers`.
+
+      **Expect about 2x, not 8x, and know why.** The Air has 4 performance and 4
+      efficiency cores, and Playwright defaults to half the cores. More to the
+      point, without `fullyParallel` the unit of parallelism is the FILE, and
+      `work-schedule.spec.ts` holds 31 of the 76 tests — about 1.9 minutes on its
+      own. That file is the floor. Going below it means either splitting it or
+      per-TEST isolation, which is a much bigger change than per-file schemas.
+
+      Worth doing when the suite passes ~6 minutes or when cross-file
+      interference costs another afternoon, whichever comes first.
+
+
 - [x] ~~CI has no typecheck gate~~ — done 2026-08-30. A `typecheck` job gates
       `build-and-push`. Note the proposed one-liner was not enough: shared must be
       built and the Prisma client generated first, or the gate fails on every run
