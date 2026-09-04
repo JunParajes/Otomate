@@ -40,7 +40,7 @@ const DsirEntryPage = React.lazy(() => import('@/pages/dsir/DsirEntryPage'))
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppLayout from '@/components/AppLayout'
 import { SessionProvider } from '@/lib/session'
-import { theme } from '@/theme'
+import { cssVariablesResolver, theme } from '@/theme'
 import { syncThemeColor } from '@/lib/theme-color'
 
 import '@mantine/core/styles.css'
@@ -82,7 +82,7 @@ function RouteFallback() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <MantineProvider theme={theme} defaultColorScheme="auto">
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} defaultColorScheme="auto">
       <ThemeColorSync />
       {/* bottom-right: top-right collides with each page primary action button */}
       <Notifications position="bottom-right" />

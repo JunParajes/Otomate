@@ -343,3 +343,59 @@ test('the name and posting are edited on the record page, with one Save', async 
   // The heading is built from the parts, so it follows the rename.
   await expect(page.getByRole('heading', { level: 2 })).toContainText(stamp)
 })
+
+/**
+ * A card has to look like a card in BOTH schemes.
+ *
+ * The 201 file is seven stacked cards, and in light mode the card and the page
+ * were both pure white — 1.00:1, no fill difference at all — leaving a single
+ * 1px border to carry the whole sectioning. Dark mode had two cues, a lighter
+ * card AND a border, which is why the grouping read there and disappeared here.
+ *
+ * Measured rather than eyeballed, and asserted in both schemes: a change that
+ * makes the canvas white again would put the sections back into one wall and is
+ * exactly the sort of thing a screenshot review misses.
+ */
+const relativeLuminance = (rgb: string) => {
+  const [r, g, b] = (rgb.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map(v => {
+    const s = v / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+}
+const contrast = (a: string, b: string) => {
+  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x)
+  return (hi! + 0.05) / (lo! + 0.05)
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`a section card is distinguishable from the page in ${scheme} mode`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme })
+    await openRecord(page)
+
+    const seen = await page.evaluate(() => {
+      const card = document.querySelector('#personal')!
+      const style = getComputedStyle(card)
+      return {
+        page: getComputedStyle(document.body).backgroundColor,
+        card: style.backgroundColor,
+        border: style.borderTopColor,
+        borderWidth: style.borderTopWidth,
+      }
+    })
+
+    // The card is a different surface from the page it sits on...
+    expect(seen.card, 'card and page must not be the same colour').not.toBe(seen.page)
+    expect(
+      contrast(seen.card, seen.page),
+      `${scheme}: card should stand off the page`
+    ).toBeGreaterThan(1.08)
+
+    // ...and it still has an edge, which is the second cue.
+    expect(seen.borderWidth).not.toBe('0px')
+    expect(
+      contrast(seen.border, seen.card),
+      `${scheme}: the card border should be visible against the card`
+    ).toBeGreaterThan(1.25)
+  })
+}
