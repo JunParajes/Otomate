@@ -28,7 +28,7 @@ SEVERITY = {
     'birth-year-disagrees': 'CHECK', 'age-disagrees': 'CHECK',
     'left-before-hired': 'CHECK', 'under-18': 'CHECK',
     'separated-without-a-last-day': 'CHECK',
-    'active-but-filed-under-separated': 'CHECK',
+    'stale-active-in-the-archive': 'CHECK',
     'separated-but-filed-under-active': 'CHECK',
     'date-unreadable': 'MANUAL', 'date-impossible': 'MANUAL',
     'branch-unmapped': 'MANUAL', 'status-unmapped': 'MANUAL',

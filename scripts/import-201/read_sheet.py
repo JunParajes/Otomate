@@ -66,12 +66,17 @@ class Issue:
 
 # ─── Value parsers ───────────────────────────────────────────────────────────
 
-def parse_date(v, row, column, issues):
+def parse_date(v, row, column, issues, notes=None):
     """
     A date, or None with an issue recorded.
 
     Real Excel dates are taken as they are. Text is read as MM/DD/YYYY — see the
     module docstring for why that is a fact about this file, not a preference.
+
+    A cell may carry a date AND a word: "Rehired 07/24/2025", "Offially in LDB
+    10/01/2025". The date in those is perfectly good and there are 14 of them, so
+    it is taken and the word is kept in Remarks. Throwing away a date because
+    somebody annotated it would lose real information to tidiness.
     """
     if v is None or (isinstance(v, str) and not v.strip()):
         return None
@@ -84,8 +89,15 @@ def parse_date(v, row, column, issues):
         return None
     m = re.fullmatch(r'(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})', s)
     if not m:
-        issues.append(Issue(row, column, 'date-unreadable', s))
-        return None
+        # Exactly one date embedded in other words: take it, keep the words.
+        found = re.findall(r'(\d{1,2})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{2,4})', s)
+        if len(found) == 1:
+            m = re.match(r'(\d+)\D+(\d+)\D+(\d+)', ''.join(f'{g} ' for g in found[0]))
+            if notes is not None:
+                notes.append(f'{column} in the sheet: {s}')
+        else:
+            issues.append(Issue(row, column, 'date-unreadable', s))
+            return None
     month, day, year = (int(g) for g in m.groups())
     if year < 100:
         year += 2000 if year < 50 else 1900
@@ -164,9 +176,16 @@ def parse_education(v, row, issues):
         if key in low:
             # Whatever the cell said beyond the level itself is worth keeping.
             detail = re.sub(re.escape(key), '', low, flags=re.I)
-            detail = re.sub(r'\b(graduate|grad|level|undergrad(uate)?)\b', '', detail, flags=re.I)
-            detail = re.sub(r'[^\w\s&/().-]', ' ', detail)
-            detail = re.sub(r'\s+', ' ', detail).strip(' /-.')
+            # Separators first: an underscore is a word character, so
+            # "Secondary_High" hides "secondary" from a \b-anchored match.
+            detail = re.sub(r'[_()\[\],]+', ' ', detail)
+            # Words that only restate the level. "Senior High School (TVL)"
+            # should keep TVL and nothing else — the level already says the rest,
+            # and "Secondary" is just another word for high school.
+            detail = re.sub(r'\b(graduate|grad|level|undergrad(uate)?|school|with|secondary)\b',
+                            '', detail, flags=re.I)
+            detail = re.sub(r'[^\w\s&/.-]', ' ', detail)
+            detail = re.sub(r'\s+', ' ', detail).strip(' /-._')
             return level, (detail.upper() if detail and len(detail) <= 60 else None)
     issues.append(Issue(row, 'education', 'education-unmapped', s))
     return None, None
@@ -264,15 +283,31 @@ def _person(r, vals, company, section, separated_block, issues):
     if employment_type is None and status_word and status_word not in mapping.EXIT_WORDS:
         issues.append(Issue(r, 'status', 'status-unmapped', status_word))
 
+    """
+    Which section the row sits in decides, and column W only decides within it.
+
+    Column W was the plan, but the file disagrees. Sixteen rows below the
+    SEPARATED header still say "Active" — and every one of them has a real end
+    date AFTER its hire date (hired 03/01, ended 04/28), two of them having been
+    rehired and left a second time. They have left; the word is simply stale.
+
+    Moving a row into the archive is a deliberate act. Leaving a cell reading
+    "Active" is what happens when nobody edits it. So the section wins.
+
+    Within the active block, W still decides — it correctly catches the two
+    people marked AWOL and END who were never moved down.
+    """
     is_active = mapping.ACTIVE.get(status2_word)
     if is_active is None and status2_word:
         issues.append(Issue(r, 'status2', 'status2-unmapped', status2_word))
-    if is_active is None:
-        # The block the row sits under is the fallback, and it is reliable:
-        # every row below "SEPARATED EMLOYEE'S" is somebody who has left.
-        is_active = not separated_block
+    if separated_block:
+        if is_active:
+            issues.append(Issue(r, 'status2', 'stale-active-in-the-archive', status2_word))
+        is_active = False
+    elif is_active is None:
+        is_active = True
 
-    ended = parse_date(vals['ended'], r, 'ended', issues)
+    ended = parse_date(vals['ended'], r, 'ended', issues, notes)
     reason = mapping.SEPARATION_REASON.get(status2_word) or mapping.SEPARATION_REASON.get(status_word)
     # Somebody who went AWOL has no last day by definition — they stopped coming
     # and nobody wrote a date. Only a resignation or an ended contract should
@@ -280,12 +315,8 @@ def _person(r, vals, company, section, separated_block, issues):
     if not is_active and not ended and reason != 'AWOL':
         issues.append(Issue(r, 'ended', 'separated-without-a-last-day', status2_word or '(blank)'))
 
-    # The section a row sits under and what column W says should agree. When they
-    # do not, column W wins — it is the field that is maintained — but it decides
-    # whether this person appears on next week's schedule, so it is never
-    # resolved quietly.
-    if is_active and separated_block:
-        issues.append(Issue(r, 'status2', 'active-but-filed-under-separated', status2_word))
+    # Somebody marked as having left while still filed under an active section.
+    # Rarer and the opposite problem, so it keeps its own name.
     if not is_active and not separated_block:
         issues.append(Issue(r, 'status2', 'separated-but-filed-under-active', status2_word))
 
@@ -335,7 +366,7 @@ def _person(r, vals, company, section, separated_block, issues):
         'lastName': _text(vals['surname']),
         'firstName': _text(vals['first']),
         'middleName': _text(vals['middle']),
-        'birthDate': parse_date(vals['birth'], r, 'birth', issues),
+        'birthDate': parse_date(vals['birth'], r, 'birth', issues, notes),
         'birthPlace': _text(vals['birthplace']),
         'gender': mapping.GENDER.get((_text(vals['gender']) or '').lower()),
         'civilStatus': mapping.CIVIL_STATUS.get((_text(vals['civil']) or '').lower()),
@@ -349,7 +380,7 @@ def _person(r, vals, company, section, separated_block, issues):
         'phone': parse_phone(vals['phone'], r, 'phone', issues),
         'emergencyName': None if _is_nothing(_text(vals['emergency_name'])) else _text(vals['emergency_name']),
         'emergencyContact': parse_phone(vals['emergency_phone'], r, 'emergency_phone', issues),
-        'dateHired': parse_date(vals['hired'], r, 'hired', issues),
+        'dateHired': parse_date(vals['hired'], r, 'hired', issues, notes),
         'employmentType': employment_type,
         'isActive': is_active,
         'separatedAt': ended,

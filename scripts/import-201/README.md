@@ -65,7 +65,8 @@ blank gets filled in and the wrong one gets believed.
 | Branch | Spelling variants collapse to the 12 real branches. A cell naming two branches is left for a human |
 | Education | Level becomes the enum, the rest becomes the detail — `Senior High School (TVL)` keeps its TVL. `Km12` is a mangled `K-12`, which is Senior High |
 | Chicken and Freshness | Closed. Not imported |
-| Column R / column W | Employment type from R; active and reason from W. When W disagrees with the section a row sits under, W wins but the conflict is always reported |
+| Column R / column W | Employment type from R. For active/separated the **section wins**: 16 rows below the SEPARATED header still say `Active`, and every one has a real end date after its hire date. Moving a row into the archive is deliberate; leaving a cell reading `Active` is what happens when nobody edits it. Within the active block W still decides, and it correctly catches 2 people marked AWOL/END who were never moved down |
+| A date wearing a word | `Rehired 07/24/2025`, `Offially in LDB 10/01/2025` — the date is taken and the words kept in Remarks. 14 of these, and discarding a good date for tidiness loses real information |
 
 ## Files
 
@@ -74,3 +75,17 @@ blank gets filled in and the wrong one gets believed.
 | `mapping.py` | The vocabulary — every spreadsheet word and what it becomes |
 | `read_sheet.py` | Parsing and checking. Touches no database, so it is safe to run repeatedly |
 | `audit.py` | The report |
+
+## Tests
+
+```bash
+/tmp/201-venv/bin/python scripts/import-201/test_parsers.py
+```
+
+55 checks over the shapes actually found in the sheet. No spreadsheet needed —
+every case is a literal, so this carries no personal data and runs anywhere.
+
+The impossible cases are the point. A month of 13 must be REFUSED, not quietly
+read as a day: that would invent a date which looks entirely reasonable and is
+wrong. The suite was mutation-checked by flipping MM/DD to DD/MM, which breaks 9
+of the checks.
