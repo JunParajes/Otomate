@@ -166,6 +166,7 @@ def build(person, token, positions, branches):
         'firstName': person.field('firstName') or '?',
         'middleName': person.field('middleName'),
         'lastName': person.field('lastName') or '?',
+        'suffix': person.field('suffix'),
         'positionId': positions[PLACEHOLDER_POSITION],
         'branchId': branches.get(final['branch']) if final['branch'] else None,
         'isActive': True,  # separated at the end, through the real action

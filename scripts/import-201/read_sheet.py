@@ -57,6 +57,41 @@ def _is_nothing(s):
     return s is None or s.strip().lower().rstrip('.') in mapping.NOT_A_VALUE
 
 
+# Generational suffixes, and ONLY these.
+#
+# The spreadsheet has one Surname column, so "Cruz Jr." was landing whole in the
+# surname and the suffix field stayed empty — the name then reads wrong on a COE
+# and sorts under the wrong person.
+#
+# Deliberately a closed list rather than "the last word". Plenty of real
+# surnames here are two words — Dela Pena, Dela Torre, San Juan — and plenty of
+# first names are two given names, Mae and Ann and Joy being the common ones.
+# Splitting on the last token would mangle sixty-odd names to fix nine.
+SUFFIXES = {
+    'jr': 'Jr.', 'jr.': 'Jr.', 'jr,': 'Jr.', 'junior': 'Jr.',
+    'sr': 'Sr.', 'sr.': 'Sr.', 'senior': 'Sr.',
+    'ii': 'II', 'iii': 'III', 'iv': 'IV',
+}
+
+
+def split_suffix(name):
+    """
+    ("Cruz Jr.") -> ("Cruz", "Jr.").  ("Dela Pena") -> ("Dela Pena", None).
+
+    Punctuation is normalised on the way out, so a stray "Jr," becomes "Jr."
+    rather than a second spelling of the same thing.
+    """
+    if not name:
+        return name, None
+    parts = name.split()
+    if len(parts) < 2:
+        return name, None
+    suffix = SUFFIXES.get(parts[-1].lower())
+    if not suffix:
+        return name, None
+    return ' '.join(parts[:-1]), suffix
+
+
 class Issue:
     """Something a person has to look at, tied to the cell it came from."""
 
@@ -355,6 +390,12 @@ def _person(r, vals, company, section, separated_block, issues):
     if position_word:
         notes.append(f'Position in the sheet: {position_word}')
 
+    # The sheet has no suffix column, so "Jr." rides along on whichever name it
+    # was typed into — usually the surname, twice the first name.
+    last_name, suffix = split_suffix(_text(vals['surname']))
+    first_name, first_suffix = split_suffix(_text(vals['first']))
+    suffix = suffix or first_suffix
+
     existing_remarks = _text(vals['remarks'])
     if existing_remarks:
         notes.insert(0, existing_remarks)
@@ -363,9 +404,10 @@ def _person(r, vals, company, section, separated_block, issues):
         'row': r,
         'company': mapping.COMPANIES.get(company or ''),
         'section': section,
-        'lastName': _text(vals['surname']),
-        'firstName': _text(vals['first']),
+        'lastName': last_name,
+        'firstName': first_name,
         'middleName': _text(vals['middle']),
+        'suffix': suffix,
         'birthDate': parse_date(vals['birth'], r, 'birth', issues, notes),
         'birthPlace': _text(vals['birthplace']),
         'gender': mapping.GENDER.get((_text(vals['gender']) or '').lower()),

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from read_sheet import (  # noqa: E402
     parse_date, parse_education, parse_height_cm, parse_phone, parse_weight_grams,
+    split_suffix,
 )
 
 D = datetime.date
@@ -70,6 +71,30 @@ EDUCATION = [
 ]
 
 
+SUFFIXES = [
+    # The sheet has one Surname column, so the suffix rides along in it.
+    ('Cruz Jr.', 'Cruz', 'Jr.'),
+    ('Cruz Jr', 'Cruz', 'Jr.'),
+    ('Cruz Jr,', 'Cruz', 'Jr.'),       # a stray comma, normalised
+    ('Bautista Sr.', 'Bautista', 'Sr.'),
+    ('Reyes III', 'Reyes', 'III'),
+    # Twice it landed in the first name instead.
+    ('Juan Jr.', 'Juan', 'Jr.'),
+    # THE CASES THAT MUST NOT MOVE. Real two-word surnames, and second given
+    # names — sixty-odd of the latter. Splitting on "the last word" would
+    # mangle all of them to fix nine.
+    ('Dela Pena', 'Dela Pena', None),
+    ('Dela Torre', 'Dela Torre', None),
+    ('San Juan', 'San Juan', None),
+    ('De Luis', 'De Luis', None),
+    ('Maria Mae', 'Maria Mae', None),
+    ('Jane Ann', 'Jane Ann', None),
+    ('Mary Joy', 'Mary Joy', None),
+    ('Cruz', 'Cruz', None),
+    (None, None, None),
+]
+
+
 def main():
     failures = []
 
@@ -85,12 +110,17 @@ def main():
         check(f'height {text!r}', parse_height_cm(text, 1, []), want)
     for text, want in WEIGHTS:
         check(f'weight {text!r}', parse_weight_grams(text, 1, []), want)
+    for text, name, suffix in SUFFIXES:
+        got_name, got_suffix = split_suffix(text)
+        check(f'suffix name {text!r}', got_name, name)
+        check(f'suffix value {text!r}', got_suffix, suffix)
     for text, level, detail in EDUCATION:
         got_level, got_detail = parse_education(text, 1, [])
         check(f'education level {text!r}', got_level, level)
         check(f'education detail {text!r}', got_detail, detail)
 
-    total = len(DATES) + len(PHONES) + len(HEIGHTS) + len(WEIGHTS) + 2 * len(EDUCATION)
+    total = (len(DATES) + len(PHONES) + len(HEIGHTS) + len(WEIGHTS)
+             + 2 * len(EDUCATION) + 2 * len(SUFFIXES))
     if failures:
         print(f'{len(failures)} of {total} checks FAILED\n')
         for f in failures:
