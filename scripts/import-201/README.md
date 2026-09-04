@@ -80,16 +80,32 @@ blank gets filled in and the wrong one gets believed.
 Everything goes through the API, so the same validation and permission checks
 apply as when a person types it. Local only — it refuses any other host.
 
-**Two waves.** `active` is the 82 people still employed: they feed work
-schedules and probation warnings, every field matters, and 82 is few enough to
-check by eye against the sheet afterwards. `separated` is the 260 who have left
-— an archive, mostly AWOL leavers already missing IDs and phones, where nobody's
-pay depends on the result. Holding both to the same standard triples the work
-for the half that matters least.
+**One record per person.** The sheet lists *spells*, not people: somebody who
+left and came back appears twice, once in an active section and once in the
+archive, and one person appears three times. Importing rows directly would
+create two records for one human, split their service history, and leave the
+work schedule offering to roster a ghost.
 
-**Idempotent.** Matching is on name plus hire date — the sheet's `No.` column is
-filled on only 36 of 349 rows and cannot be a key. Re-running updates rather
-than duplicates, so the loop is: fix the sheet, re-run, re-verify.
+So rows are grouped into people first, then each person's earlier spells are
+laid down through the app's own separate/rehire endpoints — which is what makes
+the history real. A filed spell restarts service and holiday eligibility, the
+rule the business gave: they come back fresh and the old spell is kept.
+
+342 rows become **328 people**: 8 with genuine prior spells, and 6 rows folded
+because they were the same spell typed twice or one continuous stretch recorded
+under two trading names.
+
+**Name is only safe as the key because this file has no namesakes.** All 13
+duplicated names agree on birth date. That is checked at import time rather than
+assumed — two rows sharing a name but disagreeing on a known birth date are kept
+as separate people and reported, because merging two strangers into one record
+is far worse than leaving a duplicate for someone to spot.
+
+**Idempotent**, so the loop is: fix the sheet, re-run, re-verify. A second run
+creates nobody.
+
+`--only active` / `--only separated` narrow it by whether the person's latest
+spell is open.
 
 Everyone imports into the `Unassigned` position with their real position kept in
 Remarks, until the naming is settled.
@@ -108,10 +124,15 @@ across midnight by a timezone, kilos stored as grams and read back wrong, a
 leading zero lost again on the way in — shows up as a mismatch rather than as
 silence.
 
-Wave 1 currently reports **82 of 82 people, 2296 field comparisons, 0
-mismatches**. That number is only worth anything because the check was
-mutation-tested: corrupting a height, a birth date and a document status in the
-database made it report exactly those three.
+It currently reports **328 of 328 people, 9184 field comparisons, 0 mismatches**,
+and that includes the number of filed prior spells per person.
+
+That number is only worth anything because the check was mutation-tested twice:
+corrupting a height, a birth date and a document status made it report exactly
+those three; deleting a filed spell, flipping someone to inactive and rewriting
+a Pag-IBIG number made it report exactly those three. It also caught a real
+disagreement — where the database was right and the checker was wrong — which is
+how the per-document merge rule below came to be written down properly.
 
 ## Files
 
@@ -120,6 +141,7 @@ database made it report exactly those three.
 | `mapping.py` | The vocabulary — every spreadsheet word and what it becomes |
 | `read_sheet.py` | Parsing and checking. Touches no database, so it is safe to run repeatedly |
 | `audit.py` | The report on what will and will not import |
+| `people.py` | Groups rows into people and resolves their spells |
 | `import.py` | The import, dry by default |
 | `verify.py` | Reads the database back and compares it to the sheet |
 | `test_parsers.py` | 55 checks on the parsers, no spreadsheet needed |

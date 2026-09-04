@@ -7,42 +7,37 @@ Import the 201 spreadsheet into a LOCAL Otomate instance.
       -d "{\"email\":\"admin@otomate.local\",\"password\":\"$SEED_ADMIN_PASSWORD\"}" \
       | python3 -c "import json,sys;print(json.load(sys.stdin)['data']['token'])" > /tmp/otomate.token
 
-    # look, change nothing
-    python3 scripts/import-201/import.py "<sheet>.xlsx" --wave active
-
-    # actually write
-    python3 scripts/import-201/import.py "<sheet>.xlsx" --wave active --commit
+    python3 scripts/import-201/import.py "<sheet>.xlsx"            # look, change nothing
+    python3 scripts/import-201/import.py "<sheet>.xlsx" --commit   # actually write
 
 Everything goes through the API, so the same Zod validation and permission
 checks apply as when a person types it. Data that could not be entered by hand
-does not get in this way either — and if a field is rejected, that is a bug in
-the mapping worth knowing about rather than something to route around.
+does not get in this way either — and a rejected field is a bug in the mapping
+worth knowing about rather than something to route around.
 
-TWO WAVES, deliberately.
+ONE RECORD PER PERSON. The sheet lists SPELLS, not people: somebody who left and
+came back appears twice, once in an active section and once in the archive. Rows
+are grouped into people first (see people.py, and note that name is only safe as
+a key here because every duplicated name agrees on birth date), then each
+person's earlier spells are filed through the app's own separate/rehire
+endpoints. That is what makes the history real: a filed spell restarts service
+and holiday eligibility, which is the rule the business gave — they come back
+fresh, and the old spell is kept rather than overwritten.
 
-  active     — the 82 people still employed. These feed work schedules and
-               probation warnings, so every field matters and errors surface
-               immediately. Small enough to check by eye against the sheet
-               afterwards, which is the point.
-  separated  — the 260 who have left. An archive: mostly AWOL leavers, largely
-               missing IDs and phones already, and nobody's pay depends on them.
-
-Holding both to the same standard triples the work for the half that matters
-least.
-
-IDEMPOTENT. Matching is on name plus hire date, because the sheet's "No." column
-is filled on only 36 of 349 rows and cannot be a key. A person already present
-is updated, not duplicated, so this can be re-run after correcting the sheet.
+IDEMPOTENT on the person's name, so this can be re-run after correcting the
+sheet without duplicating anybody.
 """
 import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import people as people_mod  # noqa: E402
 import read_sheet  # noqa: E402
 
 API = 'http://localhost:3001'
@@ -52,7 +47,20 @@ if 'localhost' not in API and '127.0.0.1' not in API:
 PLACEHOLDER_POSITION = 'Unassigned'
 
 
-def req(method, path, body=None, token=None):
+class ApiError(Exception):
+    pass
+
+
+def req(method, path, body=None, token=None, _tries=0):
+    """
+    One API call, waiting out the rate limiter rather than failing under it.
+
+    The API allows 1000 requests per 15 minutes — generous for a person clicking
+    around, and this import is roughly 700 in a burst. Re-running inside the
+    same window therefore trips it. Backing off is right rather than raising the
+    limit: the limiter is a flood backstop protecting a machine that also serves
+    eleven branches, and a migration script is the thing that should yield.
+    """
     r = urllib.request.Request(
         f'{API}{path}', method=method,
         headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
@@ -60,161 +68,223 @@ def req(method, path, body=None, token=None):
     try:
         return json.load(urllib.request.urlopen(r))['data']
     except urllib.error.HTTPError as e:
-        raise SystemExit(f'{method} {path} -> {e.code}: {e.read().decode()[:400]}')
+        if e.code == 429 and _tries < 40:
+            if _tries == 0:
+                print('  rate limited — waiting for the window to clear…', flush=True)
+            time.sleep(30)
+            return req(method, path, body, token, _tries + 1)
+        raise ApiError(f'{method} {path} -> {e.code}: {e.read().decode()[:300]}')
 
 
-def natural_key(person):
-    """
-    What makes two rows the same person.
-
-    Name alone is not enough — 13 names appear more than once in the sheet — and
-    the hire date separates a rehire from a namesake. Neither is perfect, which
-    is why collisions are reported rather than merged silently.
-    """
-    return (
-        (person['lastName'] or '').strip().lower(),
-        (person['firstName'] or '').strip().lower(),
-        (person['middleName'] or '').strip().lower(),
-        str(person['dateHired'] or ''),
-    )
-
-
-def hr_payload(person, branch_ids):
-    """The 201 fields, as the API wants them. Only what the sheet actually says."""
-    body = {
-        'birthDate': _iso(person['birthDate']),
-        'birthPlace': person['birthPlace'],
-        'gender': person['gender'],
-        'civilStatus': person['civilStatus'],
-        'religion': person['religion'],
-        'address': person['address'],
-        'email': person['email'],
-        'heightCm': person['heightCm'],
-        'weightGrams': person['weightGrams'],
-        'educationLevel': person['educationLevel'],
-        'educationDetail': person['educationDetail'],
-        'remarks': person['remarks'],
-        'emergencyName': person['emergencyName'],
-        'emergencyContact': person['emergencyContact'],
-        'sssNumber': person['sss'],
-        'philhealthNumber': person['philhealth'],
-        'pagibigNumber': person['hdmf'],
-        'tin': person['tin'],
-        'dateHired': _iso(person['dateHired']),
-        'separatedAt': _iso(person['separatedAt']),
-        'separationReason': person['separationReason'],
-    }
-    if person['employmentType']:
-        body['employmentType'] = person['employmentType']
-    # A status per document. The sheet says whether we have it, never when.
-    for key, field in (('confidentiality', 'confidentialityAgreement'),
-                       ('authority', 'authorityToDeduct'),
-                       ('birth_cert', 'birthCertificate'),
-                       ('marriage', 'marriageContract')):
-        if person['documents'][key]:
-            body[field] = person['documents'][key]
-    # One number, in the app's list of many. Labelled so it is obvious later that
-    # it came from the spreadsheet rather than being confirmed with the person.
-    if person['phone']:
-        body['contacts'] = [{'number': person['phone'], 'label': 'Mobile'}]
-    return {k: v for k, v in body.items() if v is not None}
+def person_key(last, first, middle):
+    return ((last or '').strip().lower(), (first or '').strip().lower(),
+            (middle or '').strip().lower())
 
 
 def _iso(d):
     return d.isoformat() if d else None
 
 
+def hr_payload(person, spell):
+    """
+    The 201 fields for the record as it stands at `spell`.
+
+    Personal details come from the person (newest row that has one, so an older
+    row can fill a gap the newest one lost); employment details come from the
+    spell being written.
+    """
+    f = person.field
+    body = {
+        'birthDate': _iso(f('birthDate')),
+        'birthPlace': f('birthPlace'),
+        'gender': f('gender'),
+        'civilStatus': f('civilStatus'),
+        'religion': f('religion'),
+        'address': f('address'),
+        'email': f('email'),
+        'heightCm': f('heightCm'),
+        'weightGrams': f('weightGrams'),
+        'educationLevel': f('educationLevel'),
+        'educationDetail': f('educationDetail'),
+        'emergencyName': f('emergencyName'),
+        'emergencyContact': f('emergencyContact'),
+        'sssNumber': f('sss'),
+        'philhealthNumber': f('philhealth'),
+        'pagibigNumber': f('hdmf'),
+        'tin': f('tin'),
+        'dateHired': _iso(spell['dateHired']),
+        'remarks': _remarks(person, spell),
+    }
+    if spell['employmentType']:
+        body['employmentType'] = spell['employmentType']
+    for key, field in (('confidentiality', 'confidentialityAgreement'),
+                       ('authority', 'authorityToDeduct'),
+                       ('birth_cert', 'birthCertificate'),
+                       ('marriage', 'marriageContract')):
+        status = spell['documents'].get(key) or person.document(key)
+        if status:
+            body[field] = status
+    phone = f('phone')
+    if phone:
+        # Labelled so it is obvious later that it came off the spreadsheet rather
+        # than being confirmed with the person.
+        body['contacts'] = [{'number': phone, 'label': 'Mobile'}]
+    return {k: v for k, v in body.items() if v is not None}
+
+
+def _remarks(person, spell):
+    """Everything rescued from cells that could not become values, plus merge notes."""
+    parts = []
+    if spell.get('remarks'):
+        parts.append(spell['remarks'])
+    parts.extend(person.all_notes())
+    text = ' · '.join(dict.fromkeys(p for p in parts if p))
+    return text[:2000] or None
+
+
+def build(person, token, positions, branches):
+    """
+    Create one person and replay their employment history through the app.
+
+    Earlier spells are laid down with separate/rehire rather than written
+    straight into the history table, so they go through the same checks a person
+    would hit — including the refusal to rehire somebody before the day they
+    left, which catches the two overlapping sequences in the sheet.
+    """
+    final = person.final
+    # A last day earlier than the hire date is not a date we can use, and the API
+    # rightly refuses it. Checked here rather than caught, so the record is never
+    # left half-built: without this the employee is created, the separation
+    # fails, and somebody who has left sits in the roster as active.
+    for spell in person.spells:
+        if _unusable_separation(spell):
+            person.notes.append(
+                f'row {spell["row"]}: last day {spell["separatedAt"]} is before the hire date '
+                f'{spell["dateHired"]} — marked as left, but the date needs correcting')
+
+    payload = {
+        'firstName': person.field('firstName') or '?',
+        'middleName': person.field('middleName'),
+        'lastName': person.field('lastName') or '?',
+        'positionId': positions[PLACEHOLDER_POSITION],
+        'branchId': branches.get(final['branch']) if final['branch'] else None,
+        'isActive': True,  # separated at the end, through the real action
+    }
+    code = person.field('employeeCode')
+    if code:
+        payload['employeeCode'] = code
+
+    eid = req('POST', '/api/admin/employees', payload, token=token)['id']
+
+    # Walk the spells oldest first, closing each one and reopening the next.
+    for i, spell in enumerate(person.spells):
+        req('PATCH', f'/api/admin/employees/{eid}/hr', hr_payload(person, spell), token=token)
+        is_last = i == len(person.spells) - 1
+        if not is_last and _unusable_separation(spell):
+            # Cannot be closed, so cannot be filed as a prior spell. Skipping the
+            # rehire keeps the record coherent — one open spell — rather than
+            # inventing a history the dates do not support.
+            continue
+        if not is_last:
+            nxt = person.spells[i + 1]
+            req('POST', f'/api/admin/employees/{eid}/separate', {
+                'separatedOn': _iso(spell['separatedAt']),
+                'separationReason': spell['separationReason'],
+            }, token=token)
+            req('POST', f'/api/admin/employees/{eid}/rehire', {
+                'dateHired': _iso(nxt['dateHired']),
+                'employmentType': nxt['employmentType'] or 'PROBATIONARY',
+            }, token=token)
+
+    if not final['isActive']:
+        if final['separatedAt'] and not _unusable_separation(final):
+            req('POST', f'/api/admin/employees/{eid}/separate', {
+                'separatedOn': _iso(final['separatedAt']),
+                'separationReason': final['separationReason'],
+            }, token=token)
+        else:
+            # Left, but with no usable last day — the sheet never recorded one
+            # (common for AWOL: somebody stops coming and nobody writes a date)
+            # or the one it has predates the hire date. Mark them inactive
+            # rather than inventing a day they left.
+            req('PATCH', f'/api/admin/employees/{eid}', {'isActive': False}, token=token)
+    return eid
+
+
+def _unusable_separation(spell):
+    """A last day before the hire date. One row in the sheet has this."""
+    return bool(spell['separatedAt'] and spell['dateHired']
+                and spell['separatedAt'] < spell['dateHired'])
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('sheet')
-    ap.add_argument('--wave', choices=('active', 'separated', 'all'), default='active')
-    ap.add_argument('--commit', action='store_true',
-                    help='actually write. Without it nothing is changed.')
+    ap.add_argument('--only', choices=('active', 'separated', 'all'), default='all',
+                    help='which people to import, by whether their LATEST spell is open')
+    ap.add_argument('--commit', action='store_true', help='actually write')
     args = ap.parse_args()
 
     token = open('/tmp/otomate.token').read().strip()
-    people, issues, skipped = read_sheet.read(args.sheet)
+    rows, _, _ = read_sheet.read(args.sheet)
+    everyone, conflicts = people_mod.group(rows)
 
-    wanted = [p for p in people
-              if args.wave == 'all'
-              or (args.wave == 'active') == bool(p['isActive'])]
+    wanted = [p for p in everyone
+              if args.only == 'all' or (args.only == 'active') == bool(p.final['isActive'])]
 
     positions = {p['name']: p['id'] for p in req('GET', '/api/admin/positions', token=token)}
     if PLACEHOLDER_POSITION not in positions:
-        raise SystemExit(f'No "{PLACEHOLDER_POSITION}" position. Create it first — position '
-                         f'names are still being standardised, so nobody is given a real one.')
+        raise SystemExit(f'No "{PLACEHOLDER_POSITION}" position — create it first.')
     branches = {b['name']: b['id'] for b in req('GET', '/api/admin/branches', token=token)}
 
     existing = {}
-    for e in req('GET', '/api/admin/employees', token=token):
-        full = req('GET', f"/api/admin/employees/{e['id']}", token=token)
-        existing[natural_key({
-            'lastName': full['lastName'], 'firstName': full['firstName'],
-            'middleName': full['middleName'],
-            'dateHired': (full.get('hr') or {}).get('dateHired'),
-        })] = e['id']
+    for e in req('GET', '/api/admin/employees?includeInactive=true', token=token):
+        existing[person_key(e['lastName'], e['firstName'], e.get('middleName'))] = e['id']
 
-    print(f'{"COMMIT" if args.commit else "DRY RUN"} · wave "{args.wave}" · '
-          f'{len(wanted)} of {len(people)} people')
-    print(f'  already in the database: {len(existing)}')
+    unknown = sorted({p.final['branch'] for p in wanted
+                      if p.final['branch'] and p.final['branch'] not in branches})
+    if unknown:
+        raise SystemExit(f'Branches not in Otomate: {unknown}')
 
-    missing_branch = [p for p in wanted if not p['branch']]
-    unknown_branch = sorted({p['branch'] for p in wanted
-                             if p['branch'] and p['branch'] not in branches})
-    if unknown_branch:
-        raise SystemExit(f'These branches are not in Otomate: {unknown_branch}. '
-                         f'Add them, or correct scripts/import-201/mapping.py.')
+    rehired = [p for p in everyone if len(p.spells) > 1]
+    folded = [p for p in everyone if p.merged]
 
-    collisions = {}
-    for p in wanted:
-        collisions.setdefault(natural_key(p), []).append(p['row'])
-    clashing = {k: v for k, v in collisions.items() if len(v) > 1}
+    print(f'{"COMMIT" if args.commit else "DRY RUN"} · {len(rows)} rows -> '
+          f'{len(everyone)} people · importing {len(wanted)}')
+    print(f'  already in the database : {len(existing)}')
+    print(f'  people with prior spells: {len(rehired)} '
+          f'({sum(len(p.spells) - 1 for p in rehired)} spells to file)')
+    print(f'  rows folded as duplicates or continuous service: '
+          f'{sum(len(p.merged) for p in folded)} across {len(folded)} people')
+    if conflicts:
+        print(f'  SAME NAME, DIFFERENT BIRTH DATE — kept apart: {len(conflicts)}')
+        for key, at in conflicts:
+            print(f'    rows {at}')
 
-    print(f'  no branch in the sheet: {len(missing_branch)} (imported without one)')
-    print(f'  same name AND hire date more than once: {len(clashing)}'
-          + (f' at rows {sorted(r for v in clashing.values() for r in v)}' if clashing else ''))
-
-    created = updated = failed = 0
-    for p in wanted:
-        key = natural_key(p)
-        payload = {
-            'firstName': p['firstName'] or '?',
-            'middleName': p['middleName'],
-            'lastName': p['lastName'] or '?',
-            'positionId': positions[PLACEHOLDER_POSITION],
-            'branchId': branches.get(p['branch']) if p['branch'] else None,
-            'isActive': bool(p['isActive']),
-        }
-        if p['employeeCode']:
-            payload['employeeCode'] = p['employeeCode']
-
-        if not args.commit:
-            created += key not in existing
-            updated += key in existing
-            continue
-
-        try:
-            if key in existing:
-                eid = existing[key]
-                req('PATCH', f'/api/admin/employees/{eid}', payload, token=token)
-                updated += 1
-            else:
-                eid = req('POST', '/api/admin/employees', payload, token=token)['id']
-                existing[key] = eid
-                created += 1
-            req('PATCH', f'/api/admin/employees/{eid}/hr', hr_payload(p, branches), token=token)
-        except SystemExit as e:
-            failed += 1
-            print(f'  row {p["row"]}: {e}', file=sys.stderr)
-
-    verb = 'would create' if not args.commit else 'created'
-    print(f'\n  {verb}: {created}')
-    print(f'  {"would update" if not args.commit else "updated"}: {updated}')
-    if failed:
-        print(f'  FAILED: {failed}')
     if not args.commit:
+        print(f'\n  would create: {sum(1 for p in wanted if person_key(*p.key) not in existing)}')
+        print(f'  would skip (already present): '
+              f'{sum(1 for p in wanted if person_key(*p.key) in existing)}')
         print('\nNothing was written. Re-run with --commit to apply.')
+        return
+
+    created = skipped = failed = 0
+    for p in wanted:
+        if p.key in existing:
+            skipped += 1
+            continue
+        try:
+            build(p, token, positions, branches)
+            created += 1
+        except ApiError as e:
+            failed += 1
+            print(f'  rows {[r["row"] for r in p.rows]}: {e}', file=sys.stderr)
+
+    print(f'\n  created: {created}')
+    print(f'  already present, left alone: {skipped}')
+    if failed:
+        print(f'  FAILED: {failed} — see above. A failure part-way through leaves the record\n        in whatever state it reached, so re-run after fixing the sheet.')
 
 
 if __name__ == '__main__':
