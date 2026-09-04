@@ -16,6 +16,19 @@
 
 set -euo pipefail
 
+# Owner-only, for everything this script creates.
+#
+# A dump is the whole database in one readable file: names, addresses, birth
+# dates, SSS and PhilHealth numbers, salaries. It was being written 0644, so any
+# account on the box — or anything running as one — could read the lot without
+# touching Postgres at all. The database itself demands a password; its backup
+# should not be the way around that.
+#
+# Set before anything is created rather than chmod'ed afterwards: a file written
+# world-readable and corrected a second later was still world-readable for that
+# second.
+umask 077
+
 BACKUP_DIR="${BACKUP_DIR:-$HOME/otomate/backups}"
 COMPOSE_DIR="${COMPOSE_DIR:-$HOME/otomate}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
@@ -33,6 +46,7 @@ cleanup_partials() { rm -f "$DB_FILE.tmp" "$IMG_FILE.tmp"; }
 trap cleanup_partials EXIT
 
 mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
 cd "$COMPOSE_DIR" || die "no compose directory at $COMPOSE_DIR"
 
 # ---------------------------------------------------------------- database ---

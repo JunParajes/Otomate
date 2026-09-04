@@ -40,18 +40,34 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import people as people_mod  # noqa: E402
 import read_sheet  # noqa: E402
 
-API = 'http://localhost:3001'
-if 'localhost' not in API and '127.0.0.1' not in API:
-    raise SystemExit('Refusing to run against anything but a local API.')
-
+DEFAULT_API = 'http://localhost:3001'
 PLACEHOLDER_POSITION = 'Unassigned'
+
+
+def guard_target(api: str, allow_remote: bool) -> str:
+    """
+    Anything but localhost has to be asked for by name.
+
+    This writes several hundred real people into whatever it is pointed at. The
+    guard is not that remote is forbidden — the production import is the whole
+    point of the script — but that reaching it must be deliberate, spelled out
+    on the command line, and impossible to arrive at by forgetting a flag.
+    """
+    local = 'localhost' in api or '127.0.0.1' in api
+    if local:
+        return api
+    if not allow_remote:
+        raise SystemExit(
+            f'Refusing to write to {api}: pass --i-mean-it to import somewhere '
+            f'that is not this machine.')
+    return api
 
 
 class ApiError(Exception):
     pass
 
 
-def req(method, path, body=None, token=None, _tries=0):
+def req(method, path, body=None, token=None, _tries=0, api=None):
     """
     One API call, waiting out the rate limiter rather than failing under it.
 
@@ -62,7 +78,7 @@ def req(method, path, body=None, token=None, _tries=0):
     eleven branches, and a migration script is the thing that should yield.
     """
     r = urllib.request.Request(
-        f'{API}{path}', method=method,
+        f'{api or DEFAULT_API}{path}', method=method,
         headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
         data=json.dumps(body).encode() if body else None)
     try:
@@ -72,7 +88,7 @@ def req(method, path, body=None, token=None, _tries=0):
             if _tries == 0:
                 print('  rate limited — waiting for the window to clear…', flush=True)
             time.sleep(30)
-            return req(method, path, body, token, _tries + 1)
+            return req(method, path, body, token, _tries + 1, api)
         raise ApiError(f'{method} {path} -> {e.code}: {e.read().decode()[:300]}')
 
 
@@ -142,7 +158,7 @@ def _remarks(person, spell):
     return text[:2000] or None
 
 
-def build(person, token, positions, branches):
+def build(person, token, positions, branches, api):
     """
     Create one person and replay their employment history through the app.
 
@@ -174,11 +190,11 @@ def build(person, token, positions, branches):
     # The sheet's "No." column is NOT imported. It is filled on 36 of 349 rows,
     # is not unique across them, and nobody uses it — an identifier that applies
     # to a tenth of the roster is worse than none, because it looks like a key.
-    eid = req('POST', '/api/admin/employees', payload, token=token)['id']
+    eid = req('POST', '/api/admin/employees', payload, token=token, api=api)['id']
 
     # Walk the spells oldest first, closing each one and reopening the next.
     for i, spell in enumerate(person.spells):
-        req('PATCH', f'/api/admin/employees/{eid}/hr', hr_payload(person, spell), token=token)
+        req('PATCH', f'/api/admin/employees/{eid}/hr', hr_payload(person, spell), token=token, api=api)
         is_last = i == len(person.spells) - 1
         if not is_last and _unusable_separation(spell):
             # Cannot be closed, so cannot be filed as a prior spell. Skipping the
@@ -190,24 +206,24 @@ def build(person, token, positions, branches):
             req('POST', f'/api/admin/employees/{eid}/separate', {
                 'separatedOn': _iso(spell['separatedAt']),
                 'separationReason': spell['separationReason'],
-            }, token=token)
+            }, token=token, api=api)
             req('POST', f'/api/admin/employees/{eid}/rehire', {
                 'dateHired': _iso(nxt['dateHired']),
                 'employmentType': nxt['employmentType'] or 'PROBATIONARY',
-            }, token=token)
+            }, token=token, api=api)
 
     if not final['isActive']:
         if final['separatedAt'] and not _unusable_separation(final):
             req('POST', f'/api/admin/employees/{eid}/separate', {
                 'separatedOn': _iso(final['separatedAt']),
                 'separationReason': final['separationReason'],
-            }, token=token)
+            }, token=token, api=api)
         else:
             # Left, but with no usable last day — the sheet never recorded one
             # (common for AWOL: somebody stops coming and nobody writes a date)
             # or the one it has predates the hire date. Mark them inactive
             # rather than inventing a day they left.
-            req('PATCH', f'/api/admin/employees/{eid}', {'isActive': False}, token=token)
+            req('PATCH', f'/api/admin/employees/{eid}', {'isActive': False}, token=token, api=api)
     return eid
 
 
@@ -224,33 +240,62 @@ def main():
     ap.add_argument('--only', choices=('active', 'separated', 'all'), default='all',
                     help='which people to import, by whether their LATEST spell is open')
     ap.add_argument('--commit', action='store_true', help='actually write')
+    ap.add_argument('--api', default=DEFAULT_API, help='the Otomate API to write to')
+    ap.add_argument('--i-mean-it', dest='allow_remote', action='store_true',
+                    help='required to write anywhere that is not this machine')
+    ap.add_argument('--create-branches', action='store_true',
+                    help="create any branch the sheet names that does not exist yet")
+    ap.add_argument('--token-file', default='/tmp/otomate.token')
     args = ap.parse_args()
 
-    token = open('/tmp/otomate.token').read().strip()
+    api = guard_target(args.api, args.allow_remote)
+    token = open(args.token_file).read().strip()
     rows, _, _ = read_sheet.read(args.sheet)
     everyone, conflicts = people_mod.group(rows)
 
     wanted = [p for p in everyone
               if args.only == 'all' or (args.only == 'active') == bool(p.final['isActive'])]
 
-    positions = {p['name']: p['id'] for p in req('GET', '/api/admin/positions', token=token)}
+    positions = {p['name']: p['id'] for p in req('GET', '/api/admin/positions', token=token, api=api)}
     if PLACEHOLDER_POSITION not in positions:
-        raise SystemExit(f'No "{PLACEHOLDER_POSITION}" position — create it first.')
-    branches = {b['name']: b['id'] for b in req('GET', '/api/admin/branches', token=token)}
+        # Everyone lands here until the real position names are settled, so a
+        # fresh database needs it made rather than being told to go and do it.
+        if args.commit:
+            positions[PLACEHOLDER_POSITION] = req(
+                'POST', '/api/admin/positions',
+                {'name': PLACEHOLDER_POSITION}, token=token, api=api)['id']
+            print(f'  created the "{PLACEHOLDER_POSITION}" position')
+        else:
+            print(f'  would create the "{PLACEHOLDER_POSITION}" position')
+            positions[PLACEHOLDER_POSITION] = '(pending)'
+    branches = {b['name']: b['id'] for b in req('GET', '/api/admin/branches', token=token, api=api)}
 
     existing = {}
-    for e in req('GET', '/api/admin/employees?includeInactive=true', token=token):
+    for e in req('GET', '/api/admin/employees?includeInactive=true', token=token, api=api):
         existing[person_key(e['lastName'], e['firstName'], e.get('middleName'))] = e['id']
 
     unknown = sorted({p.final['branch'] for p in wanted
                       if p.final['branch'] and p.final['branch'] not in branches})
+    if unknown and not args.create_branches:
+        raise SystemExit(
+            f'Branches not in Otomate: {unknown}\n'
+            f'Pass --create-branches to have them made from the sheet, or correct the '
+            f'names in scripts/import-201/mapping.py.')
     if unknown:
-        raise SystemExit(f'Branches not in Otomate: {unknown}')
+        # Created from the sheet, which is the point on a clean database: the
+        # spreadsheet's branch names become the branch list, so no reconciling
+        # is needed between what HR types and what the app calls a place.
+        print(f'  branches to create ({len(unknown)}): {", ".join(unknown)}')
+        if args.commit:
+            for name in unknown:
+                branches[name] = req('POST', '/api/admin/branches',
+                                     {'name': name}, token=token, api=api)['id']
+            print(f'  created {len(unknown)} branches')
 
     rehired = [p for p in everyone if len(p.spells) > 1]
     folded = [p for p in everyone if p.merged]
 
-    print(f'{"COMMIT" if args.commit else "DRY RUN"} · {len(rows)} rows -> '
+    print(f'{"COMMIT" if args.commit else "DRY RUN"} · {api} · {len(rows)} rows -> '
           f'{len(everyone)} people · importing {len(wanted)}')
     print(f'  already in the database : {len(existing)}')
     print(f'  people with prior spells: {len(rehired)} '
@@ -275,7 +320,7 @@ def main():
             skipped += 1
             continue
         try:
-            build(p, token, positions, branches)
+            build(p, token, positions, branches, api)
             created += 1
         except ApiError as e:
             failed += 1

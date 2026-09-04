@@ -74,10 +74,27 @@ blank gets filled in and the wrong one gets believed.
 
 ```bash
 # look, change nothing
-/tmp/201-venv/bin/python scripts/import-201/import.py "<sheet>.xlsx" --wave active
-# actually write
-/tmp/201-venv/bin/python scripts/import-201/import.py "<sheet>.xlsx" --wave active --commit
+/tmp/201-venv/bin/python scripts/import-201/import.py "<sheet>.xlsx"
+# actually write, creating any branch the sheet names
+/tmp/201-venv/bin/python scripts/import-201/import.py "<sheet>.xlsx" --create-branches --commit
 ```
+
+**On a clean database, let the sheet define the branch list.** `--create-branches`
+makes every branch the spreadsheet names, so nothing has to be reconciled between
+what HR types and what the app calls a place. Without the flag an unknown branch
+stops the run rather than being invented. The `Unassigned` position is created
+the same way.
+
+### Writing somewhere that is not this machine
+
+```bash
+… --api https://otomate.uk --i-mean-it --token-file ~/.otomate-prod.token
+```
+
+Anything but localhost has to be named on the command line AND accompanied by
+`--i-mean-it`. The guard is not that remote is forbidden — the production import
+is the point — but that reaching production must be deliberate and impossible to
+arrive at by forgetting a flag.
 
 Everything goes through the API, so the same validation and permission checks
 apply as when a person types it. Local only — it refuses any other host.
