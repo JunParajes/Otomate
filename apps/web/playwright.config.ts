@@ -46,6 +46,10 @@ export default defineConfig({
         DATABASE_URL: process.env.DATABASE_URL ?? '',
         JWT_SECRET: process.env.JWT_SECRET ?? '',
         NODE_ENV: 'test',
+        // reuseExistingServer keeps this process alive between local runs, so
+        // the flood limiter's counter accumulates across them and the tail of
+        // the suite starts failing with "Could not load". See rate-limit.ts.
+        API_RATE_LIMIT: '100000',
       },
     },
     {

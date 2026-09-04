@@ -116,6 +116,54 @@ test('staff can be narrowed to one gender', async ({ page }) => {
   await expect(page.getByText(new RegExp(`showing ${after}\\b`))).toBeVisible()
 })
 
+test('staff can be narrowed to one employment status', async ({ page }) => {
+  await signIn(page)
+  await expect(page.locator('tbody tr').first()).toBeVisible()
+  const before = await page.locator('tbody tr').count()
+
+  /*
+   * Contractual, because nobody is. A status somebody DOES hold proves less:
+   * the count line only prints "showing N" when it differs from the active
+   * total, so a filter that happens to match everyone looks identical to no
+   * filter at all. An empty result is unambiguous.
+   */
+  await page.getByPlaceholder('Any status').click()
+  await page.getByRole('option', { name: 'Contractual', exact: true }).click()
+  await expect(page.locator('tbody tr')).toHaveCount(0)
+  await expect(page.getByText(/showing 0/)).toBeVisible()
+
+  // And clearing it brings everyone back.
+  await page.getByPlaceholder('Any status').click()
+  await page.getByRole('option', { name: 'Probationary', exact: true }).click()
+  const probationary = await page.locator('tbody tr').count()
+  expect(probationary).toBeGreaterThan(0)
+  expect(probationary).toBeLessThanOrEqual(before)
+})
+
+/**
+ * Every filter has to be able to show its own longest value.
+ *
+ * All five controls fit one line only by shrinking the pickers until "All
+ * positions" renders as "All positic" and a selected "Part-time (extra)" is cut
+ * in half. That is more cramped than wrapping, not less — so the search box
+ * sits with the toggles and the filters get a line of their own. This fails if
+ * somebody squeezes them back together.
+ */
+test('no filter clips the value it is showing', async ({ page }) => {
+  await signIn(page)
+
+  await page.getByPlaceholder('Any status').click()
+  await page.getByRole('option', { name: 'Part-time (extra)' }).click()
+
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll('input')]
+      .filter(i => (i.value || i.placeholder) && i.offsetParent !== null)
+      .filter(i => i.scrollWidth > i.clientWidth + 1)
+      .map(i => i.value || i.placeholder))
+
+  expect(clipped, `these are cut off: ${clipped.join(', ')}`).toEqual([])
+})
+
 test('the branch view groups people under the branch they work at', async ({ page }) => {
   await signIn(page)
   await page.getByText('By branch', { exact: true }).click()

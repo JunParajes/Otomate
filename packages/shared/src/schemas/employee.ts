@@ -129,7 +129,13 @@ export const CIVIL_STATUS_LABELS: Record<CivilStatus, string> = {
   SINGLE: 'Single', MARRIED: 'Married', WIDOWED: 'Widowed', SEPARATED: 'Separated',
 }
 export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
-  PROBATIONARY: 'Probationary', REGULAR: 'Regular', CONTRACTUAL: 'Contractual', PART_TIME: 'Part-time',
+  PROBATIONARY: 'Probationary',
+  REGULAR: 'Regular',
+  CONTRACTUAL: 'Contractual',
+  // "Extra" is what the business calls these people, and what the paper 201
+  // file says — "Extra/ On Call". Leading with the formal term keeps the record
+  // readable to anyone outside the bakery; the bracket is so HR recognises it.
+  PART_TIME: 'Part-time (extra)',
 }
 export const SALARY_RATE_LABELS: Record<SalaryRateType, string> = {
   DAILY: 'per day', MONTHLY: 'per month', HOURLY: 'per hour',

@@ -15,7 +15,8 @@ import {
   IconUserOff, IconX,
 } from '@tabler/icons-react'
 import {
-  createEmployeeSchema, formatEmployeeName, GENDERS, GENDER_LABELS, type Employee,
+  createEmployeeSchema, EMPLOYMENT_TYPES, EMPLOYMENT_TYPE_LABELS, formatEmployeeName,
+  GENDERS, GENDER_LABELS, type Employee,
 } from '@otomate/shared'
 import { employeeApi, positionApi } from '@/lib/employees'
 import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
@@ -49,6 +50,7 @@ export default function EmployeesPage() {
   const [branchFilter, setBranchFilter] = useState<string | null>(null)
   const [positionFilter, setPositionFilter] = useState<string | null>(null)
   const [genderFilter, setGenderFilter] = useState<string | null>(null)
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   /*
    * The archive is hidden by default and that is the single biggest thing on
    * this page: 328 records, 247 of them people who left. Opening on all of them
@@ -119,12 +121,13 @@ export default function EmployeesPage() {
       if (branchFilter === NO_BRANCH ? e.branch : branchFilter && e.branch?.id !== branchFilter) return false
       if (positionFilter && e.position.id !== positionFilter) return false
       if (genderFilter && e.hr?.gender !== genderFilter) return false
+      if (typeFilter && e.hr?.employmentType !== typeFilter) return false
       if (!q) return true
       const haystack = [e.name, e.firstName, e.middleName, e.lastName, e.suffix]
         .filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(q)
     })
-  }, [all, search, branchFilter, positionFilter, genderFilter, showSeparated])
+  }, [all, search, branchFilter, positionFilter, genderFilter, typeFilter, showSeparated])
 
   /** Grouped for the card view — biggest branches first, no-branch last. */
   const byBranch = useMemo(() => {
@@ -264,7 +267,16 @@ export default function EmployeesPage() {
         action={canWrite && <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add employee</Button>}
       />
 
-      <Group mb="md" gap="sm" wrap="wrap" align="center">
+      {/*
+        Two rows, arranged by what actually needs the room.
+
+        All five controls fit on one line only by shrinking the pickers until
+        "All positions" renders as "All positic" and a selected "Part-time
+        (extra)" is clipped in half — which is more cramped than wrapping, not
+        less. The search box and the two toggles are narrow and go together;
+        the filters then get a full line, so no label is ever cut.
+      */}
+      <Group mb="xs" gap="sm" wrap="wrap" align="center">
         <TextInput
           placeholder="Search name"
           leftSection={<IconSearch size={16} />}
@@ -272,28 +284,6 @@ export default function EmployeesPage() {
           onChange={e => setSearch(e.currentTarget.value)}
           w={{ base: '100%', xs: 340 }}
         />
-        <Select
-          placeholder="All branches"
-          data={[{ value: NO_BRANCH, label: 'No branch' }, ...branchOptions]}
-          value={branchFilter} onChange={setBranchFilter} clearable searchable
-          w={{ base: '100%', xs: 165 }}
-        />
-        <Select
-          placeholder="All positions" data={positionOptions}
-          value={positionFilter} onChange={setPositionFilter} clearable searchable
-          w={{ base: '100%', xs: 165 }}
-        />
-        {/* Gender lives in the 201 file, so it is only here for a role that can
-            read one — otherwise the filter would silently match nothing. */}
-        {canReadHr && (
-          <Select
-            placeholder="Any gender"
-            data={GENDERS.map(g => ({ value: g, label: GENDER_LABELS[g] }))}
-            value={genderFilter} onChange={setGenderFilter} clearable
-            w={{ base: '100%', xs: 145 }}
-            aria-label="Gender"
-          />
-        )}
         <Checkbox
           label="Show separated"
           checked={showSeparated === 'yes'}
@@ -309,6 +299,41 @@ export default function EmployeesPage() {
           ]}
           ml="auto"
         />
+      </Group>
+
+      <Group mb="md" gap="sm" wrap="wrap" align="center">
+        <Select
+          placeholder="All branches"
+          data={[{ value: NO_BRANCH, label: 'No branch' }, ...branchOptions]}
+          value={branchFilter} onChange={setBranchFilter} clearable searchable
+          w={{ base: '100%', xs: 175 }}
+        />
+        <Select
+          placeholder="All positions" data={positionOptions}
+          value={positionFilter} onChange={setPositionFilter} clearable searchable
+          w={{ base: '100%', xs: 175 }}
+        />
+        {/* Employment status and gender both live in the 201 file, so they are
+            only here for a role that can read one — otherwise they would sit
+            there silently matching nothing. */}
+        {canReadHr && (
+          <>
+            <Select
+              placeholder="Any status"
+              data={EMPLOYMENT_TYPES.map(t => ({ value: t, label: EMPLOYMENT_TYPE_LABELS[t] }))}
+              value={typeFilter} onChange={setTypeFilter} clearable
+              w={{ base: '100%', xs: 195 }}
+              aria-label="Employment status"
+            />
+            <Select
+              placeholder="Any gender"
+              data={GENDERS.map(g => ({ value: g, label: GENDER_LABELS[g] }))}
+              value={genderFilter} onChange={setGenderFilter} clearable
+              w={{ base: '100%', xs: 145 }}
+              aria-label="Gender"
+            />
+          </>
+        )}
       </Group>
 
       {/*

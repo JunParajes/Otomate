@@ -95,7 +95,22 @@ export const authLimiter = rateLimit({
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 1000,
+  /*
+   * Overridable, for the browser suite only.
+   *
+   * The default protects a machine that also serves eleven branches, and no
+   * screen comes anywhere near it. The Playwright server is a different case:
+   * it is reused between local runs, so its counter carries across them, and a
+   * suite that has grown past seventy tests eventually spends the whole window
+   * — at which point the LAST test fails with "Could not load", which reads
+   * like a broken page rather than a spent allowance. That cost an hour to
+   * find, twice.
+   *
+   * Raised by the value in the environment rather than skipped when NODE_ENV is
+   * test: the API's own integration tests run as NODE_ENV=test too, and they
+   * should keep meeting the real limiter.
+   */
+  limit: Number(process.env.API_RATE_LIMIT ?? 1000),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: clientKey,
