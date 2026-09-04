@@ -1,0 +1,69 @@
+/*
+ * The bulk bar, pinned to the bottom while a selection is live.
+ *
+ * Selecting people happens by scrolling, and a control that scrolls away with
+ * the rows is one you have to hunt for after every tick. Same reasoning as the
+ * save bar on the 201 file — the action belongs where the hand already is.
+ */
+.bulkBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--mantine-color-body);
+  border-top: 1px solid var(--mantine-color-default-border);
+  padding: var(--mantine-spacing-sm) 0;
+}
+
+/*
+ * Branch cards, widest first so the big branches are not last.
+ *
+ * auto-fill rather than a fixed count: on an iPad in landscape this lands three
+ * across, on a phone one, and neither needed a breakpoint written for it.
+ */
+.branchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--mantine-spacing-md);
+  align-items: start;
+}
+
+/*
+ * A branch's own list scrolls inside its card rather than stretching it.
+ *
+ * Panacan has 45 people and Commissary has 1. Without a cap the grid becomes
+ * one enormously tall column beside a stub, and the whole point of the card
+ * view — seeing several branches at once — is lost.
+ */
+.branchList {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* A whole row is the hit target, not just the name. */
+.personRow {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  padding: 6px var(--mantine-spacing-xs);
+  border-radius: var(--mantine-radius-sm);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+}
+
+.personRow:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+.personRow[data-selected='true'] {
+  background: var(--mantine-color-crust-light);
+}
+
+/* Separated staff read as archive without becoming unreadable. */
+.separated {
+  opacity: 0.55;
+}

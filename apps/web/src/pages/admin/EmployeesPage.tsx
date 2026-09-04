@@ -1,13 +1,19 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Badge, Button, Grid, Group, Modal, Select, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core'
+import {
+  ActionIcon, Badge, Button, Card, Checkbox, Grid, Group, Modal, Progress, ScrollArea, SegmentedControl,
+  Select, Stack, Switch, Table, Text, TextInput, Title, Tooltip, UnstyledButton,
+} from '@mantine/core'
 import { useForm } from '@mantine/form'
 // zod4Resolver, not zodResolver: the latter reads error.errors (zod 3);
 // on zod 4 that is undefined and validation throws instead of showing messages.
 import { zod4Resolver as zodResolver } from 'mantine-form-zod-resolver'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { IconId, IconLink, IconPlus, IconSearch, IconUserCheck, IconUserOff } from '@tabler/icons-react'
+import {
+  IconId, IconLayoutGrid, IconLayoutList, IconLink, IconPlus, IconSearch, IconUserCheck,
+  IconUserOff, IconX,
+} from '@tabler/icons-react'
 import {
   createEmployeeSchema, formatEmployeeName, type Employee,
 } from '@otomate/shared'
@@ -15,9 +21,51 @@ import { employeeApi, positionApi } from '@/lib/employees'
 import RowActionsSheet, { rowActionProps, type RowAction } from '@/components/RowActionsSheet'
 import { adminApi } from '@/lib/admin'
 import { useResource } from '@/hooks/useResource'
+import { useStoredPreference } from '@/hooks/useStoredPreference'
 import { useSession } from '@/lib/session'
 import PageHeader from '@/components/PageHeader'
 import DataState from '@/components/DataState'
+import classes from './EmployeesPage.module.css'
+
+const VIEWS = ['list', 'branch'] as const
+type View = (typeof VIEWS)[number]
+
+const NO_BRANCH = '__none__'
+
+/**
+ * A count that is also a filter.
+ *
+ * "81 unassigned" is only half useful if reaching those 81 means working out
+ * which dropdown to set. Every figure on the summary row is the way in to the
+ * thing it counts.
+ */
+function Stat({ label, value, active, onClick, color }: {
+  label: string
+  value: number
+  active?: boolean
+  onClick?: () => void
+  color?: string
+}) {
+  const body = (
+    <Stack gap={0} align="center" px="md" py={6}>
+      <Text fw={700} size="lg" c={color}>{value}</Text>
+      <Text size="xs" c="dimmed" ta="center">{label}</Text>
+    </Stack>
+  )
+  if (!onClick) return <Card withBorder padding={0} radius="md">{body}</Card>
+  return (
+    <UnstyledButton onClick={onClick} aria-pressed={active}>
+      <Card
+        withBorder
+        padding={0}
+        radius="md"
+        style={active ? { borderColor: 'var(--mantine-color-crust-filled)', borderWidth: 2 } : undefined}
+      >
+        {body}
+      </Card>
+    </UnstyledButton>
+  )
+}
 
 export default function EmployeesPage() {
   const { can } = useSession()
@@ -35,6 +83,17 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('')
   const [branchFilter, setBranchFilter] = useState<string | null>(null)
   const [positionFilter, setPositionFilter] = useState<string | null>(null)
+  /*
+   * The archive is hidden by default and that is the single biggest thing on
+   * this page: 328 records, 247 of them people who left. Opening on all of them
+   * buries the 81 who are actually here.
+   */
+  const [showSeparated, setShowSeparated] = useStoredPreference('otomate.employees.separated', 'no', ['no', 'yes'])
+  const [view, setView] = useStoredPreference<View>('otomate.employees.view', 'list', VIEWS)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkPosition, setBulkPosition] = useState<string | null>(null)
+  const [bulkBranch, setBulkBranch] = useState<string | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
   /**
    * "Other" if it still exists, otherwise whatever sorts first. A new record has
@@ -47,6 +106,7 @@ export default function EmployeesPage() {
   }
 
   const canWrite = can('employees:write')
+  const all = employees.data ?? []
   const branchOptions = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }))
   /*
    * Positions are rows now, so the picker is loaded rather than compiled in.
@@ -59,15 +119,11 @@ export default function EmployeesPage() {
 
   /** A login belongs to at most one employee, so hide ones already taken. */
   const userOptions = useMemo(() => {
-    const takenByOthers = new Set(
-      (employees.data ?? [])
-        .filter(e => e.linkedUser)
-        .map(e => e.linkedUser!.id)
-    )
+    const takenByOthers = new Set(all.filter(e => e.linkedUser).map(e => e.linkedUser!.id))
     return (users.data ?? [])
       .filter(u => !takenByOthers.has(u.id))
       .map(u => ({ value: u.id, label: `${u.name} — ${u.email}` }))
-  }, [users.data, employees.data])
+  }, [users.data, all])
 
   const form = useForm({
     initialValues: {
@@ -78,17 +134,66 @@ export default function EmployeesPage() {
     validate: zodResolver(createEmployeeSchema),
   })
 
+  /** The name of the position nobody has really been given yet. */
+  const placeholderPositionId = (positions.data ?? []).find(p => p.name === 'Unassigned')?.id ?? null
+
+  const stats = useMemo(() => ({
+    total: all.length,
+    active: all.filter(e => e.isActive).length,
+    separated: all.filter(e => !e.isActive).length,
+    unplaced: all.filter(e => e.isActive && placeholderPositionId && e.position.id === placeholderPositionId).length,
+    noBranch: all.filter(e => e.isActive && !e.branch).length,
+  }), [all, placeholderPositionId])
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return (employees.data ?? []).filter(e => {
-      if (branchFilter && e.branch?.id !== branchFilter) return false
+    return all.filter(e => {
+      if (showSeparated === 'no' && !e.isActive) return false
+      if (branchFilter === NO_BRANCH ? e.branch : branchFilter && e.branch?.id !== branchFilter) return false
       if (positionFilter && e.position.id !== positionFilter) return false
       if (!q) return true
       const haystack = [e.name, e.firstName, e.middleName, e.lastName, e.suffix]
         .filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(q)
     })
-  }, [employees.data, search, branchFilter, positionFilter])
+  }, [all, search, branchFilter, positionFilter, showSeparated])
+
+  /** Grouped for the card view — biggest branches first, no-branch last. */
+  const byBranch = useMemo(() => {
+    const groups = new Map<string, { name: string; people: Employee[] }>()
+    for (const e of visible) {
+      const key = e.branch?.id ?? NO_BRANCH
+      const name = e.branch?.name ?? 'No branch'
+      if (!groups.has(key)) groups.set(key, { name, people: [] })
+      groups.get(key)!.people.push(e)
+    }
+    return [...groups.entries()].sort((a, b) => {
+      if (a[0] === NO_BRANCH) return 1
+      if (b[0] === NO_BRANCH) return -1
+      return b[1].people.length - a[1].people.length
+    })
+  }, [visible])
+
+  const visibleIds = useMemo(() => visible.map(e => e.id), [visible])
+  const selectedVisible = visibleIds.filter(id => selected.has(id))
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function setMany(ids: string[], on: boolean) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      for (const id of ids) (on ? next.add(id) : next.delete(id))
+      return next
+    })
+  }
 
   async function run(action: () => Promise<unknown>, message: string, done?: () => void) {
     setSaving(true)
@@ -102,6 +207,56 @@ export default function EmployeesPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  /**
+   * Apply one change to everybody ticked.
+   *
+   * Confirmed first with the count in the sentence. Selection survives
+   * scrolling and filtering, so "apply" can reach people who are no longer on
+   * screen — which is the feature, and exactly why it should say how many.
+   */
+  function applyBulk() {
+    const ids = [...selected]
+    const position = positionOptions.find(p => p.value === bulkPosition)
+    const branch = branchOptions.find(b => b.value === bulkBranch)
+    const changes = [
+      position && `position to ${position.label}`,
+      bulkBranch === NO_BRANCH ? 'branch to none' : branch && `branch to ${branch.label}`,
+    ].filter(Boolean).join(' and ')
+
+    modals.openConfirmModal({
+      title: `Update ${ids.length} employee${ids.length === 1 ? '' : 's'}?`,
+      children: <Text size="sm">This sets {changes} for everyone selected. Records are changed one by one, so anything refused is reported and the rest still go through.</Text>,
+      labels: { confirm: `Update ${ids.length}`, cancel: 'Cancel' },
+      onConfirm: () => void (async () => {
+        setSaving(true)
+        setProgress({ done: 0, total: ids.length })
+        try {
+          const payload: { positionId?: string; branchId?: string | null } = {}
+          if (bulkPosition) payload.positionId = bulkPosition
+          if (bulkBranch) payload.branchId = bulkBranch === NO_BRANCH ? null : bulkBranch
+          const { updated, failures } = await employeeApi.updateMany(
+            ids, payload, (done, total) => setProgress({ done, total })
+          )
+          await employees.reload()
+          if (failures.length) {
+            notifications.show({
+              color: 'orange', title: `${updated} updated, ${failures.length} refused`,
+              message: failures[0]?.message ?? 'Some records could not be changed', autoClose: 8000,
+            })
+          } else {
+            notifications.show({ color: 'green', title: 'Done', message: `${updated} employees updated` })
+          }
+          setSelected(new Set())
+          setBulkPosition(null)
+          setBulkBranch(null)
+        } finally {
+          setSaving(false)
+          setProgress(null)
+        }
+      })(),
+    })
   }
 
   function openCreate() {
@@ -132,6 +287,7 @@ export default function EmployeesPage() {
     })
   }
 
+  const filtered = visible.length !== all.length
 
   return (
     <>
@@ -141,78 +297,307 @@ export default function EmployeesPage() {
         action={canWrite && <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add employee</Button>}
       />
 
-      <Group mb="md" gap="sm" wrap="wrap">
+      {/*
+        The roster at a glance, and the way into each group.
+
+        "Needs a position" and "No branch" are the two jobs that actually exist
+        right now — every imported record landed on the placeholder position —
+        so they are counts you can tap rather than filters you have to assemble.
+      */}
+      <Group gap="xs" mb="md" wrap="wrap">
+        <Stat label="Total" value={stats.total} />
+        <Stat
+          label="Active"
+          value={stats.active}
+          color="green"
+          active={showSeparated === 'no' && !branchFilter && !positionFilter}
+          onClick={() => { setShowSeparated('no'); setBranchFilter(null); setPositionFilter(null) }}
+        />
+        <Stat
+          label="Separated"
+          value={stats.separated}
+          active={showSeparated === 'yes'}
+          onClick={() => setShowSeparated(showSeparated === 'yes' ? 'no' : 'yes')}
+        />
+        {placeholderPositionId && stats.unplaced > 0 && (
+          <Stat
+            label="Needs a position"
+            value={stats.unplaced}
+            color="orange"
+            active={positionFilter === placeholderPositionId}
+            onClick={() => {
+              setShowSeparated('no')
+              setPositionFilter(positionFilter === placeholderPositionId ? null : placeholderPositionId)
+            }}
+          />
+        )}
+        {stats.noBranch > 0 && (
+          <Stat
+            label="No branch"
+            value={stats.noBranch}
+            color="orange"
+            active={branchFilter === NO_BRANCH}
+            onClick={() => {
+              setShowSeparated('no')
+              setBranchFilter(branchFilter === NO_BRANCH ? null : NO_BRANCH)
+            }}
+          />
+        )}
+      </Group>
+
+      <Group mb="md" gap="sm" wrap="wrap" align="center">
         <TextInput
-          placeholder="Search name or code"
+          placeholder="Search name"
           leftSection={<IconSearch size={16} />}
           value={search}
           onChange={e => setSearch(e.currentTarget.value)}
-          w={{ base: '100%', xs: 260 }}
+          w={{ base: '100%', xs: 240 }}
         />
-        <Select placeholder="All branches" data={branchOptions} value={branchFilter} onChange={setBranchFilter} clearable w={{ base: '100%', xs: 180 }} />
-        <Select placeholder="All positions" data={positionOptions} value={positionFilter} onChange={setPositionFilter} clearable w={{ base: '100%', xs: 170 }} />
-        {visible.length !== (employees.data ?? []).length && (
-          <Text size="sm" c="dimmed">{visible.length} of {employees.data?.length} shown</Text>
-        )}
+        <Select
+          placeholder="All branches"
+          data={[{ value: NO_BRANCH, label: 'No branch' }, ...branchOptions]}
+          value={branchFilter} onChange={setBranchFilter} clearable searchable
+          w={{ base: '100%', xs: 170 }}
+        />
+        <Select
+          placeholder="All positions" data={positionOptions}
+          value={positionFilter} onChange={setPositionFilter} clearable searchable
+          w={{ base: '100%', xs: 170 }}
+        />
+        <Switch
+          label="Show separated"
+          checked={showSeparated === 'yes'}
+          onChange={e => setShowSeparated(e.currentTarget.checked ? 'yes' : 'no')}
+        />
+        <SegmentedControl
+          value={view}
+          onChange={v => setView(v as View)}
+          aria-label="View"
+          data={[
+            { value: 'list', label: <Group gap={6} wrap="nowrap"><IconLayoutList size={16} /><Text size="sm">List</Text></Group> },
+            { value: 'branch', label: <Group gap={6} wrap="nowrap"><IconLayoutGrid size={16} /><Text size="sm">By branch</Text></Group> },
+          ]}
+          ml="auto"
+        />
       </Group>
+
+      {filtered && (
+        <Text size="sm" c="dimmed" mb="xs">
+          Showing {visible.length} of {all.length}
+          {canWrite && visible.length > 0 && (
+            <>
+              {' · '}
+              <UnstyledButton
+                onClick={() => setMany(visibleIds, !allVisibleSelected)}
+                style={{ font: 'inherit', color: 'var(--mantine-color-anchor)' }}
+              >
+                {allVisibleSelected ? 'Clear selection' : `Select all ${visible.length}`}
+              </UnstyledButton>
+            </>
+          )}
+        </Text>
+      )}
 
       <DataState
         loading={employees.loading}
         error={employees.error}
         empty={visible.length === 0}
-        emptyMessage={(employees.data ?? []).length === 0 ? 'No employees yet' : 'No employees match'}
+        emptyMessage={all.length === 0 ? 'No employees yet' : 'No employees match'}
       >
-        <Table.ScrollContainer minWidth={720}>
-          <Table highlightOnHover verticalSpacing="sm" striped="odd">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th w={130}>Position</Table.Th>
-                <Table.Th w={150}>Branch</Table.Th>
-                <Table.Th w={170}>Login</Table.Th>
-                <Table.Th w={110}>Status</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {visible.map(e => (
-                <Table.Tr
-                  key={e.id}
-                  opacity={e.isActive ? 1 : 0.55}
-                  {...rowActionProps(canWrite, () => setActing(e))}
-                >
-                  <Table.Td>
+        {view === 'branch' ? (
+          <div className={classes.branchGrid}>
+            {byBranch.map(([id, group]) => {
+              const ids = group.people.map(p => p.id)
+              const allOn = ids.every(i => selected.has(i))
+              return (
+                <Card key={id} withBorder padding="sm" radius="md">
+                  <Group justify="space-between" wrap="nowrap" mb="xs">
+                    <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                      {canWrite && (
+                        <Checkbox
+                          size="xs"
+                          checked={allOn}
+                          indeterminate={!allOn && ids.some(i => selected.has(i))}
+                          onChange={() => setMany(ids, !allOn)}
+                          aria-label={`Select everyone at ${group.name}`}
+                        />
+                      )}
+                      <Title order={6} lineClamp={1}>{group.name}</Title>
+                    </Group>
+                    <Badge variant="light" color="gray">{group.people.length}</Badge>
+                  </Group>
+                  <ScrollArea.Autosize className={classes.branchList} type="auto">
                     <Stack gap={2}>
-                      <Text fw={500}>{e.name}</Text>
+                      {/*
+                        The checkbox's own LABEL is the tap target, not a button
+                        wrapping the row — a button containing the open-record
+                        button is invalid HTML, and React says so. This way the
+                        whole name area selects, the icon opens the record, and
+                        both are reachable from the keyboard on their own.
+                      */}
+                      {group.people.map(p => (
+                        <Group
+                          key={p.id}
+                          className={`${classes.personRow} ${p.isActive ? '' : classes.separated}`}
+                          data-selected={selected.has(p.id)}
+                          wrap="nowrap"
+                          gap="xs"
+                        >
+                          {canWrite ? (
+                            <Checkbox
+                              size="xs"
+                              checked={selected.has(p.id)}
+                              onChange={() => toggle(p.id)}
+                              aria-label={`Select ${p.name}`}
+                              label={<Text size="sm" lineClamp={1}>{p.name}</Text>}
+                              style={{ flex: 1, minWidth: 0 }}
+                              styles={{ labelWrapper: { minWidth: 0 }, label: { cursor: 'pointer' } }}
+                            />
+                          ) : (
+                            <Text size="sm" lineClamp={1} style={{ flex: 1 }}>{p.name}</Text>
+                          )}
+                          <Tooltip label="Open record">
+                            <ActionIcon
+                              size="sm" variant="subtle" color="gray"
+                              aria-label={`Open ${p.name}`}
+                              onClick={() => navigate(`/admin/employees/${p.id}`)}
+                            >
+                              <IconId size={15} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      ))}
                     </Stack>
-                  </Table.Td>
-                  <Table.Td><Badge variant="light" color="gray">{e.position.name}</Badge></Table.Td>
-                  <Table.Td>
-                    {e.branch ? <Text size="sm">{e.branch.name}</Text> : <Text size="sm" c="dimmed">Unassigned</Text>}
-                  </Table.Td>
-                  <Table.Td>
-                    {e.linkedUser ? (
-                      <Tooltip label={e.linkedUser.email}>
-                        <Badge variant="light" color="crust" leftSection={<IconLink size={10} />}>linked</Badge>
-                      </Tooltip>
-                    ) : (
-                      <Text size="sm" c="dimmed">—</Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color={e.isActive ? 'green' : 'gray'}>{e.isActive ? 'Active' : 'Inactive'}</Badge>
-                  </Table.Td>
+                  </ScrollArea.Autosize>
+                </Card>
+              )
+            })}
+          </div>
+        ) : (
+          <Table.ScrollContainer minWidth={720}>
+            <Table highlightOnHover verticalSpacing="sm" striped="odd">
+              <Table.Thead>
+                <Table.Tr>
+                  {canWrite && (
+                    <Table.Th w={40}>
+                      <Checkbox
+                        size="xs"
+                        checked={allVisibleSelected}
+                        indeterminate={!allVisibleSelected && selectedVisible.length > 0}
+                        onChange={() => setMany(visibleIds, !allVisibleSelected)}
+                        aria-label="Select all shown"
+                      />
+                    </Table.Th>
+                  )}
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th w={130}>Position</Table.Th>
+                  <Table.Th w={150}>Branch</Table.Th>
+                  <Table.Th w={170}>Login</Table.Th>
+                  <Table.Th w={110}>Status</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+              </Table.Thead>
+              <Table.Tbody>
+                {visible.map(e => (
+                  <Table.Tr
+                    key={e.id}
+                    opacity={e.isActive ? 1 : 0.55}
+                    bg={selected.has(e.id) ? 'var(--mantine-color-crust-light)' : undefined}
+                    {...rowActionProps(canWrite, () => setActing(e))}
+                  >
+                    {canWrite && (
+                      <Table.Td onClick={ev => ev.stopPropagation()}>
+                        <Checkbox
+                          size="xs"
+                          checked={selected.has(e.id)}
+                          onChange={() => toggle(e.id)}
+                          aria-label={`Select ${e.name}`}
+                        />
+                      </Table.Td>
+                    )}
+                    <Table.Td><Text fw={500}>{e.name}</Text></Table.Td>
+                    <Table.Td>
+                      <Badge
+                        variant="light"
+                        color={e.position.id === placeholderPositionId ? 'orange' : 'gray'}
+                      >
+                        {e.position.name}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {e.branch
+                        ? <Text size="sm">{e.branch.name}</Text>
+                        : <Text size="sm" c="orange">No branch</Text>}
+                    </Table.Td>
+                    <Table.Td>
+                      {e.linkedUser ? (
+                        <Tooltip label={e.linkedUser.email}>
+                          <Badge variant="light" color="crust" leftSection={<IconLink size={10} />}>linked</Badge>
+                        </Tooltip>
+                      ) : (
+                        <Text size="sm" c="dimmed">—</Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="light" color={e.isActive ? 'green' : 'gray'}>{e.isActive ? 'Active' : 'Separated'}</Badge>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
       </DataState>
+
+      {/*
+        Only once something is ticked. An empty toolbar sitting there permanently
+        is a row of dead controls to read past on every visit.
+      */}
+      {canWrite && selected.size > 0 && (
+        <div className={classes.bulkBar}>
+          <Group gap="sm" wrap="wrap" align="flex-end">
+            <Group gap={6} wrap="nowrap">
+              <Tooltip label="Clear selection">
+                <ActionIcon variant="subtle" color="gray" onClick={() => setSelected(new Set())} aria-label="Clear selection">
+                  <IconX size={16} />
+                </ActionIcon>
+              </Tooltip>
+              <Text fw={600} size="sm">{selected.size} selected</Text>
+            </Group>
+            <Select
+              placeholder="Set position…" data={positionOptions} value={bulkPosition}
+              onChange={setBulkPosition} clearable searchable w={190} size="sm"
+              aria-label="Position for selected"
+            />
+            <Select
+              placeholder="Set branch…"
+              data={[{ value: NO_BRANCH, label: 'No branch' }, ...branchOptions]}
+              value={bulkBranch} onChange={setBulkBranch} clearable searchable w={190} size="sm"
+              aria-label="Branch for selected"
+            />
+            <Button
+              onClick={applyBulk}
+              disabled={!bulkPosition && !bulkBranch}
+              loading={saving}
+              size="sm"
+            >
+              Apply to {selected.size}
+            </Button>
+            {progress && (
+              <Progress
+                value={(progress.done / progress.total) * 100}
+                w={140}
+                aria-label={`${progress.done} of ${progress.total} updated`}
+              />
+            )}
+          </Group>
+        </div>
+      )}
 
       <RowActionsSheet
         opened={acting !== null}
         onClose={() => setActing(null)}
         title={acting?.name ?? ''}
-        subtitle={acting ? [acting.position.name, acting.branch?.name ?? 'Unassigned'].join(' · ') : undefined}
+        subtitle={acting ? [acting.position.name, acting.branch?.name ?? 'No branch'].join(' · ') : undefined}
         actions={
           acting
             ? ([
@@ -248,13 +633,7 @@ export default function EmployeesPage() {
       >
         <form onSubmit={form.onSubmit(values =>
           run(
-            () => {
-              const payload = {
-                ...values,
-                positionId: values.positionId,
-              }
-              return employeeApi.create(payload)
-            },
+            () => employeeApi.create({ ...values, positionId: values.positionId }),
             `${formatEmployeeName(values)} added`,
             () => setCreating(false)
           )
@@ -285,7 +664,7 @@ export default function EmployeesPage() {
               label="Branch"
               data={branchOptions}
               clearable
-              placeholder="Unassigned"
+              placeholder="No branch"
               description="Current assignment — change it when they transfer"
               {...form.getInputProps('branchId')}
             />
