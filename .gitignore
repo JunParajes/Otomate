@@ -39,8 +39,21 @@ Thumbs.db
 *.swp
 *.swo
 
+# Employee data. This repo is PUBLIC and the 201 file is real people — names,
+# birth dates, addresses, SSS and PhilHealth numbers. The import scripts read it
+# from wherever it happens to live; it never belongs in here, and neither does
+# the audit report, which lists every problem against the person it concerns.
+*.xlsx
+*.xls
+*.csv
+audit-report.md
+
 # Docker
 docker-volumes/
 apps/web/e2e/.fixtures.json
 apps/web/test-results/
 apps/web/playwright-report/
+
+# Python
+__pycache__/
+*.pyc
