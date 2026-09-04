@@ -447,6 +447,14 @@ enum CivilStatus {
 /// Probation caps at six months under the Labor Code, and staff not acted on by
 /// then become regular by operation of law — so this is a date the system has to
 /// raise, not merely store.
+/// Whether a piece of paperwork is on file. NOT_APPLICABLE is not a tidier way
+/// of saying MISSING: it means nobody should ever chase this person for it.
+enum DocumentStatus {
+  MISSING
+  ON_FILE
+  NOT_APPLICABLE
+}
+
 enum EmploymentType {
   PROBATIONARY
   REGULAR
@@ -514,13 +522,27 @@ model Employee {
   remarks         String?
 
   // ─── Paperwork on file ───────────────────────────────────────────────────
-  /// Dates rather than ticks: these answer "do we have it?" and "since when?".
-  /// Null means not on file. For the Authority to Deduct in particular, when it
-  /// was signed is what matters if a deduction is ever disputed.
-  confidentialityAgreementOn DateTime? @db.Date
-  authorityToDeductOn        DateTime? @db.Date
-  birthCertificateOn         DateTime? @db.Date
-  marriageContractOn         DateTime? @db.Date
+  /// Each document is a STATUS plus an optional date.
+  ///
+  /// It was a date alone, where null meant "not on file". That could not
+  /// express the two things the paper records actually say: "we have it but
+  /// nobody wrote down when", which is most of the imported 201 files, and
+  /// "this does not apply to this person" — a marriage contract for someone
+  /// single is not missing paperwork, and reading it as missing puts them on a
+  /// chase list forever.
+  ///
+  /// The status answers "do we have it?" on its own. The date refines it and is
+  /// only meaningful when the status is ON_FILE. For the Authority to Deduct in
+  /// particular, when it was signed is what matters if a deduction is disputed,
+  /// so the date is still worth asking for on new records.
+  confidentialityAgreement   DocumentStatus @default(MISSING)
+  confidentialityAgreementOn DateTime?      @db.Date
+  authorityToDeduct          DocumentStatus @default(MISSING)
+  authorityToDeductOn        DateTime?      @db.Date
+  birthCertificate           DocumentStatus @default(MISSING)
+  birthCertificateOn         DateTime?      @db.Date
+  marriageContract           DocumentStatus @default(MISSING)
+  marriageContractOn         DateTime?      @db.Date
   /// Next of kin. Three loose fields rather than a model: this is read by a
   /// human in an emergency, never queried or joined.
   emergencyName              String?

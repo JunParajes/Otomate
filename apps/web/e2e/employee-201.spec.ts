@@ -230,3 +230,38 @@ test('height is entered in feet and inches and survives a save', async ({ page }
   await expect(inches).toHaveValue('7')
   await expect(cm).toHaveValue('170')
 })
+
+/**
+ * Paperwork: the date box only exists once the document does.
+ *
+ * These were four bare date fields, and on most records all four sat empty and
+ * unexplained — the paper 201 files record that a document was handed in, never
+ * the day. Asking "when was it signed?" about a document nobody has is noise,
+ * so the question is only put once the answer can exist.
+ */
+test('a document asks for a date only when it is on file', async ({ page }) => {
+  await openRecord(page)
+
+  const status = page.getByRole('combobox', { name: 'Birth certificate' })
+  const date = page.getByLabel('Birth certificate — date received')
+
+  await expect(status).toHaveValue('Not on file')
+  await expect(date).toHaveCount(0)
+
+  await status.click()
+  await page.getByRole('option', { name: 'On file', exact: true }).click()
+  await expect(date).toBeVisible()
+
+  await date.fill('2023-05-02')
+  await page.getByRole('button', { name: 'Save record' }).click()
+  await page.reload()
+
+  await expect(page.getByRole('combobox', { name: 'Birth certificate' })).toHaveValue('On file')
+  await expect(page.getByLabel('Birth certificate — date received')).toHaveValue('2023-05-02')
+
+  // "Never needed" is a third answer, not a tidier way of saying missing.
+  const marriage = page.getByRole('combobox', { name: 'Marriage contract' })
+  await marriage.click()
+  await page.getByRole('option', { name: 'Not applicable' }).click()
+  await expect(page.getByLabel('Marriage contract — date received')).toHaveCount(0)
+})

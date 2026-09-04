@@ -98,6 +98,21 @@ export const EDUCATION_LEVEL_LABELS: Record<EducationLevel, string> = {
   POST_GRADUATE: 'Post-graduate',
 }
 
+/**
+ * Whether a piece of paperwork is on file.
+ *
+ * NOT_APPLICABLE is not a politer MISSING: it means nobody should ever chase
+ * this person for it. A marriage contract for someone single is not missing
+ * paperwork, and treating it as missing leaves them on a follow-up list forever.
+ */
+export const DOCUMENT_STATUSES = ['MISSING', 'ON_FILE', 'NOT_APPLICABLE'] as const
+export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number]
+export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
+  MISSING: 'Not on file',
+  ON_FILE: 'On file',
+  NOT_APPLICABLE: 'Not applicable',
+}
+
 export const CIVIL_STATUSES = ['SINGLE', 'MARRIED', 'WIDOWED', 'SEPARATED'] as const
 export type CivilStatus = (typeof CIVIL_STATUSES)[number]
 
@@ -188,9 +203,19 @@ export const updateEmployeeHrSchema = z.object({
   educationDetail: z.string().trim().max(160, 'That is too long').nullable().optional(),
   remarks: z.string().trim().max(2000, 'Remarks are too long').nullable().optional(),
 
+  /*
+   * A status and, optionally, a date. The status answers "do we have it?"; the
+   * date says since when and is only meaningful alongside ON_FILE. Most
+   * imported records have the first and not the second — the paper 201 files
+   * recorded that a document had been handed in, never the day.
+   */
+  confidentialityAgreement: z.enum(DOCUMENT_STATUSES).optional(),
   confidentialityAgreementOn: dateOnly,
+  authorityToDeduct: z.enum(DOCUMENT_STATUSES).optional(),
   authorityToDeductOn: dateOnly,
+  birthCertificate: z.enum(DOCUMENT_STATUSES).optional(),
   birthCertificateOn: dateOnly,
+  marriageContract: z.enum(DOCUMENT_STATUSES).optional(),
   marriageContractOn: dateOnly,
   address: z.string().trim().max(300, 'Address is too long').nullable().optional(),
   /**

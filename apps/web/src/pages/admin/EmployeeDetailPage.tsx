@@ -13,6 +13,7 @@ import {
   CIVIL_STATUSES, CIVIL_STATUS_LABELS,
   GENDERS, GENDER_LABELS,
   EDUCATION_LEVELS, EDUCATION_LEVEL_LABELS,
+  DOCUMENT_STATUSES, DOCUMENT_STATUS_LABELS,
   EMPLOYMENT_TYPES, EMPLOYMENT_TYPE_LABELS,
   PAYOUT_METHODS, PAYOUT_METHOD_LABELS,
   SALARY_RATE_TYPES, SALARY_RATE_LABELS,
@@ -28,6 +29,26 @@ import { useSession } from '@/lib/session'
 import MoneyInput from '@/components/MoneyInput'
 import StickyActionBar, { pageWithActionBar } from '@/components/StickyActionBar'
 import classes from './EmployeeDetailPage.module.css'
+
+/**
+ * The four documents, and what the date beside each one means.
+ *
+ * A list rather than four copies of the same markup: they behave identically,
+ * and the last time these were written out one by one three of them drifted
+ * apart in wording.
+ */
+const DOCUMENTS = [
+  { status: 'confidentialityAgreement', on: 'confidentialityAgreementOn',
+    label: 'Confidentiality agreement', dateLabel: 'Date signed' },
+  { status: 'authorityToDeduct', on: 'authorityToDeductOn',
+    label: 'Authority to deduct', dateLabel: 'Date signed' },
+  { status: 'birthCertificate', on: 'birthCertificateOn',
+    label: 'Birth certificate', dateLabel: 'Date received' },
+  { status: 'marriageContract', on: 'marriageContractOn',
+    label: 'Marriage contract', dateLabel: 'Date received' },
+] as const satisfies readonly {
+  status: keyof HrForm; on: keyof HrForm; label: string; dateLabel: string
+}[]
 
 /**
  * The section index, in the order the sections appear. Kept beside the markup
@@ -94,9 +115,13 @@ function toForm(e: Employee): HrForm {
     educationLevel: hr?.educationLevel ?? '',
     educationDetail: hr?.educationDetail ?? '',
     remarks: hr?.remarks ?? '',
+    confidentialityAgreement: hr?.confidentialityAgreement ?? 'MISSING',
     confidentialityAgreementOn: hr?.confidentialityAgreementOn ?? '',
+    authorityToDeduct: hr?.authorityToDeduct ?? 'MISSING',
     authorityToDeductOn: hr?.authorityToDeductOn ?? '',
+    birthCertificate: hr?.birthCertificate ?? 'MISSING',
     birthCertificateOn: hr?.birthCertificateOn ?? '',
+    marriageContract: hr?.marriageContract ?? 'MISSING',
     marriageContractOn: hr?.marriageContractOn ?? '',
     address: hr?.address ?? '',
     emergencyName: hr?.emergencyName ?? '',
@@ -895,39 +920,40 @@ export default function EmployeeDetailPage() {
           "yes" simply by being filled in.
         */}
         <Section id="documents" title="Documents & notes">
+          {/*
+            Each document is a status and, when it is known, a date.
+
+            The date box only appears once the status says the document is on
+            file. Asking "when was it signed?" about a document nobody has is
+            noise, and it was the reason these fields sat empty and meaningless
+            on most records — the paper 201 files recorded that a document had
+            been handed in, never the day.
+          */}
           <Grid gap="sm">
-            <Grid.Col span={{ base: 12, sm: 3 }}>
-              <TextInput
-                label="Confidentiality agreement"
-                type="date"
-                description="Date signed"
-                {...field('confidentialityAgreementOn')}
-              />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 3 }}>
-              <TextInput
-                label="Authority to deduct"
-                type="date"
-                description="Date signed"
-                {...field('authorityToDeductOn')}
-              />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 3 }}>
-              <TextInput
-                label="Birth certificate"
-                type="date"
-                description="Date received"
-                {...field('birthCertificateOn')}
-              />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 3 }}>
-              <TextInput
-                label="Marriage contract"
-                type="date"
-                description="Date received"
-                {...field('marriageContractOn')}
-              />
-            </Grid.Col>
+            {DOCUMENTS.map(({ status, on, label, dateLabel }) => (
+              <Grid.Col span={{ base: 12, sm: 3 }} key={status}>
+                <Stack gap={6}>
+                  <Select
+                    label={label}
+                    data={DOCUMENT_STATUSES.map(s => ({
+                      value: s, label: DOCUMENT_STATUS_LABELS[s],
+                    }))}
+                    value={form[status] || 'MISSING'}
+                    onChange={v => set(status)(v ?? 'MISSING')}
+                    disabled={!canWriteHr}
+                    allowDeselect={false}
+                  />
+                  {form[status] === 'ON_FILE' && (
+                    <TextInput
+                      aria-label={`${label} — ${dateLabel.toLowerCase()}`}
+                      type="date"
+                      placeholder={dateLabel}
+                      {...field(on)}
+                    />
+                  )}
+                </Stack>
+              </Grid.Col>
+            ))}
             <Grid.Col span={12}>
               <Textarea
                 label="Remarks"

@@ -285,9 +285,13 @@ export function toEmployeeDto(
       educationLevel: employee.educationLevel as EducationLevel | null,
       educationDetail: employee.educationDetail,
       remarks: employee.remarks,
+      confidentialityAgreement: employee.confidentialityAgreement,
       confidentialityAgreementOn: dateOnly(employee.confidentialityAgreementOn),
+      authorityToDeduct: employee.authorityToDeduct,
       authorityToDeductOn: dateOnly(employee.authorityToDeductOn),
+      birthCertificate: employee.birthCertificate,
       birthCertificateOn: dateOnly(employee.birthCertificateOn),
+      marriageContract: employee.marriageContract,
       marriageContractOn: dateOnly(employee.marriageContractOn),
       address: employee.address,
       contacts: [...(employee.contacts ?? [])]

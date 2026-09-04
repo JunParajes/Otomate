@@ -157,3 +157,70 @@ describe('PATCH /employees/:id/hr — the added 201 fields', () => {
     expect(JSON.stringify(res.body)).not.toContain('Roman Catholic')
   })
 })
+
+/**
+ * Paperwork: a status, and a date only when it is known.
+ *
+ * These were dates alone, where null meant "not on file". That could not record
+ * the two things the paper 201 files actually say — "we have it but nobody
+ * wrote down when", which is most of them, and "this person will never need
+ * one". A single missing must not be able to stand for all three.
+ */
+describe('document status', () => {
+  it('records on file with no date — the case a date alone could not express', async () => {
+    const { employee, token } = await seed()
+
+    const res = await as(token)
+      .patch(`/api/admin/employees/${employee.id}/hr`)
+      .send({ authorityToDeduct: 'ON_FILE' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.hr.authorityToDeduct).toBe('ON_FILE')
+    expect(res.body.data.hr.authorityToDeductOn).toBeNull()
+  })
+
+  it('keeps the status and the date together when both are known', async () => {
+    const { employee, token } = await seed()
+
+    const res = await as(token)
+      .patch(`/api/admin/employees/${employee.id}/hr`)
+      .send({ confidentialityAgreement: 'ON_FILE', confidentialityAgreementOn: '2024-01-15' })
+
+    expect(res.body.data.hr.confidentialityAgreement).toBe('ON_FILE')
+    expect(res.body.data.hr.confidentialityAgreementOn).toBe('2024-01-15')
+  })
+
+  it('tells "never needed" apart from "not on file"', async () => {
+    const { employee, token } = await seed()
+
+    const res = await as(token)
+      .patch(`/api/admin/employees/${employee.id}/hr`)
+      .send({ marriageContract: 'NOT_APPLICABLE', birthCertificate: 'MISSING' })
+
+    // A marriage contract for someone single is not missing paperwork. Reading
+    // it as missing leaves them on a follow-up list that can never be cleared.
+    expect(res.body.data.hr.marriageContract).toBe('NOT_APPLICABLE')
+    expect(res.body.data.hr.birthCertificate).toBe('MISSING')
+  })
+
+  it('starts as not on file rather than as nothing', async () => {
+    const { employee, token } = await seed()
+
+    const res = await as(token).get(`/api/admin/employees/${employee.id}`)
+
+    for (const field of ['confidentialityAgreement', 'authorityToDeduct',
+                         'birthCertificate', 'marriageContract'] as const) {
+      expect(res.body.data.hr[field]).toBe('MISSING')
+    }
+  })
+
+  it('refuses a status that is not one of the three', async () => {
+    const { employee, token } = await seed()
+
+    const res = await as(token)
+      .patch(`/api/admin/employees/${employee.id}/hr`)
+      .send({ birthCertificate: 'MAYBE' })
+
+    expect(res.status).toBe(400)
+  })
+})

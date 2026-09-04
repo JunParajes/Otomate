@@ -145,8 +145,8 @@ export interface Product {
 
 // ─── Employees ────────────────────────────────────────────────────────────
 import type {
-  CivilStatus, EducationLevel, EmployeeContactRecord, EmployeeSalaryRecord, EmploymentPeriodRecord,
-  EmploymentType, Gender, PayoutMethod,
+  CivilStatus, DocumentStatus, EducationLevel, EmployeeContactRecord, EmployeeSalaryRecord,
+  EmploymentPeriodRecord, EmploymentType, Gender, PayoutMethod,
 } from '../schemas/employee.js'
 
 /**
@@ -170,13 +170,22 @@ export interface EmployeeHr {
   remarks: string | null
 
   /**
-   * Document checks, held as the date the document was signed or produced
-   * rather than a yes/no. A tick tells you nothing six months later; the date
-   * answers "signed under which contract?" and still reads as "yes" when set.
+   * Document checks: a status, plus the date it was signed or produced when
+   * that is known.
+   *
+   * A date alone could not say "we have it but nobody wrote down when", which
+   * is how nearly every paper 201 file records these, nor "this person will
+   * never need one". The date still earns its place — for the Authority to
+   * Deduct, when it was signed is the whole question if a deduction is ever
+   * disputed — but it refines the status rather than standing in for it.
    */
+  confidentialityAgreement: DocumentStatus
   confidentialityAgreementOn: string | null
+  authorityToDeduct: DocumentStatus
   authorityToDeductOn: string | null
+  birthCertificate: DocumentStatus
   birthCertificateOn: string | null
+  marriageContract: DocumentStatus
   marriageContractOn: string | null
 
   address: string | null

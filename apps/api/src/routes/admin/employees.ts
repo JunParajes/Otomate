@@ -235,9 +235,15 @@ router.patch(
         ...(d.educationDetail !== undefined && { educationDetail: cleanOptional(d.educationDetail) ?? null }),
         ...(d.remarks !== undefined && { remarks: cleanOptional(d.remarks) ?? null }),
 
+        ...(d.confidentialityAgreement !== undefined && {
+          confidentialityAgreement: d.confidentialityAgreement,
+        }),
         ...(d.confidentialityAgreementOn !== undefined && {
           confidentialityAgreementOn: cleanDate(d.confidentialityAgreementOn),
         }),
+        ...(d.authorityToDeduct !== undefined && { authorityToDeduct: d.authorityToDeduct }),
+        ...(d.birthCertificate !== undefined && { birthCertificate: d.birthCertificate }),
+        ...(d.marriageContract !== undefined && { marriageContract: d.marriageContract }),
         ...(d.authorityToDeductOn !== undefined && { authorityToDeductOn: cleanDate(d.authorityToDeductOn) }),
         ...(d.birthCertificateOn !== undefined && { birthCertificateOn: cleanDate(d.birthCertificateOn) }),
         ...(d.marriageContractOn !== undefined && { marriageContractOn: cleanDate(d.marriageContractOn) }),
